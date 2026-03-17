@@ -10,7 +10,6 @@ export async function proxy(request: NextRequest) {
   });
 
   const isAuthenticated = session?.user;
-  const isAdmin = session?.user?.role === "admin";
 
   const publicRoutes = [
     "/",
@@ -31,7 +30,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/overview", request.url));
   }
 
-  if (pathname.startsWith("/admin") && !isAdmin) {
+  if (pathname.startsWith("/admin") && session?.user?.role !== "admin") {
     const callbackUrl = encodeURIComponent(pathname);
     return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, request.url));
   }

@@ -1,15 +1,4 @@
 /**
- * Returns an error string if passwords do not match, otherwise null.
- */
-export function validatePasswordsMatch(
-  password: string,
-  confirm: string
-): string | null {
-  if (password !== confirm) return "Passwords do not match.";
-  return null;
-}
-
-/**
  * Returns an error string if the password is too short, otherwise null.
  */
 export function validatePasswordLength(

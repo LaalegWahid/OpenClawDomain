@@ -1,26 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useCallback, RefObject } from 'react'
+import { useEffect, useRef } from 'react'
 import ClawScrollSection from '../../components/ClawScrollSection'
-
-// ─── useInView ──────────────────────────────────────────────────────────────
-function useInView(ref: RefObject<Element | null>, threshold = 0.15): void {
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          (el as HTMLElement).dataset.inview = 'true'
-          observer.disconnect()
-        }
-      },
-      { threshold }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [ref, threshold])
-}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface StepCard {

@@ -21,6 +21,7 @@ export const env = createEnv({
   client: {
     NEXT_PUBLIC_APP_URL: z.url().optional(),
     NEXT_PUBLIC_API_URL: z.url().optional(),
+    NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: z.string().min(1).optional(),
   },
 
   runtimeEnv: {
@@ -40,6 +41,7 @@ export const env = createEnv({
 
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
   },
 });
 
