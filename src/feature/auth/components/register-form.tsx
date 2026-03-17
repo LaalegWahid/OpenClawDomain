@@ -1,26 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
-import { signIn } from "@/feature/auth/actions/auth.actions";
+import { signUp } from "@/feature/auth/actions/auth.actions";
 import { validatePasswordLength } from "@/feature/auth/lib/auth.lib";
-
-/* ── Telegram types ────────────────────────────────────────── */
-interface TelegramUser {
-  id: number;
-  first_name: string;
-  username?: string;
-  auth_date: number;
-  hash: string;
-}
-
-declare global {
-  interface Window {
-    onTelegramAuth?: (user: TelegramUser) => void;
-  }
-}
 
 /* ── Field ──────────────────────────────────────────────────── */
 function Field({
@@ -82,34 +67,6 @@ export function RegisterForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(null);
-
-  const handleTelegramAuth = useCallback((user: TelegramUser) => {
-    setTelegramUser(user);
-  }, []);
-
-  useEffect(() => {
-    window.onTelegramAuth = handleTelegramAuth;
-    return () => { delete window.onTelegramAuth; };
-  }, [handleTelegramAuth]);
-
-  useEffect(() => {
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME;
-    if (!botUsername) return;
-
-    const container = document.getElementById("telegram-widget");
-    if (!container || container.childElementCount > 0) return;
-
-    const script = document.createElement("script");
-    script.src = "https://telegram.org/js/telegram-widget.js?22";
-    script.async = true;
-    script.setAttribute("data-telegram-login", botUsername);
-    script.setAttribute("data-size", "large");
-    script.setAttribute("data-radius", "10");
-    script.setAttribute("data-onauth", "onTelegramAuth(user)");
-    script.setAttribute("data-request-access", "write");
-    container.appendChild(script);
-  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -122,34 +79,15 @@ export function RegisterForm() {
     }
 
     setLoading(true);
+    const { error } = await signUp(name, email, password);
 
-    try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-          telegramId: telegramUser?.id?.toString(),
-          telegramUsername: telegramUser?.username,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error ?? "Could not create account. Please try again.");
-        setLoading(false);
-        return;
-      }
-
-      // Sign in after successful registration
-      await signIn(email, password, "/overview");
-    } catch {
-      setError("Could not create account. Please try again.");
+    if (error) {
+      setError(error.message ?? "Could not create account. Please try again.");
       setLoading(false);
+      return;
     }
+
+    router.push("/overview");
   }
 
   return (
@@ -216,31 +154,32 @@ export function RegisterForm() {
 
         <Field id="password" label="Password" type="password" autoComplete="new-password"
           value={password} onChange={setPassword} placeholder="Min. 8 characters" />
-
-        {/* Telegram Widget or Connected Badge */}
-        {telegramUser ? (
-          <div style={{
-            marginTop: '12px',
-            background: 'rgba(0,136,204,0.07)',
-            border: '0.5px solid rgba(0,136,204,0.35)',
-            borderRadius: '10px',
-            padding: '13px',
-            fontSize: '14px',
-            color: '#2AABEE',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-            </svg>
-            Connected as @{telegramUser.username ?? telegramUser.first_name}
-          </div>
-        ) : (
-          <div id="telegram-widget" style={{ marginTop: '12px', display: 'flex', justifyContent: 'center' }} />
-        )}
-
+     <button
+        type="button"
+        onClick={() => console.log("Connect to Telegram clicked")}
+        style={{
+          marginTop: '12px',
+          background: 'rgba(0,136,204,0.07)',
+          color: '#2AABEE',
+          border: '0.5px solid rgba(0,136,204,0.35)',
+          borderRadius: '10px',
+          padding: '13px',
+          fontSize: '15px',
+          fontWeight: 500,
+          cursor: 'pointer',
+          letterSpacing: '-0.01em',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          width: '100%',
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+        </svg>
+        Connect to Telegram
+      </button>
         <button
           type="submit"
           disabled={loading}
@@ -273,12 +212,7 @@ export function RegisterForm() {
         </button>
       </form>
 
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+ 
 
       <div style={{
         height: '0.5px',
