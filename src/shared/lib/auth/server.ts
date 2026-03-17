@@ -26,6 +26,9 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+    trustedOrigins: [
+    'https://open-claw-domain-jn5g.vercel.app', // Example for production
+  ],
   session: {
     cookieCache: {
       enabled: true,
