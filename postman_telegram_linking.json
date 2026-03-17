@@ -1,0 +1,131 @@
+{
+  "info": {
+    "name": "OpenClaw Manager - Telegram Linking",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "webhookSecret",
+      "value": "071efae27a8c8ab9e3f210468a09eb297113b6a80c7b29507aec2992359c31bc"
+    },
+    {
+      "key": "linkToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Request Link Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "if (res.url) {",
+              "  const token = res.url.split('start=')[1];",
+              "  pm.collectionVariables.set('linkToken', token);",
+              "  console.log('Link token saved:', token);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Cookie",
+            "value": "better-auth.session_token=YOUR_SESSION_TOKEN_HERE",
+            "description": "Replace with your actual session cookie"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/link/request",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "link", "request"]
+        }
+      }
+    },
+    {
+      "name": "2. Simulate Telegram /start (Webhook)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Telegram-Bot-Api-Secret-Token",
+            "value": "{{webhookSecret}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"update_id\": 123456789,\n  \"message\": {\n    \"message_id\": 1,\n    \"from\": {\n      \"id\": 987654321,\n      \"is_bot\": false,\n      \"first_name\": \"Test\",\n      \"username\": \"testuser\"\n    },\n    \"chat\": {\n      \"id\": 987654321,\n      \"first_name\": \"Test\",\n      \"username\": \"testuser\",\n      \"type\": \"private\"\n    },\n    \"date\": 1700000000,\n    \"text\": \"/start {{linkToken}}\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/telegram/webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "telegram", "webhook"]
+        }
+      }
+    },
+    {
+      "name": "3. Webhook - Bad Secret (should 403)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Telegram-Bot-Api-Secret-Token",
+            "value": "wrong-secret"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"update_id\": 123456789,\n  \"message\": {\n    \"message_id\": 1,\n    \"from\": { \"id\": 111, \"is_bot\": false, \"first_name\": \"Bad\" },\n    \"chat\": { \"id\": 111, \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/start fake-token\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/telegram/webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "telegram", "webhook"]
+        }
+      }
+    },
+    {
+      "name": "4. Webhook - Unknown Command",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Telegram-Bot-Api-Secret-Token",
+            "value": "{{webhookSecret}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"update_id\": 123456790,\n  \"message\": {\n    \"message_id\": 2,\n    \"from\": { \"id\": 987654321, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": 987654321, \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"hello\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/telegram/webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "telegram", "webhook"]
+        }
+      }
+    }
+  ]
+}

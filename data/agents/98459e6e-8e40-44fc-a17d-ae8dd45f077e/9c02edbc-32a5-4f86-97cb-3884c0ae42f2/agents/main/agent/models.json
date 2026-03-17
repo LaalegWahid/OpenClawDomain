@@ -1,0 +1,29 @@
+{
+  "providers": {
+    "amazon-bedrock": {
+      "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+      "auth": "aws-sdk",
+      "api": "bedrock-converse-stream",
+      "models": [
+        {
+          "id": "us.amazon.nova-lite-v1:0",
+          "name": "Amazon Nova Lite",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 4096,
+          "api": "bedrock-converse-stream"
+        }
+      ],
+      "apiKey": "AWS_ACCESS_KEY_ID"
+    }
+  }
+}

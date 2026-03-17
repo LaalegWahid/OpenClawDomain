@@ -1,0 +1,699 @@
+{
+  "info": {
+    "name": "OpenClaw Manager - Day 2: Agents + Bot Commands",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "sessionToken",
+      "value": "YOUR_SESSION_TOKEN_HERE"
+    },
+    {
+      "key": "webhookSecret",
+      "value": "071efae27a8c8ab9e3f210468a09eb297113b6a80c7b29507aec2992359c31bc"
+    },
+    {
+      "key": "agentId",
+      "value": ""
+    },
+    {
+      "key": "telegramUserId",
+      "value": "987654321"
+    }
+  ],
+  "item": [
+    {
+      "name": "Agents API",
+      "item": [
+        {
+          "name": "1. Launch Finance Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Agent returned', () => {",
+                  "  pm.expect(res.agent).to.be.an('object');",
+                  "  pm.expect(res.agent.type).to.eql('finance');",
+                  "  pm.expect(res.agent.status).to.be.oneOf(['active', 'starting']);",
+                  "});",
+                  "if (res.agent) {",
+                  "  pm.collectionVariables.set('agentId', res.agent.id);",
+                  "  console.log('Agent ID saved:', res.agent.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"type\": \"finance\" }"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents"]
+            }
+          }
+        },
+        {
+          "name": "2. Launch Marketing Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Agent is marketing type', () => {",
+                  "  pm.expect(res.agent.type).to.eql('marketing');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"type\": \"marketing\" }"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents"]
+            }
+          }
+        },
+        {
+          "name": "3. Launch Ops Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Agent is ops type', () => {",
+                  "  pm.expect(res.agent.type).to.eql('ops');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"type\": \"ops\" }"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents"]
+            }
+          }
+        },
+        {
+          "name": "4. Launch Duplicate Agent (should 409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409 Conflict', () => pm.response.to.have.status(409));",
+                  "pm.test('Error message present', () => {",
+                  "  const res = pm.response.json();",
+                  "  pm.expect(res.error).to.include('already running');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"type\": \"finance\" }"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents"]
+            }
+          }
+        },
+        {
+          "name": "5. Launch Invalid Type (should 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Error message', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('Invalid agent type');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"type\": \"invalid\" }"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents"]
+            }
+          }
+        },
+        {
+          "name": "6. List All Agents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Agents array returned', () => {",
+                  "  pm.expect(res.agents).to.be.an('array');",
+                  "  pm.expect(res.agents.length).to.be.greaterThan(0);",
+                  "});",
+                  "pm.test('Each agent has required fields', () => {",
+                  "  res.agents.forEach(a => {",
+                  "    pm.expect(a).to.have.property('id');",
+                  "    pm.expect(a).to.have.property('type');",
+                  "    pm.expect(a).to.have.property('name');",
+                  "    pm.expect(a).to.have.property('status');",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents"]
+            }
+          }
+        },
+        {
+          "name": "7. Get Agent Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Agent object returned', () => {",
+                  "  pm.expect(res.agent).to.be.an('object');",
+                  "  pm.expect(res.agent.id).to.eql(pm.collectionVariables.get('agentId'));",
+                  "});",
+                  "pm.test('Activities array returned', () => {",
+                  "  pm.expect(res.activities).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "{{agentId}}"]
+            }
+          }
+        },
+        {
+          "name": "8. Get Non-Existent Agent (should 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+        {
+          "name": "9. Stop Agent (DELETE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('OK response', () => {",
+                  "  pm.expect(pm.response.json().ok).to.eql(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "{{agentId}}"]
+            }
+          }
+        },
+        {
+          "name": "10. Verify Agent Stopped",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Agent status is stopped', () => {",
+                  "  pm.expect(res.agent.status).to.eql('stopped');",
+                  "  pm.expect(res.agent.containerId).to.be.null;",
+                  "});",
+                  "pm.test('Stop activity logged', () => {",
+                  "  const stopActivity = res.activities.find(a => a.type === 'stop');",
+                  "  pm.expect(stopActivity).to.not.be.undefined;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "better-auth.session_token={{sessionToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "{{agentId}}"]
+            }
+          }
+        },
+        {
+          "name": "11. Unauthenticated Request (should 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Telegram Bot Commands",
+      "item": [
+        {
+          "name": "1. /status Command",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('OK response', () => {",
+                  "  pm.expect(pm.response.json().ok).to.eql(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000001,\n  \"message\": {\n    \"message_id\": 10,\n    \"from\": { \"id\": {{telegramUserId}}, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": {{telegramUserId}}, \"first_name\": \"Test\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/status\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "2. /report Command (Finance)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000002,\n  \"message\": {\n    \"message_id\": 11,\n    \"from\": { \"id\": {{telegramUserId}}, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": {{telegramUserId}}, \"first_name\": \"Test\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/report monthly revenue\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "3. /tasks Command (Ops)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000003,\n  \"message\": {\n    \"message_id\": 12,\n    \"from\": { \"id\": {{telegramUserId}}, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": {{telegramUserId}}, \"first_name\": \"Test\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/tasks list all open\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "4. /assign Command (Ops)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000004,\n  \"message\": {\n    \"message_id\": 13,\n    \"from\": { \"id\": {{telegramUserId}}, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": {{telegramUserId}}, \"first_name\": \"Test\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/assign review PR #42 to Alice\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "5. /standup Command (Ops)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000005,\n  \"message\": {\n    \"message_id\": 14,\n    \"from\": { \"id\": {{telegramUserId}}, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": {{telegramUserId}}, \"first_name\": \"Test\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/standup\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "6. /draft Command (Marketing)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000006,\n  \"message\": {\n    \"message_id\": 15,\n    \"from\": { \"id\": {{telegramUserId}}, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": {{telegramUserId}}, \"first_name\": \"Test\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/draft tweet about new product launch\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "7. /schedule Command (Marketing)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000007,\n  \"message\": {\n    \"message_id\": 16,\n    \"from\": { \"id\": {{telegramUserId}}, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": {{telegramUserId}}, \"first_name\": \"Test\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/schedule post for Friday 10am\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "8. /metrics Command (Marketing)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000008,\n  \"message\": {\n    \"message_id\": 17,\n    \"from\": { \"id\": {{telegramUserId}}, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": {{telegramUserId}}, \"first_name\": \"Test\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/metrics last 7 days\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "9. Unknown Command (help text)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000009,\n  \"message\": {\n    \"message_id\": 18,\n    \"from\": { \"id\": {{telegramUserId}}, \"is_bot\": false, \"first_name\": \"Test\", \"username\": \"testuser\" },\n    \"chat\": { \"id\": {{telegramUserId}}, \"first_name\": \"Test\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"hello there\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        },
+        {
+          "name": "10. Unlinked User Command",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Telegram-Bot-Api-Secret-Token", "value": "{{webhookSecret}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"update_id\": 100000010,\n  \"message\": {\n    \"message_id\": 19,\n    \"from\": { \"id\": 111111111, \"is_bot\": false, \"first_name\": \"Unknown\" },\n    \"chat\": { \"id\": 111111111, \"first_name\": \"Unknown\", \"type\": \"private\" },\n    \"date\": 1700000000,\n    \"text\": \"/status\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/telegram/webhook",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "telegram", "webhook"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
