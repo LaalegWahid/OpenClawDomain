@@ -1,0 +1,66 @@
+import { relations, sql } from "drizzle-orm";
+import {
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  index,
+  integer,
+  jsonb,
+} from "drizzle-orm/pg-core";
+import { user } from "./auth";
+
+export const agent = pgTable(
+  "agent",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    type: text("type").notNull(), // "finance" | "marketing" | "ops"
+    name: text("name").notNull(),
+    status: text("status").notNull().default("starting"), // "active" | "starting" | "stopped" | "error"
+    containerId: text("container_id"),
+    containerPort: integer("container_port"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("agent_userId_idx").on(table.userId)],
+);
+
+export const agentActivity = pgTable(
+  "agent_activity",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    message: text("message").notNull(),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("agent_activity_agentId_idx").on(table.agentId)],
+);
+
+export const agentRelations = relations(agent, ({ one, many }) => ({
+  user: one(user, {
+    fields: [agent.userId],
+    references: [user.id],
+  }),
+  activities: many(agentActivity),
+}));
+
+export const agentActivityRelations = relations(agentActivity, ({ one }) => ({
+  agent: one(agent, {
+    fields: [agentActivity.agentId],
+    references: [agent.id],
+  }),
+}));
