@@ -30,19 +30,17 @@ cat > "${CONFIG_FILE}" << EOJSON
 {
   "models": {
     "providers": {
-      "amazon-bedrock": {
-        "baseUrl": "https://bedrock-runtime.${AWS_REGION:-us-east-1}.amazonaws.com",
-        "api": "bedrock-converse-stream",
-        "auth": "aws-sdk",
+      "google": {
+        "apiKey": "${GEMINI_API_KEY}",
         "models": [
           {
-            "id": "us.amazon.nova-lite-v1:0",
-            "name": "Amazon Nova Lite",
+            "id": "gemini-2.0-flash",
+            "name": "Gemini 2.0 Flash",
             "reasoning": false,
             "input": ["text"],
             "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-            "contextWindow": 128000,
-            "maxTokens": 4096
+            "contextWindow": 1000000,
+            "maxTokens": 8192
           }
         ]
       }
@@ -51,7 +49,7 @@ cat > "${CONFIG_FILE}" << EOJSON
   "agents": {
     "defaults": {
       "model": {
-        "primary": "amazon-bedrock/us.amazon.nova-lite-v1:0"
+        "primary": "google/gemini-2.0-flash"
       },
       "workspace": "${WORKSPACE}"
     }
