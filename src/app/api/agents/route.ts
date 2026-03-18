@@ -5,6 +5,7 @@ import { agent, agentActivity } from "@/shared/db/schema/agent";
 import { eq } from "drizzle-orm";
 import { validateBotToken, setWebhook, deleteWebhook } from "@/shared/lib/telegram/bot";
 import { launchContainer, stopContainer } from "@/shared/lib/agents/docker";
+import { AGENT_TYPES, type AgentType } from "@/shared/lib/agents/config";
 import { env } from "@/shared/config/env";
 import { logger } from "@/shared/lib/logger";
 
@@ -13,11 +14,18 @@ const MAX_BOTS_PER_USER = 3;
 export async function POST(req: Request) {
   try {
     const session = await getSessionOrThrow(req);
-    const { botToken, botUsername, name, systemPrompt } = await req.json();
+    const { botToken, botUsername, name, systemPrompt, type } = await req.json();
 
-    if (!botToken || !botUsername || !name || !systemPrompt) {
+    if (!botToken || !botUsername || !name || !systemPrompt || !type) {
       return NextResponse.json(
-        { error: "botToken, botUsername, name, and systemPrompt are required" },
+        { error: "botToken, botUsername, name, systemPrompt, and type are required" },
+        { status: 400 },
+      );
+    }
+
+    if (!AGENT_TYPES.includes(type as AgentType)) {
+      return NextResponse.json(
+        { error: `Invalid agent type. Must be one of: ${AGENT_TYPES.join(", ")}` },
         { status: 400 },
       );
     }
@@ -79,6 +87,7 @@ export async function POST(req: Request) {
         session.user.id,
         tempAgentId,
         systemPrompt,
+        type as AgentType,
       );
       containerId = result.containerId;
       port = result.port;
@@ -115,6 +124,7 @@ export async function POST(req: Request) {
           botToken,
           botUsername: botInfo.username,
           systemPrompt,
+          type: type as AgentType,
           status: "active",
           containerId,
           containerPort: port,

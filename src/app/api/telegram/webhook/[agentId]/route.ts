@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { sendMessage } from "@/shared/lib/telegram/bot";
 import { sendCommand } from "@/shared/lib/agents/docker";
 import type { ChatMessage } from "@/shared/lib/agents/docker";
+import type { AgentType } from "@/shared/lib/agents/config";
 import { logger } from "@/shared/lib/logger";
 
 const MAX_HISTORY = 20; // Keep last 20 messages (10 turns)
@@ -82,6 +83,7 @@ export async function POST(
       found.containerPort,
       text,
       history.length > 0 ? history : undefined,
+      (found.type as AgentType) || undefined,
     );
 
     // Update history: add user message + assistant response, trim to max

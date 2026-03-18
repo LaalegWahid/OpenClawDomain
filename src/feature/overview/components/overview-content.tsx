@@ -4,11 +4,32 @@ import { useState, useEffect, useCallback } from "react";
 import { Bot, Loader2, X } from "lucide-react";
 import Link from "next/link";
 
+type AgentType = "finance" | "marketing" | "operations";
+
+const AGENT_TYPE_OPTIONS: { value: AgentType; label: string }[] = [
+  { value: "finance", label: "Finance" },
+  { value: "marketing", label: "Marketing" },
+  { value: "operations", label: "Operations" },
+];
+
+const DEFAULT_PROMPTS: Record<AgentType, string> = {
+  finance: "You help with financial analysis, budgeting, forecasting, and accounting compliance.",
+  marketing: "You help with market research, campaign strategy, branding, and content creation.",
+  operations: "You help with process optimization, supply chain logistics, and project management.",
+};
+
+const TYPE_COLORS: Record<AgentType, string> = {
+  finance: "#4CAF50",
+  marketing: "#2196F3",
+  operations: "#FF9800",
+};
+
 interface AgentRecord {
   id: string;
   name: string;
   botUsername: string;
   status: string;
+  type?: AgentType;
 }
 
 interface OverviewContentProps {
@@ -28,6 +49,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   const [botUsername, setBotUsername] = useState("");
   const [botName, setBotName] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
+  const [agentType, setAgentType] = useState<AgentType>("finance");
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -56,7 +78,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       const res = await fetch("/api/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ botToken, botUsername, name: botName, systemPrompt }),
+        body: JSON.stringify({ botToken, botUsername, name: botName, systemPrompt, type: agentType }),
       });
 
       const data = await res.json();
@@ -71,6 +93,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       setBotUsername("");
       setBotName("");
       setSystemPrompt("");
+      setAgentType("finance");
       setShowModal(false);
       await fetchAgents();
     } catch {
@@ -192,6 +215,23 @@ export function OverviewContent({ userName }: OverviewContentProps) {
               <div style={{ fontSize: "11px", color: "#FF4D00", letterSpacing: "0.02em" }}>
                 @{ag.botUsername}
               </div>
+              {ag.type && (
+                <span style={{
+                  display: "inline-block",
+                  marginTop: "6px",
+                  fontSize: "10px",
+                  fontWeight: 500,
+                  letterSpacing: "0.05em",
+                  textTransform: "uppercase",
+                  color: TYPE_COLORS[ag.type] ?? "#555",
+                  background: `${TYPE_COLORS[ag.type] ?? "#555"}15`,
+                  border: `0.5px solid ${TYPE_COLORS[ag.type] ?? "#555"}30`,
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                }}>
+                  {ag.type}
+                </span>
+              )}
             </div>
 
             {/* Divider */}
@@ -268,6 +308,35 @@ export function OverviewContent({ userName }: OverviewContentProps) {
               <ModalField label="Bot API Token" value={botToken} onChange={setBotToken} placeholder="Paste token from BotFather" />
               <ModalField label="Bot Username" value={botUsername} onChange={setBotUsername} placeholder="e.g. my_cool_bot" />
               <ModalField label="Agent Name" value={botName} onChange={setBotName} placeholder="e.g. Customer Support" />
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 500, letterSpacing: "0.02em", color: "#555555", textTransform: "uppercase" }}>
+                  Agent Type
+                </label>
+                <select
+                  value={agentType}
+                  onChange={(e) => {
+                    const newType = e.target.value as AgentType;
+                    setAgentType(newType);
+                    setSystemPrompt(DEFAULT_PROMPTS[newType]);
+                  }}
+                  style={{
+                    background: "#0A0A0A",
+                    border: "0.5px solid #1E1E1E",
+                    borderRadius: "8px",
+                    padding: "11px 14px",
+                    fontSize: "14px",
+                    color: "#F0EEE8",
+                    outline: "none",
+                    width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {AGENT_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <label style={{ fontSize: "12px", fontWeight: 500, letterSpacing: "0.02em", color: "#555555", textTransform: "uppercase" }}>

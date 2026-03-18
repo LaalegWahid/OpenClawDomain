@@ -11,14 +11,24 @@ echo "Starting OpenClaw agent: ${AGENT_ID}"
 mkdir -p "${OPENCLAW_HOME}"
 mkdir -p "${WORKSPACE}"
 
-# Read system prompt from mounted config if available
+# Read system prompt and model from mounted config if available
 SYSTEM_PROMPT="You are a helpful AI assistant."
+AGENT_MODEL="google/gemini-2.5-flash"
 if [ -f "${OPENCLAW_HOME}/config.json" ]; then
   SYSTEM_PROMPT=$(node -e "
     const c = require('${OPENCLAW_HOME}/config.json');
     process.stdout.write(c.systemPrompt || 'You are a helpful AI assistant.');
   " 2>/dev/null || echo "You are a helpful AI assistant.")
+  AGENT_MODEL=$(node -e "
+    const c = require('${OPENCLAW_HOME}/config.json');
+    process.stdout.write(c.model || 'google/gemini-2.5-flash');
+  " 2>/dev/null || echo "google/gemini-2.5-flash")
 fi
+
+# Extract provider and model id from "provider/model" format
+MODEL_PROVIDER=$(echo "${AGENT_MODEL}" | cut -d'/' -f1)
+MODEL_ID=$(echo "${AGENT_MODEL}" | cut -d'/' -f2)
+MODEL_NAME=$(echo "${MODEL_ID}" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
 
 # Write system prompt to workspace SYSTEM.md (injected into agent context)
 cat > "${WORKSPACE}/SYSTEM.md" << EOSYSTEM
@@ -39,8 +49,8 @@ cat > "${CONFIG_FILE}" << EOJSON
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "models": [
           {
-            "id": "gemini-2.5-flash-lite",
-            "name": "Gemini 2.5 Flash Lite",
+            "id": "${MODEL_ID}",
+            "name": "${MODEL_NAME}",
             "reasoning": false,
             "input": ["text"],
             "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
@@ -54,7 +64,7 @@ cat > "${CONFIG_FILE}" << EOJSON
   "agents": {
     "defaults": {
       "model": {
-        "primary": "google/gemini-2.5-flash-lite"
+        "primary": "${AGENT_MODEL}"
       },
       "workspace": "${WORKSPACE}",
       "compaction": {
@@ -96,7 +106,7 @@ EOJSON
 
 echo "Config written to ${CONFIG_FILE}"
 echo "System prompt written to ${WORKSPACE}/SYSTEM.md"
-echo "Model: google/gemini-2.5-flash-lite"
+echo "Model: ${AGENT_MODEL}"
 
 # Start the OpenClaw gateway
 exec openclaw gateway \
