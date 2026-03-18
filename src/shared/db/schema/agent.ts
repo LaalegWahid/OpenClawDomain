@@ -57,12 +57,42 @@ export const agentActivity = pgTable(
   (table) => [index("agent_activity_agentId_idx").on(table.agentId)],
 );
 
+export const chatSession = pgTable(
+  "chat_session",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    chatId: text("chat_id").notNull(),
+    lastResponseId: text("last_response_id"),
+    history: jsonb("history").default([]), // [{role: "user"|"assistant", content: string}]
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("chat_session_agent_chat_idx").on(table.agentId, table.chatId),
+  ],
+);
+
+export const chatSessionRelations = relations(chatSession, ({ one }) => ({
+  agent: one(agent, {
+    fields: [chatSession.agentId],
+    references: [agent.id],
+  }),
+}));
+
 export const agentRelations = relations(agent, ({ one, many }) => ({
   user: one(user, {
     fields: [agent.userId],
     references: [user.id],
   }),
   activities: many(agentActivity),
+  chatSessions: many(chatSession),
 }));
 
 export const agentActivityRelations = relations(agentActivity, ({ one }) => ({
