@@ -35,8 +35,8 @@ cat > "${CONFIG_FILE}" << EOJSON
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "models": [
           {
-            "id": "gemini-2.0-flash",
-            "name": "Gemini 2.0 Flash",
+            "id": "gemini-2.5-flash-lite",
+            "name": "Gemini 2.5 Flash Lite",
             "reasoning": false,
             "input": ["text"],
             "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
@@ -50,7 +50,7 @@ cat > "${CONFIG_FILE}" << EOJSON
   "agents": {
     "defaults": {
       "model": {
-        "primary": "google/gemini-2.0-flash"
+        "primary": "google/gemini-2.5-flash-lite"
       },
       "workspace": "${WORKSPACE}"
     }

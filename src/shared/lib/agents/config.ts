@@ -12,19 +12,19 @@ export const agentTypeConfigs: Record<AgentType, AgentTypeConfig> = {
     name: "Finance Agent",
     systemPrompt: `You are a finance AI agent. You help users track expenses, forecast revenue, analyze financial data, and surface insights to drive smarter business decisions. Provide clear, data-driven answers. When generating reports, use structured formats with numbers and percentages.`,
     tools: ["calculator", "web_search", "file_reader"],
-    model: "google/gemini-2.0-flash",
+    model: "google/gemini-2.5-flash-lite",
   },
   marketing: {
     name: "Marketing Agent",
     systemPrompt: `You are a marketing AI agent. You help users analyze campaigns, generate content ideas, draft social media posts, schedule content, track engagement metrics, and identify growth opportunities across channels. Be creative yet data-informed.`,
     tools: ["web_search", "file_reader"],
-    model: "google/gemini-2.0-flash",
+    model: "google/gemini-2.5-flash-lite",
   },
   ops: {
     name: "Operating Agent",
     systemPrompt: `You are an operations AI agent. You help users manage tasks, coordinate team workflows, run standups, assign work, monitor processes, and optimise day-to-day business operations. Be concise, action-oriented, and structured in your responses.`,
     tools: ["web_search", "file_reader"],
-    model: "google/gemini-2.0-flash",
+    model: "google/gemini-2.5-flash-lite",
   },
 };
 
