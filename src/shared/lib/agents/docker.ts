@@ -17,61 +17,64 @@ interface LaunchResult {
   port: number;
 }
 
+import Dockerode from 'dockerode'
+
+const docker = new Dockerode({ socketPath: '/var/run/docker.sock' })
+
+async function findAvailablePort(): Promise<number> {
+  const min = 10000
+  const max = 60000
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
 export async function launchContainer(
   userId: string,
   agentType: string,
   agentId: string,
 ): Promise<LaunchResult> {
-  const config = getAgentConfig(agentType);
-  const dataDir = path.resolve(AGENT_DATA_DIR, userId, agentId);
+  const config = getAgentConfig(agentType)
+  const dataDir = path.resolve(AGENT_DATA_DIR, userId, agentId)
 
-  // Create data directory for this agent's ~/.openclaw
-  await mkdir(dataDir, { recursive: true });
+  await mkdir(dataDir, { recursive: true })
 
-  // Write agent config (read by entrypoint to generate openclaw.json)
   const agentConfig = {
     model: config.model,
     systemPrompt: config.systemPrompt,
     tools: config.tools,
-  };
+  }
   await writeFile(
-    path.join(dataDir, "config.json"),
+    path.join(dataDir, 'config.json'),
     JSON.stringify(agentConfig, null, 2),
-  );
+  )
 
-   const envVars = [
-    `-e AWS_ACCESS_KEY_ID='${process.env.AWS_ACCESS_KEY_ID || ""}'`,
-    `-e AWS_SECRET_ACCESS_KEY='${process.env.AWS_SECRET_ACCESS_KEY || ""}'`,
-    `-e AWS_REGION='${process.env.AWS_REGION || "us-east-1"}'`,
-    `-e AGENT_ID='${agentId}'`,
-    `-e AGENT_TYPE='${agentType}'`,
-  ].join(" ");
+  const port = await findAvailablePort()
 
-  // Let Docker assign a free host port automatically
-  const cmd = [
-    "docker run -d",
-    `--name agent-${agentId}`,
-    `-p 0:${GATEWAY_PORT}`,
-    `-v "${dataDir}:/home/node/.openclaw"`,
-    envVars,
-    AGENT_IMAGE,
-  ].join(" ");
+  const container = await docker.createContainer({
+    Image: 'openclaw-agent:latest',
+    name: `agent-${agentId}`,
+    Env: [
+      `AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY_ID || ''}`,
+      `AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_ACCESS_KEY || ''}`,
+      `AWS_REGION=${process.env.AWS_REGION || 'us-east-1'}`,
+      `AGENT_ID=${agentId}`,
+      `AGENT_TYPE=${agentType}`,
+    ],
+    ExposedPorts: {
+      '18789/tcp': {},
+    },
+    HostConfig: {
+      PortBindings: {
+        '18789/tcp': [{ HostPort: String(port) }],
+      },
+      Binds: [`${dataDir}:/home/node/.openclaw`],
+    },
+  })
 
-  logger.info({ agentId, agentType, userId }, "Launching container");
-  const { stdout } = await execAsync(cmd);
-  const containerId = stdout.trim().substring(0, 12);
+  await container.start()
 
-  // Read back the actual port Docker assigned
-  const { stdout: portOutput } = await execAsync(
-    `docker port agent-${agentId} ${GATEWAY_PORT}`,
-  );
-  // Output format: "0.0.0.0:12345" or "0.0.0.0:12345\n:::12345"
-  const port = parseInt(portOutput.trim().split(":").pop()!, 10);
-
-  logger.info({ containerId, port, agentId }, "Container launched");
-  return { containerId, port };
+  const containerId = container.id.substring(0, 12)
+  return { containerId, port }
 }
-
 export async function stopContainer(containerId: string): Promise<void> {
   try {
     logger.info({ containerId }, "Stopping container");
