@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/shared/lib/drizzle";
 import { agent, agentActivity, chatSession } from "@/shared/db/schema/agent";
 import { eq, and } from "drizzle-orm";
-import { sendMessage } from "@/shared/lib/telegram/bot";
+import { sendMessage, sendDocument } from "@/shared/lib/telegram/bot";
 import { sendCommand } from "@/shared/lib/agents/docker";
 import type { ChatMessage } from "@/shared/lib/agents/docker";
 import type { AgentType } from "@/shared/lib/agents/config";
+import { detectDocumentRequest, extractFilename, generatePdf } from "@/shared/lib/agents/document";
 import { logger } from "@/shared/lib/logger";
 
 const MAX_HISTORY = 20; // Keep last 20 messages (10 turns)
@@ -89,8 +90,8 @@ export async function POST(
     // Update history: add user message + assistant response, trim to max
     const updatedHistory: ChatMessage[] = [
       ...history,
-      { role: "user", content: text },
-      { role: "assistant", content: responseText },
+      { role: "user" as const, content: text },
+      { role: "assistant" as const, content: responseText },
     ].slice(-MAX_HISTORY);
 
     // Upsert chat session
@@ -107,8 +108,18 @@ export async function POST(
       });
     }
 
+    // Check if user requested a document — if so, generate PDF and send as file
+    const docFormat = detectDocumentRequest(text);
     try {
-      await sendMessage(found.botToken, chatId, responseText);
+      if (docFormat) {
+        const agentType = (found.type as string) || "agent";
+        const filename = extractFilename(text, agentType);
+        const pdfBuffer = await generatePdf(responseText, filename.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), agentType);
+        await sendDocument(found.botToken, chatId, pdfBuffer, `${filename}.pdf`, "Here is your document.");
+        logger.info({ agentId, chatId, filename }, "Document sent as PDF");
+      } else {
+        await sendMessage(found.botToken, chatId, responseText);
+      }
     } catch (err) {
       logger.error({ agentId, chatId, err }, "Failed to send response to user");
       await db.insert(agentActivity).values({
