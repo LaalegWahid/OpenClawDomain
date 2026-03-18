@@ -54,10 +54,7 @@ export async function launchContainer(
     Image: 'openclaw-agent:latest',
     name: `agent-${agentId}`,
     Env: [
-      `AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY_ID || ''}`,
-      `AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_ACCESS_KEY || ''}`,
       `GEMINI_API_KEY=${process.env.GEMINI_API_KEY || ''}`,
-      `AWS_REGION=${process.env.AWS_REGION || 'us-east-1'}`,
       `AGENT_ID=${agentId}`,
     ],
     ExposedPorts: {
@@ -109,10 +106,25 @@ export async function getContainerHealth(port: number): Promise<boolean> {
   }
 }
 
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export async function sendCommand(
   port: number,
   command: string,
+  history?: ChatMessage[],
 ): Promise<string> {
+  // Build input with conversation history for context
+  let input = command;
+  if (history && history.length > 0) {
+    const contextLines = history.map(
+      (m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`,
+    );
+    input = `[Conversation history]\n${contextLines.join("\n")}\n[End of history]\n\nUser: ${command}`;
+  }
+
   const res = await fetch(`http://localhost:${port}/v1/responses`, {
     method: "POST",
     headers: {
@@ -122,7 +134,7 @@ export async function sendCommand(
     },
     body: JSON.stringify({
       model: "openclaw",
-      input: command,
+      input,
       stream: false,
     }),
     signal: AbortSignal.timeout(60000),

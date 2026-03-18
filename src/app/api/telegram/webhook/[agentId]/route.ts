@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { db } from "@/shared/lib/drizzle";
-import { agent, agentActivity } from "@/shared/db/schema/agent";
-import { eq } from "drizzle-orm";
+import { agent, agentActivity, chatSession } from "@/shared/db/schema/agent";
+import { eq, and } from "drizzle-orm";
 import { sendMessage } from "@/shared/lib/telegram/bot";
 import { sendCommand } from "@/shared/lib/agents/docker";
+import type { ChatMessage } from "@/shared/lib/agents/docker";
 import { logger } from "@/shared/lib/logger";
+
+const MAX_HISTORY = 20; // Keep last 20 messages (10 turns)
 
 export async function POST(
   req: Request,
@@ -19,7 +22,7 @@ export async function POST(
     .where(eq(agent.id, agentId));
 
   if (!found) {
-    return NextResponse.json({ ok: true }); // silently ignore unknown agents
+    return NextResponse.json({ ok: true });
   }
 
   const body = await req.json();
@@ -64,14 +67,47 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  // Forward to container
+  // Load chat session and history
+  const [session] = await db
+    .select()
+    .from(chatSession)
+    .where(and(eq(chatSession.agentId, agentId), eq(chatSession.chatId, chatId)))
+    .limit(1);
+
+  const history: ChatMessage[] = (session?.history as ChatMessage[] | null) ?? [];
+
+  // Forward to container with history
   try {
-    const response = await sendCommand(found.containerPort, text);
+    const responseText = await sendCommand(
+      found.containerPort,
+      text,
+      history.length > 0 ? history : undefined,
+    );
+
+    // Update history: add user message + assistant response, trim to max
+    const updatedHistory: ChatMessage[] = [
+      ...history,
+      { role: "user", content: text },
+      { role: "assistant", content: responseText },
+    ].slice(-MAX_HISTORY);
+
+    // Upsert chat session
+    if (session) {
+      await db
+        .update(chatSession)
+        .set({ history: updatedHistory })
+        .where(eq(chatSession.id, session.id));
+    } else {
+      await db.insert(chatSession).values({
+        agentId,
+        chatId,
+        history: updatedHistory,
+      });
+    }
 
     try {
-      await sendMessage(found.botToken, chatId, response);
+      await sendMessage(found.botToken, chatId, responseText);
     } catch (err) {
-      // User may have blocked the bot
       logger.error({ agentId, chatId, err }, "Failed to send response to user");
       await db.insert(agentActivity).values({
         agentId,
