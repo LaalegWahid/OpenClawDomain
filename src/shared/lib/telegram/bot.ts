@@ -37,6 +37,37 @@ export async function deleteWebhook(token: string): Promise<void> {
   }
 }
 
+export async function sendDocument(
+  token: string,
+  chatId: string,
+  fileBuffer: Buffer,
+  filename: string,
+  caption?: string,
+) {
+  const formData = new FormData();
+  formData.append("chat_id", chatId);
+  const file = new File([new Uint8Array(fileBuffer)], filename, { type: "application/pdf" });
+  formData.append("document", file);
+  if (caption) {
+    formData.append("caption", caption.slice(0, 1024));
+  }
+
+  const res = await fetch(`${TELEGRAM_API}${token}/sendDocument`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const status = res.status;
+    if (status === 403) {
+      throw new Error("Bot was blocked by the user");
+    }
+    throw new Error(`Telegram sendDocument failed: ${status}`);
+  }
+
+  return res.json();
+}
+
 export async function sendMessage(token: string, chatId: string, text: string) {
   const res = await fetch(`${TELEGRAM_API}${token}/sendMessage`, {
     method: "POST",
