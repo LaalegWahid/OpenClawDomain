@@ -7,11 +7,20 @@ import { Separator } from "@/shared/components/ui/separator";
 import { Button } from "@/shared/components/ui/button";
 import Link from "next/link";
 
+type AgentType = "finance" | "marketing" | "operations";
+
+const TYPE_BADGE_STYLES: Record<AgentType, string> = {
+  finance: "bg-green-500/15 text-green-400 border-green-500/30",
+  marketing: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  operations: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+};
+
 interface AgentRecord {
   id: string;
   name: string;
   botUsername: string;
   status: string;
+  type?: AgentType;
   containerId: string | null;
   containerPort: number | null;
   createdAt: string;
@@ -90,10 +99,17 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-white">{agent.name}</h1>
-                  <p className="text-sm text-white/50">
-                    @{agent.botUsername} &middot; Created{" "}
-                    {new Date(agent.createdAt).toLocaleDateString()}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-sm text-white/50">
+                      @{agent.botUsername} &middot; Created{" "}
+                      {new Date(agent.createdAt).toLocaleDateString()}
+                    </p>
+                    {agent.type && (
+                      <span className={`rounded-full px-3 py-0.5 text-xs font-medium border ${TYPE_BADGE_STYLES[agent.type] ?? "bg-white/10 text-white/50 border-white/20"}`}>
+                        {agent.type.charAt(0).toUpperCase() + agent.type.slice(1)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
