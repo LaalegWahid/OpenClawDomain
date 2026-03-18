@@ -3,88 +3,139 @@ import { getSessionOrThrow } from "@/shared/lib/auth/getSessionOrThrow";
 import { db } from "@/shared/lib/drizzle";
 import { agent, agentActivity } from "@/shared/db/schema/agent";
 import { eq } from "drizzle-orm";
-import { getAgentConfig } from "@/shared/lib/agents/config";
-import { launchContainer } from "@/shared/lib/agents/docker";
+import { validateBotToken, setWebhook, deleteWebhook } from "@/shared/lib/telegram/bot";
+import { launchContainer, stopContainer } from "@/shared/lib/agents/docker";
+import { env } from "@/shared/config/env";
 import { logger } from "@/shared/lib/logger";
+
+const MAX_BOTS_PER_USER = 3;
 
 export async function POST(req: Request) {
   try {
     const session = await getSessionOrThrow(req);
-    const { type } = await req.json();
+    const { botToken, botUsername, name, systemPrompt } = await req.json();
 
-    if (!["finance", "marketing", "ops"].includes(type)) {
-      return NextResponse.json({ error: "Invalid agent type" }, { status: 400 });
+    if (!botToken || !botUsername || !name || !systemPrompt) {
+      return NextResponse.json(
+        { error: "botToken, botUsername, name, and systemPrompt are required" },
+        { status: 400 },
+      );
     }
 
-    // Check if user already has an active agent of this type
-    const existing = await db
+    // Check bot cap
+    const existingAgents = await db
       .select()
       .from(agent)
       .where(eq(agent.userId, session.user.id))
-      .then((rows) => rows.find((r) => r.type === type && r.status !== "stopped"));
+      .then((rows) => rows.filter((r) => r.status !== "stopped"));
 
-    if (existing) {
+    if (existingAgents.length >= MAX_BOTS_PER_USER) {
       return NextResponse.json(
-        { error: "Agent of this type already running", agent: existing },
+        { error: "Maximum 3 bots reached" },
+        { status: 403 },
+      );
+    }
+
+    // Validate bot token with Telegram
+    let botInfo;
+    try {
+      botInfo = await validateBotToken(botToken);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid bot token. Please check your token from BotFather." },
+        { status: 400 },
+      );
+    }
+
+    if (botInfo.username.toLowerCase() !== botUsername.toLowerCase()) {
+      return NextResponse.json(
+        { error: `Bot username mismatch. Token belongs to @${botInfo.username}` },
+        { status: 400 },
+      );
+    }
+
+    // Check uniqueness
+    const [existingBot] = await db
+      .select()
+      .from(agent)
+      .where(eq(agent.botToken, botToken))
+      .limit(1);
+
+    if (existingBot) {
+      return NextResponse.json(
+        { error: "Bot already registered" },
         { status: 409 },
       );
     }
 
-    const config = getAgentConfig(type);
+    // Generate a temporary agent ID for the container data dir
+    const tempAgentId = crypto.randomUUID();
 
-    // Create agent record
-    const [newAgent] = await db
-      .insert(agent)
-      .values({
-        userId: session.user.id,
-        type,
-        name: config.name,
-        status: "starting",
-      })
-      .returning();
-
-    // Launch Docker container
+    // Step 1: Launch Docker container FIRST — if this fails, nothing is persisted
+    let containerId: string;
+    let port: number;
     try {
-      const { containerId, port } = await launchContainer(
+      const result = await launchContainer(
         session.user.id,
-        type,
-        newAgent.id,
+        tempAgentId,
+        systemPrompt,
       );
+      containerId = result.containerId;
+      port = result.port;
+    } catch (err) {
+      logger.error({ err }, "Failed to launch agent container");
+      return NextResponse.json(
+        { error: "Failed to launch agent container" },
+        { status: 500 },
+      );
+    }
 
-      await db
-        .update(agent)
-        .set({ containerId, containerPort: port, status: "active" })
-        .where(eq(agent.id, newAgent.id));
+    // Step 2: Set webhook — if this fails, stop the container and bail
+    try {
+      const webhookUrl = `${env.WEBHOOK_BASE_URL}/api/telegram/webhook/${tempAgentId}`;
+      await setWebhook(botToken, webhookUrl);
+    } catch (err) {
+      // Rollback: stop the container we just started
+      await stopContainer(containerId).catch(() => {});
+      logger.error({ err }, "Failed to set webhook");
+      return NextResponse.json(
+        { error: "Failed to set Telegram webhook" },
+        { status: 500 },
+      );
+    }
+
+    // Step 3: Everything succeeded — now persist to DB
+    try {
+      const [newAgent] = await db
+        .insert(agent)
+        .values({
+          id: tempAgentId,
+          userId: session.user.id,
+          name,
+          botToken,
+          botUsername: botInfo.username,
+          systemPrompt,
+          status: "active",
+          containerId,
+          containerPort: port,
+        })
+        .returning();
 
       await db.insert(agentActivity).values({
         agentId: newAgent.id,
         type: "launch",
-        message: `${config.name} launched successfully`,
+        message: `${name} launched successfully`,
       });
 
-      const updated = await db
-        .select()
-        .from(agent)
-        .where(eq(agent.id, newAgent.id))
-        .then((rows) => rows[0]);
-
-      logger.info({ agentId: newAgent.id, type, userId: session.user.id }, "Agent launched");
-      return NextResponse.json({ agent: updated }, { status: 201 });
+      logger.info({ agentId: newAgent.id, userId: session.user.id }, "Agent launched");
+      return NextResponse.json({ agent: newAgent }, { status: 201 });
     } catch (err) {
-      await db
-        .update(agent)
-        .set({ status: "error" })
-        .where(eq(agent.id, newAgent.id));
-
-      await db.insert(agentActivity).values({
-        agentId: newAgent.id,
-        type: "error",
-        message: `Failed to launch container: ${err instanceof Error ? err.message : "Unknown error"}`,
-      });
-
-      logger.error({ agentId: newAgent.id, err }, "Failed to launch agent container");
+      // Rollback: stop container and remove webhook
+      await stopContainer(containerId).catch(() => {});
+      await deleteWebhook(botToken).catch(() => {});
+      logger.error({ err }, "Failed to save agent to database");
       return NextResponse.json(
-        { error: "Failed to launch agent container" },
+        { error: "Failed to save agent" },
         { status: 500 },
       );
     }

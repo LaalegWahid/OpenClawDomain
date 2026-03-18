@@ -1,37 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Cpu, Megaphone, LineChart, Loader2 } from "lucide-react";
+import { Bot, Loader2, X } from "lucide-react";
 import Link from "next/link";
-
-const agents = [
-  {
-    id: "operating",
-    name: "Operating Agent",
-    tagline: "Automate your operations",
-    description: "Monitors workflows, manages tasks, and optimises day-to-day business processes in real time.",
-    icon: Cpu,
-  },
-  {
-    id: "marketing",
-    name: "Marketing Agent",
-    tagline: "Scale your reach",
-    description: "Analyses campaigns, generates content, and identifies growth opportunities across channels.",
-    icon: Megaphone,
-  },
-  {
-    id: "finance",
-    name: "Finance Agent",
-    tagline: "Control your numbers",
-    description: "Tracks expenses, forecasts revenue, and surfaces financial insights to drive smarter decisions.",
-    icon: LineChart,
-  },
-];
 
 interface AgentRecord {
   id: string;
-  type: string;
   name: string;
+  botUsername: string;
   status: string;
 }
 
@@ -39,23 +15,26 @@ interface OverviewContentProps {
   userName?: string | null;
 }
 
-// Map the static agent defs to API types
-const typeMap: Record<string, string> = {
-  operating: "ops",
-  marketing: "marketing",
-  finance: "finance",
-};
+const MAX_BOTS = 3;
 
 export function OverviewContent({ userName }: OverviewContentProps) {
-  const [launchedAgents, setLaunchedAgents] = useState<AgentRecord[]>([]);
-  const [launching, setLaunching] = useState<string | null>(null);
+  const [agents, setAgents] = useState<AgentRecord[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Form state
+  const [botToken, setBotToken] = useState("");
+  const [botUsername, setBotUsername] = useState("");
+  const [botName, setBotName] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("");
 
   const fetchAgents = useCallback(async () => {
     try {
       const res = await fetch("/api/agents");
       if (res.ok) {
         const data = await res.json();
-        setLaunchedAgents(data.agents ?? []);
+        setAgents(data.agents ?? []);
       }
     } catch {
       // silently fail
@@ -66,39 +45,47 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     fetchAgents();
   }, [fetchAgents]);
 
-  const handleLaunch = async (agentDefId: string) => {
-    const type = typeMap[agentDefId];
-    if (!type) return;
+  const activeAgents = agents.filter((a) => a.status !== "stopped");
 
-    setLaunching(agentDefId);
+  const handleAddBot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+
     try {
       const res = await fetch("/api/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ botToken, botUsername, name: botName, systemPrompt }),
       });
 
-      if (res.ok || res.status === 409) {
-        await fetchAgents();
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? "Failed to add bot");
+        return;
       }
+
+      // Success — reset form and close modal
+      setBotToken("");
+      setBotUsername("");
+      setBotName("");
+      setSystemPrompt("");
+      setShowModal(false);
+      await fetchAgents();
+    } catch {
+      setError("Failed to add bot. Please try again.");
     } finally {
-      setLaunching(null);
+      setSubmitting(false);
     }
   };
-
-  function getAgentForType(defId: string): AgentRecord | undefined {
-    const type = typeMap[defId];
-    return launchedAgents.find(
-      (a) => a.type === type && a.status !== "stopped",
-    );
-  }
 
   function getStatusColor(status: string) {
     switch (status) {
       case "active": return "#4CAF50";
       case "starting": return "#FFC107";
       case "error": return "#F44336";
-      default: return "#4CAF50";
+      default: return "#555555";
     }
   }
 
@@ -117,8 +104,29 @@ export function OverviewContent({ userName }: OverviewContentProps) {
           {userName ? `Welcome back, ${userName}.` : "Welcome back."}
         </h1>
         <p style={{ fontSize: "13px", color: "#555555", lineHeight: 1.6 }}>
-          Your AI agents are ready. Select one to get started.
+          Manage your Telegram bots and agents. {activeAgents.length} of {MAX_BOTS} bots used.
         </p>
+      </div>
+
+      {/* Add Bot button */}
+      <div style={{ marginBottom: "14px" }}>
+        <button
+          onClick={() => setShowModal(true)}
+          disabled={activeAgents.length >= MAX_BOTS}
+          style={{
+            background: activeAgents.length >= MAX_BOTS ? "#2A2A2A" : "#FF4D00",
+            color: activeAgents.length >= MAX_BOTS ? "#555555" : "#fff",
+            border: "none",
+            borderRadius: "8px",
+            padding: "10px 20px",
+            fontSize: "13px",
+            fontWeight: 500,
+            cursor: activeAgents.length >= MAX_BOTS ? "not-allowed" : "pointer",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          + Add Bot
+        </button>
       </div>
 
       {/* Agent cards */}
@@ -127,117 +135,199 @@ export function OverviewContent({ userName }: OverviewContentProps) {
         gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
         gap: "14px",
       }}>
-        {agents.map(agent => {
-          const Icon = agent.icon;
-          const launched = getAgentForType(agent.id);
-          const isLaunching = launching === agent.id;
+        {agents.length === 0 && (
+          <div style={{
+            background: "#111111",
+            border: "0.5px solid #1E1E1E",
+            borderRadius: "16px",
+            padding: "2rem",
+            textAlign: "center",
+            color: "#555555",
+            fontSize: "13px",
+            gridColumn: "1 / -1",
+          }}>
+            No bots yet. Click &quot;Add Bot&quot; to connect your first Telegram bot.
+          </div>
+        )}
 
-          return (
-            <div key={agent.id} style={{
+        {agents.map((ag) => (
+          <div key={ag.id} style={{
+            background: "#111111",
+            border: "0.5px solid #1E1E1E",
+            borderRadius: "16px",
+            padding: "1.5rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "1rem",
+          }}>
+            {/* Icon + status */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div style={{
+                width: "40px", height: "40px",
+                background: "rgba(255,77,0,0.1)",
+                border: "0.5px solid rgba(255,77,0,0.2)",
+                borderRadius: "10px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+              }}>
+                <Bot size={18} color="#FF4D00" />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                <span style={{
+                  width: "5px", height: "5px", borderRadius: "50%",
+                  background: getStatusColor(ag.status),
+                  display: "inline-block",
+                }} />
+                <span style={{ fontSize: "10px", color: "#444444", letterSpacing: "0.05em" }}>
+                  {ag.status.charAt(0).toUpperCase() + ag.status.slice(1)}
+                </span>
+              </div>
+            </div>
+
+            {/* Text */}
+            <div>
+              <div style={{ fontSize: "15px", fontWeight: 500, color: "#F0EEE8", marginBottom: "4px" }}>
+                {ag.name}
+              </div>
+              <div style={{ fontSize: "11px", color: "#FF4D00", letterSpacing: "0.02em" }}>
+                @{ag.botUsername}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: "0.5px", background: "#1E1E1E" }} />
+
+            {/* CTA */}
+            <Link href={`/overview/${ag.id}`} style={{ textDecoration: "none" }}>
+              <button style={{
+                background: "transparent",
+                color: "#F0EEE8",
+                border: "0.5px solid #2A2A2A",
+                borderRadius: "8px",
+                padding: "10px",
+                fontSize: "13px",
+                fontWeight: 500,
+                cursor: "pointer",
+                width: "100%",
+                letterSpacing: "-0.01em",
+              }}>
+                View Agent →
+              </button>
+            </Link>
+          </div>
+        ))}
+      </div>
+
+      {/* Add Bot Modal */}
+      {showModal && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.7)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+        }}
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            style={{
               background: "#111111",
               border: "0.5px solid #1E1E1E",
               borderRadius: "16px",
-              padding: "1.5rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "1rem",
-            }}>
-              {/* Icon + status */}
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                <div style={{
-                  width: "40px", height: "40px",
-                  background: "rgba(255,77,0,0.1)",
-                  border: "0.5px solid rgba(255,77,0,0.2)",
-                  borderRadius: "10px",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  flexShrink: 0,
-                }}>
-                  <Icon size={18} color="#FF4D00" />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                  <span style={{
-                    width: "5px", height: "5px", borderRadius: "50%",
-                    background: launched ? getStatusColor(launched.status) : "#4CAF50",
-                    display: "inline-block",
-                  }} />
-                  <span style={{ fontSize: "10px", color: "#444444", letterSpacing: "0.05em" }}>
-                    {launched?.status === "active" ? "Active" :
-                     launched?.status === "starting" ? "Starting" :
-                     launched?.status === "error" ? "Error" : "Ready"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Text */}
-              <div>
-                <div style={{ fontSize: "15px", fontWeight: 500, color: "#F0EEE8", marginBottom: "4px" }}>
-                  {agent.name}
-                </div>
-                <div style={{ fontSize: "11px", color: "#FF4D00", letterSpacing: "0.02em", marginBottom: "10px" }}>
-                  {agent.tagline}
-                </div>
-                <div style={{ fontSize: "12px", color: "#555555", lineHeight: 1.7 }}>
-                  {agent.description}
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div style={{ height: "0.5px", background: "#1E1E1E" }} />
-
-              {/* CTA */}
-              {launched && launched.status !== "stopped" ? (
-                <Link href={`/overview/${launched.id}`} style={{ textDecoration: "none" }}>
-                  <button style={{
-                    background: "transparent",
-                    color: "#F0EEE8",
-                    border: "0.5px solid #2A2A2A",
-                    borderRadius: "8px",
-                    padding: "10px",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    width: "100%",
-                    letterSpacing: "-0.01em",
-                  }}>
-                    View Agent →
-                  </button>
-                </Link>
-              ) : (
-                <button
-                  onClick={() => handleLaunch(agent.id)}
-                  disabled={isLaunching}
-                  style={{
-                    background: "#FF4D00",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "10px",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    cursor: isLaunching ? "wait" : "pointer",
-                    width: "100%",
-                    letterSpacing: "-0.01em",
-                    opacity: isLaunching ? 0.7 : 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                  }}
-                >
-                  {isLaunching ? (
-                    <>
-                      <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
-                      Launching…
-                    </>
-                  ) : (
-                    "Launch Agent →"
-                  )}
-                </button>
-              )}
+              padding: "2rem",
+              width: "100%",
+              maxWidth: "460px",
+              margin: "1rem",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+              <h2 style={{ fontSize: "17px", fontWeight: 500, color: "#F0EEE8" }}>Add Bot</h2>
+              <button onClick={() => setShowModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#555" }}>
+                <X size={18} />
+              </button>
             </div>
-          );
-        })}
-      </div>
+
+            {error && (
+              <div style={{
+                background: "rgba(255,77,0,0.06)",
+                border: "0.5px solid rgba(255,77,0,0.3)",
+                borderRadius: "8px",
+                padding: "10px 14px",
+                fontSize: "13px",
+                color: "#FF4D00",
+                marginBottom: "14px",
+              }}>
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleAddBot} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <ModalField label="Bot API Token" value={botToken} onChange={setBotToken} placeholder="Paste token from BotFather" />
+              <ModalField label="Bot Username" value={botUsername} onChange={setBotUsername} placeholder="e.g. my_cool_bot" />
+              <ModalField label="Agent Name" value={botName} onChange={setBotName} placeholder="e.g. Customer Support" />
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 500, letterSpacing: "0.02em", color: "#555555", textTransform: "uppercase" }}>
+                  System Prompt / Instructions
+                </label>
+                <textarea
+                  required
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  rows={4}
+                  placeholder="Describe how the agent should behave..."
+                  style={{
+                    background: "#0A0A0A",
+                    border: "0.5px solid #1E1E1E",
+                    borderRadius: "8px",
+                    padding: "11px 14px",
+                    fontSize: "14px",
+                    color: "#F0EEE8",
+                    outline: "none",
+                    width: "100%",
+                    resize: "none",
+                    fontFamily: "inherit",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                style={{
+                  marginTop: "4px",
+                  background: submitting ? "#2A2A2A" : "#FF4D00",
+                  color: submitting ? "#555555" : "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "10px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  cursor: submitting ? "wait" : "pointer",
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                }}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                    Adding Bot…
+                  </>
+                ) : (
+                  "Add Bot →"
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes spin {
@@ -245,6 +335,39 @@ export function OverviewContent({ userName }: OverviewContentProps) {
           to { transform: rotate(360deg); }
         }
       `}</style>
+    </div>
+  );
+}
+
+function ModalField({ label, value, onChange, placeholder }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      <label style={{ fontSize: "12px", fontWeight: 500, letterSpacing: "0.02em", color: "#555555", textTransform: "uppercase" }}>
+        {label}
+      </label>
+      <input
+        required
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          background: "#0A0A0A",
+          border: "0.5px solid #1E1E1E",
+          borderRadius: "8px",
+          padding: "11px 14px",
+          fontSize: "14px",
+          color: "#F0EEE8",
+          outline: "none",
+          width: "100%",
+          boxSizing: "border-box",
+        }}
+      />
     </div>
   );
 }

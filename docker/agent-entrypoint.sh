@@ -5,7 +5,7 @@ OPENCLAW_HOME="/home/node/.openclaw"
 CONFIG_FILE="${OPENCLAW_HOME}/openclaw.json"
 WORKSPACE="${OPENCLAW_HOME}/workspace"
 
-echo "Starting OpenClaw agent: ${AGENT_TYPE} (${AGENT_ID})"
+echo "Starting OpenClaw agent: ${AGENT_ID}"
 
 # Create directories
 mkdir -p "${OPENCLAW_HOME}"
@@ -25,7 +25,11 @@ cat > "${WORKSPACE}/SYSTEM.md" << EOSYSTEM
 ${SYSTEM_PROMPT}
 EOSYSTEM
 
-# Write openclaw.json with Bedrock provider config
+# Get the OpenClaw version for meta field
+OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '[\d.]+' | head -1 || echo "2026.3.13")
+OC_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+
+# Write openclaw.json with meta field so OpenClaw won't overwrite it
 cat > "${CONFIG_FILE}" << EOJSON
 {
   "models": {
@@ -52,13 +56,28 @@ cat > "${CONFIG_FILE}" << EOJSON
       "model": {
         "primary": "google/gemini-2.5-flash-lite"
       },
-      "workspace": "${WORKSPACE}"
+      "workspace": "${WORKSPACE}",
+      "compaction": {
+        "mode": "safeguard"
+      }
     }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
   },
   "gateway": {
     "mode": "local",
     "bind": "lan",
     "port": 18789,
+    "controlUi": {
+      "allowedOrigins": [
+        "http://localhost:18789",
+        "http://127.0.0.1:18789"
+      ]
+    },
     "auth": {
       "token": "${GATEWAY_TOKEN:-openclaw-agent-token}"
     },
@@ -67,14 +86,17 @@ cat > "${CONFIG_FILE}" << EOJSON
         "responses": { "enabled": true }
       }
     }
+  },
+  "meta": {
+    "lastTouchedVersion": "${OC_VERSION}",
+    "lastTouchedAt": "${OC_TIMESTAMP}"
   }
 }
 EOJSON
 
 echo "Config written to ${CONFIG_FILE}"
 echo "System prompt written to ${WORKSPACE}/SYSTEM.md"
-echo "AWS Region: ${AWS_REGION:-us-east-1}"
-echo "Agent Type: ${AGENT_TYPE}"
+echo "Model: google/gemini-2.5-flash-lite"
 
 # Start the OpenClaw gateway
 exec openclaw gateway \

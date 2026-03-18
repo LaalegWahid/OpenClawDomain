@@ -38,8 +38,6 @@ export const user = pgTable("user", {
   pricing: decimal("pricing", { precision: 10, scale: 2 }),
   lastLoginAt: timestamp("last_login_at"),
   deletedAt: timestamp("deleted_at"),
-  telegramId: text("telegram_id"),
-  telegramUsername: text("telegram_username"),
 });
 
 export const userProfile = pgTable("user_profile", {
