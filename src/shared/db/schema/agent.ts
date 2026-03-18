@@ -7,6 +7,7 @@ import {
   index,
   integer,
   jsonb,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 
@@ -19,9 +20,11 @@ export const agent = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    type: text("type").notNull(), // "finance" | "marketing" | "ops"
     name: text("name").notNull(),
     status: text("status").notNull().default("starting"), // "active" | "starting" | "stopped" | "error"
+    botToken: text("bot_token").notNull(),
+    botUsername: text("bot_username").notNull(),
+    systemPrompt: text("system_prompt").notNull(),
     containerId: text("container_id"),
     containerPort: integer("container_port"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -30,7 +33,11 @@ export const agent = pgTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [index("agent_userId_idx").on(table.userId)],
+  (table) => [
+    index("agent_userId_idx").on(table.userId),
+    uniqueIndex("agent_botToken_idx").on(table.botToken),
+    uniqueIndex("agent_botUsername_idx").on(table.botUsername),
+  ],
 );
 
 export const agentActivity = pgTable(

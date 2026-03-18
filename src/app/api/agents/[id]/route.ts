@@ -4,6 +4,7 @@ import { db } from "@/shared/lib/drizzle";
 import { agent, agentActivity } from "@/shared/db/schema/agent";
 import { eq, and, desc } from "drizzle-orm";
 import { stopContainer } from "@/shared/lib/agents/docker";
+import { deleteWebhook } from "@/shared/lib/telegram/bot";
 import { logger } from "@/shared/lib/logger";
 
 export async function GET(
@@ -57,6 +58,13 @@ export async function DELETE(
 
     if (found.containerId) {
       await stopContainer(found.containerId);
+    }
+
+    // Remove webhook from Telegram
+    try {
+      await deleteWebhook(found.botToken);
+    } catch (err) {
+      logger.warn({ agentId: id, err }, "Failed to delete webhook");
     }
 
     await db

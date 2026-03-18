@@ -2,13 +2,11 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getAgentConfig } from "./config";
 import { logger } from "@/shared/lib/logger";
 
 const execAsync = promisify(exec);
 
 const AGENT_DATA_DIR = process.env.AGENT_DATA_DIR || "./data/agents";
-const AGENT_IMAGE = "openclaw-agent:latest";
 const GATEWAY_PORT = 18789;
 const GATEWAY_TOKEN = "openclaw-agent-token";
 
@@ -19,7 +17,11 @@ interface LaunchResult {
 
 import Dockerode from 'dockerode'
 
-const docker = new Dockerode({ socketPath: '/var/run/docker.sock' })
+const docker = new Dockerode(
+  process.platform === 'win32'
+    ? { socketPath: '//./pipe/docker_engine' }
+    : { socketPath: '/var/run/docker.sock' }
+)
 
 async function findAvailablePort(): Promise<number> {
   const min = 10000
@@ -29,18 +31,17 @@ async function findAvailablePort(): Promise<number> {
 
 export async function launchContainer(
   userId: string,
-  agentType: string,
   agentId: string,
+  systemPrompt: string,
 ): Promise<LaunchResult> {
-  const config = getAgentConfig(agentType)
   const dataDir = path.resolve(AGENT_DATA_DIR, userId, agentId)
 
   await mkdir(dataDir, { recursive: true })
 
   const agentConfig = {
-    model: config.model,
-    systemPrompt: config.systemPrompt,
-    tools: config.tools,
+    model: "google/gemini-2.5-flash-lite",
+    systemPrompt,
+    tools: ["web_search", "file_reader"],
   }
   await writeFile(
     path.join(dataDir, 'config.json'),
@@ -58,7 +59,6 @@ export async function launchContainer(
       `GEMINI_API_KEY=${process.env.GEMINI_API_KEY || ''}`,
       `AWS_REGION=${process.env.AWS_REGION || 'us-east-1'}`,
       `AGENT_ID=${agentId}`,
-      `AGENT_TYPE=${agentType}`,
     ],
     ExposedPorts: {
       '18789/tcp': {},
@@ -125,6 +125,7 @@ export async function sendCommand(
       input: command,
       stream: false,
     }),
+    signal: AbortSignal.timeout(60000),
   });
 
   if (!res.ok) {

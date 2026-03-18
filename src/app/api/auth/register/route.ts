@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/shared/lib/auth/server";
-import { db } from "@/shared/lib/drizzle";
-import { user } from "@/shared/db/schema/auth";
-import { eq } from "drizzle-orm";
 import { logger } from "@/shared/lib/logger";
 
 export async function POST(req: Request) {
   try {
-    const { name, email, password, telegramId, telegramUsername } =
-      await req.json();
+    const { name, email, password } = await req.json();
 
     if (!name || !email || !password) {
       return NextResponse.json(
@@ -27,17 +23,6 @@ export async function POST(req: Request) {
         { error: "Failed to create account" },
         { status: 500 },
       );
-    }
-
-    // Link Telegram if provided
-    if (telegramId) {
-      await db
-        .update(user)
-        .set({
-          telegramId: String(telegramId),
-          telegramUsername: telegramUsername || null,
-        })
-        .where(eq(user.id, result.user.id));
     }
 
     logger.info({ userId: result.user.id, email }, "User registered");

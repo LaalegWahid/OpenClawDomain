@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Power, RefreshCw, Cpu, Megaphone, LineChart } from "lucide-react";
+import { ArrowLeft, Power, RefreshCw, Bot } from "lucide-react";
 import { SidebarInset } from "@/shared/components/ui/sidebar";
 import { Separator } from "@/shared/components/ui/separator";
 import { Button } from "@/shared/components/ui/button";
@@ -9,8 +9,8 @@ import Link from "next/link";
 
 interface AgentRecord {
   id: string;
-  type: string;
   name: string;
+  botUsername: string;
   status: string;
   containerId: string | null;
   containerPort: number | null;
@@ -24,12 +24,6 @@ interface Activity {
   metadata: unknown;
   createdAt: string;
 }
-
-const typeIcons: Record<string, typeof Cpu> = {
-  ops: Cpu,
-  marketing: Megaphone,
-  finance: LineChart,
-};
 
 interface AgentDetailContentProps {
   agentId: string;
@@ -70,8 +64,6 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     }
   };
 
-  const Icon = agent ? (typeIcons[agent.type] ?? Cpu) : Cpu;
-
   return (
     <SidebarInset>
       <main className="flex flex-1 flex-col gap-6 p-6 bg-black">
@@ -94,12 +86,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="flex size-14 items-center justify-center rounded-xl bg-gradient-to-br from-brand-dark to-brand">
-                  <Icon className="size-7 text-white" />
+                  <Bot className="size-7 text-white" />
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-white">{agent.name}</h1>
                   <p className="text-sm text-white/50">
-                    {agent.type} agent &middot; Created{" "}
+                    @{agent.botUsername} &middot; Created{" "}
                     {new Date(agent.createdAt).toLocaleDateString()}
                   </p>
                 </div>
@@ -128,7 +120,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                     className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                   >
                     <Power className="size-4 mr-1" />
-                    {stopping ? "Stopping..." : "Stop"}
+                    {stopping ? "Stopping..." : "Unlink Bot"}
                   </Button>
                 )}
               </div>
@@ -143,6 +135,14 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                 </p>
               </div>
             )}
+
+            {/* Webhook URL */}
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs text-white/40 mb-1">Webhook URL</p>
+              <p className="text-sm text-white/70 font-mono break-all">
+                /api/telegram/webhook/{agent.id}
+              </p>
+            </div>
 
             <Separator className="bg-white/10" />
 
