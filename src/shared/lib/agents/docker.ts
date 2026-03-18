@@ -39,12 +39,12 @@ export async function launchContainer(
     JSON.stringify(agentConfig, null, 2),
   );
 
-  const envVars = [
-    `-e AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY_ID || ""}`,
-    `-e AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_ACCESS_KEY || ""}`,
-    `-e AWS_REGION=${process.env.AWS_REGION || "us-east-1"}`,
-    `-e AGENT_ID=${agentId}`,
-    `-e AGENT_TYPE=${agentType}`,
+   const envVars = [
+    `-e AWS_ACCESS_KEY_ID='${process.env.AWS_ACCESS_KEY_ID || ""}'`,
+    `-e AWS_SECRET_ACCESS_KEY='${process.env.AWS_SECRET_ACCESS_KEY || ""}'`,
+    `-e AWS_REGION='${process.env.AWS_REGION || "us-east-1"}'`,
+    `-e AGENT_ID='${agentId}'`,
+    `-e AGENT_TYPE='${agentType}'`,
   ].join(" ");
 
   // Let Docker assign a free host port automatically
