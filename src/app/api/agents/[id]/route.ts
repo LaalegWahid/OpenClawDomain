@@ -4,6 +4,7 @@ import { db } from "@/shared/lib/drizzle";
 import { agent, agentActivity } from "@/shared/db/schema/agent";
 import { eq, and, desc } from "drizzle-orm";
 import { stopContainer } from "@/shared/lib/agents/docker";
+import { logger } from "@/shared/lib/logger";
 
 export async function GET(
   req: Request,
@@ -29,6 +30,7 @@ export async function GET(
       .orderBy(desc(agentActivity.createdAt))
       .limit(20);
 
+    logger.info({ agentId: id }, "Agent fetched");
     return NextResponse.json({ agent: found, activities });
   } catch (err) {
     if (err instanceof Response) return err;
@@ -68,9 +70,11 @@ export async function DELETE(
       message: "Agent stopped by user",
     });
 
+    logger.info({ agentId: id, userId: session.user.id }, "Agent stopped");
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof Response) return err;
+    logger.error({ err }, "Failed to stop agent");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

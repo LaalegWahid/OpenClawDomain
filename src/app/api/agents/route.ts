@@ -5,6 +5,7 @@ import { agent, agentActivity } from "@/shared/db/schema/agent";
 import { eq } from "drizzle-orm";
 import { getAgentConfig } from "@/shared/lib/agents/config";
 import { launchContainer } from "@/shared/lib/agents/docker";
+import { logger } from "@/shared/lib/logger";
 
 export async function POST(req: Request) {
   try {
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
         .where(eq(agent.id, newAgent.id))
         .then((rows) => rows[0]);
 
+      logger.info({ agentId: newAgent.id, type, userId: session.user.id }, "Agent launched");
       return NextResponse.json({ agent: updated }, { status: 201 });
     } catch (err) {
       await db
@@ -80,6 +82,7 @@ export async function POST(req: Request) {
         message: `Failed to launch container: ${err instanceof Error ? err.message : "Unknown error"}`,
       });
 
+      logger.error({ agentId: newAgent.id, err }, "Failed to launch agent container");
       return NextResponse.json(
         { error: "Failed to launch agent container" },
         { status: 500 },
@@ -100,6 +103,7 @@ export async function GET(req: Request) {
       .from(agent)
       .where(eq(agent.userId, session.user.id));
 
+    logger.info({ userId: session.user.id, count: agents.length }, "Agents listed");
     return NextResponse.json({ agents });
   } catch (err) {
     if (err instanceof Response) return err;

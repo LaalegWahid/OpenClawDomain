@@ -3,6 +3,7 @@ import { auth } from "@/shared/lib/auth/server";
 import { db } from "@/shared/lib/drizzle";
 import { user } from "@/shared/db/schema/auth";
 import { eq } from "drizzle-orm";
+import { logger } from "@/shared/lib/logger";
 
 export async function POST(req: Request) {
   try {
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
         .where(eq(user.id, result.user.id));
     }
 
+    logger.info({ userId: result.user.id, email }, "User registered");
     return NextResponse.json({ ok: true, userId: result.user.id });
   } catch (err) {
     if (err instanceof Error && err.message.includes("UNIQUE")) {
@@ -47,6 +49,7 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+    logger.error({ err }, "Registration failed");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

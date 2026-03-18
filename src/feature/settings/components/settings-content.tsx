@@ -1,12 +1,12 @@
 "use client";
 
-import { useState,useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   saveProfile,
   savePassword,
   saveAccount,
 } from "@/feature/settings/actions/settings.actions";
-import {  useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 
 function useSaved() {
@@ -120,6 +120,9 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
   /* ── Profile ── */
   const [name, setName] = useState(userName ?? "");
   const [email, setEmail] = useState(userEmail ?? "");
+
+  const [linking, setLinking] = useState(false);
+
   const profile = useSaved();
 
   function handleProfile(e: React.FormEvent) {
@@ -133,8 +136,8 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
   const [nextPw, setNextPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
-    const router = useRouter();
-  
+  const router = useRouter();
+
   const security = useSaved();
 
   function handlePassword(e: React.FormEvent) {
@@ -146,11 +149,22 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
     setCurrentPw(""); setNextPw(""); setConfirmPw("");
     security.flash();
   }
-useEffect(() => {
-  if (!userName && !userEmail) {
-    router.push("/login");
+  async function handleTelegramLink() {
+    setLinking(true);
+    try {
+      const res = await fetch('/api/link/request', { method: 'POST' });
+      const data = await res.json();
+      window.open(data.url, '_blank');
+    } finally {
+      setLinking(false);
+    }
   }
-}, [userName, userEmail, router]);
+
+  useEffect(() => {
+    if (!userName && !userEmail) {
+      router.push("/login");
+    }
+  }, [userName, userEmail, router]);
   /* ── Account ── */
   const [preferences, setPreferences] = useState("");
   const [prefFocused, setPrefFocused] = useState(false);
@@ -182,6 +196,35 @@ useEffect(() => {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+
+        {/* Telegram */}
+        <form onSubmit={(e) => { e.preventDefault(); handleTelegramLink(); }} style={{
+          background: "#111111",
+          border: "0.5px solid #1E1E1E",
+          borderRadius: "16px",
+          padding: "1.75rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "1.25rem",
+        }}>
+          <div>
+            <div style={{ fontSize: "15px", fontWeight: 500, color: "#F0EEE8", marginBottom: "4px" }}>Telegram</div>
+            <div style={{ fontSize: "13px", color: "#555555", lineHeight: 1.6 }}>Connect your Telegram account to control your agents.</div>
+          </div>
+          <div style={{ height: "0.5px", background: "#1E1E1E" }} />
+          <button type="submit" disabled={linking} style={{
+            background: linking ? "#2A2A2A" : "#2AABEE",
+            color: linking ? "#555555" : "#fff",
+            border: "none",
+            borderRadius: "8px",
+            padding: "10px 20px",
+            fontSize: "13px",
+            fontWeight: 500,
+            cursor: linking ? "not-allowed" : "pointer",
+          }}>
+            {linking ? "Opening..." : "Connect Telegram →"}
+          </button>
+        </form>
         {/* Profile */}
         <Card title="Profile" desc="Update your display name and email address." onSubmit={handleProfile} saved={profile.saved}>
           <Field label="Full name" value={name} onChange={setName} placeholder="John Doe" />

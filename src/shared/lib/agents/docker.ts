@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getAgentConfig } from "./config";
+import { logger } from "@/shared/lib/logger";
 
 const execAsync = promisify(exec);
 
@@ -14,12 +15,6 @@ const GATEWAY_TOKEN = "openclaw-agent-token";
 interface LaunchResult {
   containerId: string;
   port: number;
-}
-
-async function findAvailablePort(): Promise<number> {
-  const min = 10000;
-  const max = 60000;
-  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 export async function launchContainer(
@@ -44,8 +39,6 @@ export async function launchContainer(
     JSON.stringify(agentConfig, null, 2),
   );
 
-  const port = await findAvailablePort();
-
   const envVars = [
     `-e AWS_ACCESS_KEY_ID=${process.env.AWS_ACCESS_KEY_ID || ""}`,
     `-e AWS_SECRET_ACCESS_KEY=${process.env.AWS_SECRET_ACCESS_KEY || ""}`,
@@ -54,27 +47,39 @@ export async function launchContainer(
     `-e AGENT_TYPE=${agentType}`,
   ].join(" ");
 
+  // Let Docker assign a free host port automatically
   const cmd = [
     "docker run -d",
     `--name agent-${agentId}`,
-    `-p ${port}:${GATEWAY_PORT}`,
+    `-p 0:${GATEWAY_PORT}`,
     `-v "${dataDir}:/home/node/.openclaw"`,
     envVars,
     AGENT_IMAGE,
   ].join(" ");
 
+  logger.info({ agentId, agentType, userId }, "Launching container");
   const { stdout } = await execAsync(cmd);
   const containerId = stdout.trim().substring(0, 12);
 
+  // Read back the actual port Docker assigned
+  const { stdout: portOutput } = await execAsync(
+    `docker port agent-${agentId} ${GATEWAY_PORT}`,
+  );
+  // Output format: "0.0.0.0:12345" or "0.0.0.0:12345\n:::12345"
+  const port = parseInt(portOutput.trim().split(":").pop()!, 10);
+
+  logger.info({ containerId, port, agentId }, "Container launched");
   return { containerId, port };
 }
 
 export async function stopContainer(containerId: string): Promise<void> {
   try {
+    logger.info({ containerId }, "Stopping container");
     await execAsync(`docker stop ${containerId}`);
     await execAsync(`docker rm ${containerId}`);
+    logger.info({ containerId }, "Container stopped and removed");
   } catch {
-    // Container may already be stopped/removed
+    logger.warn({ containerId }, "Container may already be stopped/removed");
   }
 }
 

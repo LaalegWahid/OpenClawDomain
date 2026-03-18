@@ -3,6 +3,7 @@ import { validateWebhookSecret } from "@/shared/lib/telegram/bot";
 import { handleStartCommand } from "@/shared/lib/telegram/link";
 import { sendMessage } from "@/shared/lib/telegram/bot";
 import { handleStatusCommand, handleAgentCommand } from "@/shared/lib/telegram/commands";
+import { logger } from "@/shared/lib/logger";
 
 export async function POST(req: Request) {
   if (!validateWebhookSecret(req)) {
@@ -21,20 +22,21 @@ export async function POST(req: Request) {
   const username = message.from?.username ?? "";
   const text = message.text.trim();
 
+  logger.info({ telegramId, command: text }, "Telegram command received");
   const startMatch = text.match(/^\/start\s+(.+)$/);
 
   if (startMatch) {
     await handleStartCommand(chatId, username, startMatch[1]);
   } else if (text === "/status") {
     await handleStatusCommand(chatId, telegramId);
-  } else if (text.startsWith("/report")) {
+  } else if (text.startsWith("/report") || text.startsWith("/alert")) {
     await handleAgentCommand(chatId, telegramId, "finance", text);
   } else if (text.startsWith("/tasks") || text.startsWith("/assign") || text.startsWith("/standup")) {
     await handleAgentCommand(chatId, telegramId, "ops", text);
   } else if (text.startsWith("/draft") || text.startsWith("/schedule") || text.startsWith("/metrics")) {
     await handleAgentCommand(chatId, telegramId, "marketing", text);
   } else {
-    await sendMessage(chatId, "Available commands:\n/status — View agent statuses\n/report — Finance agent\n/tasks /assign /standup — Ops agent\n/draft /schedule /metrics — Marketing agent");
+    await sendMessage(chatId, "Available commands:\n/status — View agent statuses\n/report /alert — Finance agent\n/tasks /assign /standup — Ops agent\n/draft /schedule /metrics — Marketing agent");
   }
 
   return NextResponse.json({ ok: true });
