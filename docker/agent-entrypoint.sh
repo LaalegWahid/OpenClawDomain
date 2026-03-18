@@ -32,6 +32,7 @@ cat > "${CONFIG_FILE}" << EOJSON
     "providers": {
       "google": {
         "apiKey": "${GEMINI_API_KEY}",
+        "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "models": [
           {
             "id": "gemini-2.0-flash",
