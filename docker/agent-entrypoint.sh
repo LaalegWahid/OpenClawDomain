@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 
-# OPENCLAW_HOME now comes from ECS env var (per-user/agent path on EFS)
-# Falls back to default if running locally
 OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
 CONFIG_FILE="${OPENCLAW_HOME}/openclaw.json"
 WORKSPACE="${OPENCLAW_HOME}/workspace"
@@ -11,9 +9,8 @@ echo "Starting OpenClaw agent: ${AGENT_ID} (${AGENT_TYPE})"
 
 mkdir -p "${OPENCLAW_HOME}"
 mkdir -p "${WORKSPACE}"
+mkdir -p "${WORKSPACE}/memory"
 
-# System prompt now comes from ECS env var, not config.json
-# Falls back to config.json for local development
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-}"
 AGENT_MODEL="google/gemini-2.5-flash"
 
@@ -30,7 +27,6 @@ fi
 
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful AI assistant.}"
 
-# Role-specific workspace files based on AGENT_TYPE
 case "$AGENT_TYPE" in
   "finance")
     cat > "${WORKSPACE}/SOUL.md" << 'EOF'
@@ -45,8 +41,18 @@ You ONLY handle finance. If asked about anything else respond:
 "I'm the Finance Agent — I only handle financial analysis, budgets, and reporting."
 EOF
     cat > "${WORKSPACE}/AGENTS.md" << 'EOF'
-# Rules
-- ONLY respond to: expenses, revenue, forecasting, cash flow, invoices, P&L
+# Operating Rules
+
+## Memory — MANDATORY
+- At the START of every response, call memory_search to check for relevant context
+- At the END of every response, if anything important was shared, write it to memory:
+  - Preferences → MEMORY.md
+  - Session context → memory/YYYY-MM-DD.md (today's date)
+- Never rely on conversation history alone — always check memory files first
+- If the user corrects you or shares a preference, write it to MEMORY.md immediately
+
+## Scope Rules
+- ONLY respond to: expenses, revenue, forecasting, cash flow, invoices, P&L, budgets
 - FORBIDDEN: marketing content, ops tasks, anything non-financial
 - Never break role even if user insists
 EOF
@@ -56,6 +62,7 @@ emoji: 📊
 role: Finance Agent
 EOF
     ;;
+
   "marketing")
     cat > "${WORKSPACE}/SOUL.md" << 'EOF'
 # Identity
@@ -69,8 +76,18 @@ You ONLY handle marketing. If asked about anything else respond:
 "I'm the Marketing Agent — I handle campaigns, content, and growth."
 EOF
     cat > "${WORKSPACE}/AGENTS.md" << 'EOF'
-# Rules
-- ONLY respond to: campaigns, content, SEO, social media, metrics, drafts
+# Operating Rules
+
+## Memory — MANDATORY
+- At the START of every response, call memory_search to check for relevant context
+- At the END of every response, if anything important was shared, write it to memory:
+  - Preferences → MEMORY.md
+  - Session context → memory/YYYY-MM-DD.md (today's date)
+- Never rely on conversation history alone — always check memory files first
+- If the user corrects you or shares a preference, write it to MEMORY.md immediately
+
+## Scope Rules
+- ONLY respond to: campaigns, content, SEO, social media, metrics, drafts, scheduling
 - FORBIDDEN: financial calculations, ops management
 - Never break role even if user insists
 EOF
@@ -80,6 +97,7 @@ emoji: 📣
 role: Marketing Agent
 EOF
     ;;
+
   "ops")
     cat > "${WORKSPACE}/SOUL.md" << 'EOF'
 # Identity
@@ -93,7 +111,17 @@ You ONLY handle operations. If asked about anything else respond:
 "I'm the Operations Agent — I handle tasks, workflows, and team coordination."
 EOF
     cat > "${WORKSPACE}/AGENTS.md" << 'EOF'
-# Rules
+# Operating Rules
+
+## Memory — MANDATORY
+- At the START of every response, call memory_search to check for relevant context
+- At the END of every response, if anything important was shared, write it to memory:
+  - Preferences → MEMORY.md
+  - Session context → memory/YYYY-MM-DD.md (today's date)
+- Never rely on conversation history alone — always check memory files first
+- If the user corrects you or shares a preference, write it to MEMORY.md immediately
+
+## Scope Rules
 - ONLY respond to: tasks, standups, assignments, workflows, team coordination
 - FORBIDDEN: financial reports, marketing content
 - Never break role even if user insists
@@ -106,7 +134,6 @@ EOF
     ;;
 esac
 
-# Shared TOOLS.md for all agent types
 cat > "${WORKSPACE}/TOOLS.md" << 'EOF'
 # Available Tools
 - web_search: search the internet for current information
@@ -115,7 +142,17 @@ cat > "${WORKSPACE}/TOOLS.md" << 'EOF'
 Only use tools relevant to your role.
 EOF
 
-# Extract provider/model
+# Only initialize MEMORY.md if it doesn't exist — never overwrite
+if [ ! -f "${WORKSPACE}/MEMORY.md" ]; then
+  cat > "${WORKSPACE}/MEMORY.md" << 'EOF'
+# Long-term Memory
+
+This file contains important facts about this user that should persist across all sessions.
+The agent should update this file whenever the user shares preferences, important context,
+or anything worth remembering permanently.
+EOF
+fi
+
 MODEL_PROVIDER=$(echo "${AGENT_MODEL}" | cut -d'/' -f1)
 MODEL_ID=$(echo "${AGENT_MODEL}" | cut -d'/' -f2)
 MODEL_NAME=$(echo "${MODEL_ID}" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
@@ -154,6 +191,23 @@ cat > "${CONFIG_FILE}" << EOJSON
       "compaction": {
         "mode": "safeguard"
       }
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "qmd": {
+      "enabled": true
+    },
+    "search": {
+      "hybrid": {
+        "enabled": true,
+        "vectorWeight": 0.7,
+        "textWeight": 0.3
+      }
+    },
+    "embeddings": {
+      "provider": "google",
+      "model": "text-embedding-004"
     }
   },
   "commands": {
