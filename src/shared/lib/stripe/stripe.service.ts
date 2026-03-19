@@ -246,6 +246,50 @@ export async function setDefaultPaymentMethod(
     );
 }
 
+export async function cancelSubscription(userId: string) {
+  const [sub] = await db
+    .select()
+    .from(subscription)
+    .where(eq(subscription.userId, userId));
+
+  if (!sub?.stripeSubscriptionId) {
+    throw new Error("No active subscription found");
+  }
+
+  await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+    cancel_at_period_end: true,
+  });
+
+  await db
+    .update(subscription)
+    .set({ cancelAtPeriodEnd: true })
+    .where(eq(subscription.userId, userId));
+
+  logger.info({ userId }, "Subscription set to cancel at period end");
+}
+
+export async function resumeSubscription(userId: string) {
+  const [sub] = await db
+    .select()
+    .from(subscription)
+    .where(eq(subscription.userId, userId));
+
+  if (!sub?.stripeSubscriptionId) {
+    throw new Error("No subscription found");
+  }
+
+  await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+    cancel_at_period_end: false,
+  });
+
+  await db
+    .update(subscription)
+    .set({ cancelAtPeriodEnd: false, canceledAt: null })
+    .where(eq(subscription.userId, userId));
+
+  logger.info({ userId }, "Subscription resumed");
+}
+
 export async function createSetupIntent(userId: string) {
   const customerId = await ensureStripeCustomer(userId);
 
