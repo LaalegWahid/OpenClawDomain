@@ -43,6 +43,13 @@
       "when": 1774156800000,
       "tag": "0005_agent_type",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774243200000,
+      "tag": "0006_stripe_subscription",
+      "breakpoints": true
     }
   ]
 }

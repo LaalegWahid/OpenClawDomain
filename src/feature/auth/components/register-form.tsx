@@ -96,7 +96,7 @@ export function RegisterForm() {
       }
 
       // Sign in after successful registration
-      await signIn(email, password, "/overview");
+      await signIn(email, password, "/subscribe");
     } catch {
       setError("Could not create account. Please try again.");
       setLoading(false);

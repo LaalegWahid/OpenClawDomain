@@ -15,16 +15,15 @@ export async function proxy(request: NextRequest) {
     "/",
     "/login",
     "/register",
+    "/subscribe",
     "/about",
     "/pricing",
     "/contact",
     "/terms",
     "/privacy",
-    // Add any other public/marketing pages
   ];
 
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
-
 
   if ((pathname === "/login" || pathname === "/register") && isAuthenticated) {
     return NextResponse.redirect(new URL("/overview", request.url));
@@ -34,10 +33,29 @@ export async function proxy(request: NextRequest) {
     const callbackUrl = encodeURIComponent(pathname);
     return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, request.url));
   }
-  
+
   if (!isPublicRoute && !isAuthenticated) {
     const callbackUrl = encodeURIComponent(pathname);
     return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, request.url));
+  }
+
+  // Subscription guard: authenticated non-public routes require active subscription
+  if (isAuthenticated && !isPublicRoute) {
+    try {
+      const subUrl = new URL("/api/stripe/subscription", request.url);
+      const res = await fetch(subUrl.toString(), {
+        headers: { cookie: request.headers.get("cookie") ?? "" },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status !== "active") {
+          return NextResponse.redirect(new URL("/subscribe", request.url));
+        }
+      }
+    } catch {
+      // If subscription check fails, allow through to avoid locking users out
+    }
   }
 
   return NextResponse.next();
