@@ -127,7 +127,6 @@ export async function POST(req: Request) {
           type: type as AgentType,
           status: "active",
           containerId,
-          containerPort: port,
         })
         .returning();
 

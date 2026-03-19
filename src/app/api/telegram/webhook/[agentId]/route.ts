@@ -50,7 +50,7 @@ export async function POST(
   }
 
   // Agent starting
-  if (found.status === "starting" || !found.containerPort) {
+  if (found.status === "starting" || !found.containerId) {
     try {
       await sendMessage(found.botToken, chatId, "Agent is starting up, try again shortly.");
     } catch (err) {
@@ -81,7 +81,7 @@ export async function POST(
   // Forward to container with history
   try {
     const responseText = await sendCommand(
-      found.containerPort,
+      found.containerId,
       text,
       history.length > 0 ? history : undefined,
       (found.type as AgentType) || undefined,

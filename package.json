@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@aws-sdk/client-ecs": "^3.1012.0",
     "@t3-oss/env-nextjs": "^0.13.10",
     "better-auth": "^1.4.17",
     "class-variance-authority": "^0.7.1",

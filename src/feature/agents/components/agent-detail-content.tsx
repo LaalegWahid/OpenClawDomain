@@ -22,7 +22,6 @@ interface AgentRecord {
   status: string;
   type?: AgentType;
   containerId: string | null;
-  containerPort: number | null;
   createdAt: string;
 }
 
@@ -147,7 +146,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                 <p className="text-xs text-white/40 mb-1">Container</p>
                 <p className="text-sm text-white/70 font-mono">
-                  {agent.containerId} &middot; Port {agent.containerPort}
+                  {agent.containerId} &middot;
                 </p>
               </div>
             )}

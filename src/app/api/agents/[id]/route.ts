@@ -69,7 +69,7 @@ export async function DELETE(
 
     await db
       .update(agent)
-      .set({ status: "stopped", containerId: null, containerPort: null })
+      .set({ status: "stopped", containerId: null })
       .where(eq(agent.id, id));
 
     await db.insert(agentActivity).values({

@@ -27,7 +27,6 @@ export const agent = pgTable(
     systemPrompt: text("system_prompt").notNull(),
     type: text("type").notNull().default("finance"), // "finance" | "marketing" | "operations"
     containerId: text("container_id"),
-    containerPort: integer("container_port"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
