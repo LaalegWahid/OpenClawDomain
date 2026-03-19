@@ -14,11 +14,16 @@ export const env = createEnv({
     AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
     AWS_REGION: z.string().default("us-east-1"),
     AGENT_DATA_DIR: z.string().default("./data/agents"),
+
+    STRIPE_SECRET_KEY: z.string().min(1),
+    STRIPE_WEBHOOK_SECRET: z.string().min(1),
+    STRIPE_PRICE_ID: z.string().min(1),
   },
 
   client: {
     NEXT_PUBLIC_APP_URL: z.url().optional(),
     NEXT_PUBLIC_API_URL: z.url().optional(),
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1),
   },
 
   runtimeEnv: {
@@ -34,8 +39,13 @@ export const env = createEnv({
     AWS_REGION: process.env.AWS_REGION,
     AGENT_DATA_DIR: process.env.AGENT_DATA_DIR,
 
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    STRIPE_PRICE_ID: process.env.STRIPE_PRICE_ID,
+
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
   },
 });
 
