@@ -153,7 +153,7 @@ export function BillingContent() {
 
   if (loadingSub) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0A0A0A", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4rem 0" }}>
         <Loader2 size={24} style={{ color: "#FF4D00", animation: "spin 1s linear infinite" }} />
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -161,17 +161,7 @@ export function BillingContent() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0A0A0A", padding: "3rem 2rem" }}>
-      <div style={{ maxWidth: "640px", margin: "0 auto" }}>
-        <h1 style={{
-          fontSize: "1.5rem",
-          fontWeight: 500,
-          letterSpacing: "-0.03em",
-          color: "#F0EEE8",
-          marginBottom: "2rem",
-        }}>
-          Billing
-        </h1>
+    <div style={{ maxWidth: "640px" }}>
 
         {/* Subscription Status */}
         <div style={{
@@ -319,8 +309,7 @@ export function BillingContent() {
           )}
         </div>
 
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      </div>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
