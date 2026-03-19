@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSessionOrThrow } from "@/shared/lib/auth/getSessionOrThrow";
 import { createPortalSession } from "@/shared/lib/stripe/stripe.service";
+import { env } from "@/shared/config/env";
 import { logger } from "@/shared/lib/logger";
 
 export async function POST(req: Request) {
   try {
     const session = await getSessionOrThrow(req);
-    const origin = new URL(req.url).origin;
+    const origin = env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
 
     const portalSession = await createPortalSession(
       session.user.id,
