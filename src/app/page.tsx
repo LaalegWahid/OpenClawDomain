@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback, RefObject, useState } from 'react'
 import ClawScrollSection from '../../components/ClawScrollSection'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -104,6 +104,16 @@ function SectionLabel({ text }: { text: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function LandingPage() {
+  const [isMobile, setIsMobile] = useState(false)
+  const [navOpen, setNavOpen] = useState(false)
+
+  useEffect(() => {
+    function check() { setIsMobile(window.innerWidth < 768) }
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   // Step cards
   const step0Ref = useRef<HTMLDivElement>(null)
   const step1Ref = useRef<HTMLDivElement>(null)
@@ -268,75 +278,96 @@ export default function LandingPage() {
         <nav
           style={{
             position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
+            top: 0, left: 0, right: 0,
             zIndex: 100,
-            background: 'rgba(10,10,10,0.85)',
+            background: 'rgba(10,10,10,0.92)',
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
             borderBottom: '0.5px solid #1E1E1E',
+          }}
+        >
+          {/* Main bar */}
+          <div style={{
             height: '60px',
             padding: '0 1.75rem',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-          }}
-        >
-          {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-            <svg width="32" height="32" viewBox="0 0 56 56" fill="none" style={{ flexShrink: 0 }}>
-              <rect width="56" height="56" rx="13" fill="#FF4D00"/>
-              <line x1="15" y1="40" x2="23" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
-              <line x1="24" y1="40" x2="32" y2="12" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
-              <line x1="33" y1="40" x2="41" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
-            </svg>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 500, letterSpacing: '-0.025em', lineHeight: 1, color: '#F0EEE8' }}>
-                Open<span style={{ color: '#FF4D00' }}>Claw</span>
-              </div>
-              <div style={{ fontSize: '8px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#444444', marginTop: '3px' }}>
-                Manager
+          }}>
+            {/* Logo */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+              <svg width="32" height="32" viewBox="0 0 56 56" fill="none" style={{ flexShrink: 0 }}>
+                <rect width="56" height="56" rx="13" fill="#FF4D00"/>
+                <line x1="15" y1="40" x2="23" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
+                <line x1="24" y1="40" x2="32" y2="12" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
+                <line x1="33" y1="40" x2="41" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
+              </svg>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 500, letterSpacing: '-0.025em', lineHeight: 1, color: '#F0EEE8' }}>
+                  Open<span style={{ color: '#FF4D00' }}>Claw</span>
+                </div>
+                <div style={{ fontSize: '8px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#444444', marginTop: '3px' }}>
+                  Manager
+                </div>
               </div>
             </div>
+
+            {/* Desktop nav links */}
+            {!isMobile && (
+              <div style={{ display: 'flex', gap: '2rem' }}>
+                {['How it works', 'Agents', 'Demo'].map(link => (
+                  <a key={link} href="#" style={{ fontSize: '13px', color: '#555555', textDecoration: 'none', transition: 'color 0.2s' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#F0EEE8' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#555555' }}>
+                    {link}
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {/* Desktop CTA / Mobile hamburger */}
+            {isMobile ? (
+              <button onClick={() => setNavOpen(o => !o)} style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: '#F0EEE8', padding: '6px', display: 'flex', flexDirection: 'column',
+                gap: '5px', alignItems: 'flex-end',
+              }}>
+                <span style={{ display: 'block', width: '20px', height: '1.5px', background: navOpen ? '#FF4D00' : '#F0EEE8', transition: 'background 0.2s, transform 0.2s', transformOrigin: 'center', transform: navOpen ? 'translateY(3.25px) rotate(45deg)' : 'none' }} />
+                <span style={{ display: 'block', width: '14px', height: '1.5px', background: navOpen ? 'transparent' : '#555555', transition: 'background 0.2s' }} />
+                <span style={{ display: 'block', width: '20px', height: '1.5px', background: navOpen ? '#FF4D00' : '#F0EEE8', transition: 'background 0.2s, transform 0.2s', transformOrigin: 'center', transform: navOpen ? 'translateY(-3.25px) rotate(-45deg)' : 'none' }} />
+              </button>
+            ) : (
+              <button style={{ background: '#FF4D00', color: '#FFFFFF', border: 'none', padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}
+                onClick={() => window.location.href = '/register'}>
+                Get Started →
+              </button>
+            )}
           </div>
 
-          {/* Nav links */}
-          <div style={{ display: 'flex', gap: '2rem' }}>
-            {['How it works', 'Agents', 'Demo'].map(link => (
-              <a
-                key={link}
-                href="#"
-                style={{
-                  fontSize: '13px',
-                  color: '#555555',
-                  textDecoration: 'none',
-                  transition: 'color 0.2s',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#F0EEE8' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#555555' }}
-              >
-                {link}
-              </a>
-            ))}
-          </div>
-
-          {/* CTA */}
-          <button
-            style={{
-              background: '#FF4D00',
-              color: '#FFFFFF',
-              border: 'none',
-              padding: '8px 18px',
-              borderRadius: '8px',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-            onClick={() => window.location.href = '/register'}
-          >
-            Get Started →
-          </button>
+          {/* Mobile dropdown menu */}
+          {isMobile && (
+            <div style={{
+              maxHeight: navOpen ? '260px' : '0',
+              overflow: 'hidden',
+              transition: 'max-height 0.28s ease',
+              borderTop: navOpen ? '0.5px solid #1E1E1E' : 'none',
+            }}>
+              <div style={{ padding: '1rem 1.75rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {['How it works', 'Agents', 'Demo'].map(link => (
+                  <a key={link} href="#" onClick={() => setNavOpen(false)} style={{
+                    fontSize: '15px', color: '#555555', textDecoration: 'none',
+                    padding: '10px 0', borderBottom: '0.5px solid #111',
+                  }}>
+                    {link}
+                  </a>
+                ))}
+                <button style={{ marginTop: '12px', background: '#FF4D00', color: '#FFFFFF', border: 'none', padding: '14px', borderRadius: '10px', fontSize: '15px', fontWeight: 500, cursor: 'pointer', width: '100%' }}
+                  onClick={() => window.location.href = '/register'}>
+                  Get Started →
+                </button>
+              </div>
+            </div>
+          )}
         </nav>
 
         {/* ── HERO ────────────────────────────────────────────────────────── */}
@@ -361,26 +392,6 @@ export default function LandingPage() {
               marginBottom: '2rem',
             }}
           >
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: '#FF4D00',
-                display: 'inline-block',
-                flexShrink: 0,
-                animation: 'pulse 2s infinite',
-              }}
-            />
-            <span style={{
-              fontSize: '11px',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: '#555555',
-              fontWeight: 500,
-            }}>
-              AI Agent Platform
-            </span>
           </div>
 
           {/* H1 */}
