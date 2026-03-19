@@ -425,6 +425,19 @@ export default function ClawScrollSection() {
               willChange: 'opacity',
             }}
           />
+
+          {/* Dark vignette — hides the cut-off bottom of the hand */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: '-20%',
+              width: '140%',
+              height: '55%',
+              background: 'radial-gradient(ellipse 70% 60% at 50% 100%, #0A0A0A 30%, transparent 75%)',
+              pointerEvents: 'none',
+            }}
+          />
         </div>
 
         {/* LAYER 2 — Canvas particle system */}
