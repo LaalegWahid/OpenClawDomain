@@ -246,6 +246,68 @@ export async function setDefaultPaymentMethod(
     );
 }
 
+export async function createSubscription(userId: string, paymentMethodId: string) {
+  const customerId = await ensureStripeCustomer(userId);
+
+  // Attach payment method and set as default
+  await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+
+  // Create subscription
+  const sub = await stripe.subscriptions.create({
+    customer: customerId,
+    items: [{ price: env.STRIPE_PRICE_ID }],
+    default_payment_method: paymentMethodId,
+    metadata: { userId },
+    expand: ["latest_invoice.payment_intent"],
+  });
+
+  // Save payment method locally
+  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  const card = pm.card;
+
+  // Clear existing default, set new one
+  await db
+    .update(paymentMethod)
+    .set({ isDefault: false })
+    .where(eq(paymentMethod.userId, userId));
+
+  await db.insert(paymentMethod).values({
+    userId,
+    stripePaymentMethodId: paymentMethodId,
+    brand: card?.brand ?? null,
+    last4: card?.last4 ?? null,
+    expMonth: card?.exp_month ?? null,
+    expYear: card?.exp_year ?? null,
+    isDefault: true,
+  }).onConflictDoNothing();
+
+  // Sync subscription to local DB
+  await syncSubscription(sub.id);
+
+  // Check if payment requires additional action (3D Secure)
+  const latestInvoice = sub.latest_invoice as unknown as Record<string, unknown> | null;
+  if (latestInvoice && typeof latestInvoice !== "string") {
+    const paymentIntent = latestInvoice.payment_intent as Record<string, unknown> | string | null;
+    if (paymentIntent && typeof paymentIntent !== "string") {
+      if (paymentIntent.status === "requires_action") {
+        return {
+          status: "requires_action",
+          clientSecret: paymentIntent.client_secret as string,
+          subscriptionId: sub.id,
+        };
+      }
+    }
+  }
+
+  return {
+    status: sub.status,
+    subscriptionId: sub.id,
+  };
+}
+
 export async function cancelSubscription(userId: string) {
   const [sub] = await db
     .select()

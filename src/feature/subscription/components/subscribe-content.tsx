@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Check } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2, Check, Lock } from "lucide-react";
+import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { getStripe } from "@/shared/lib/stripe/client";
 
 const FEATURES = [
   "Unlimited AI agent deployments",
@@ -11,86 +13,165 @@ const FEATURES = [
   "Full API access with rate limiting",
 ];
 
-export function SubscribeContent() {
+function PaymentForm() {
+  const stripe = useStripe();
+  const elements = useElements();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const sessionId = searchParams.get("session_id");
-  const canceled = searchParams.get("canceled");
 
   const [loading, setLoading] = useState(false);
-  const [polling, setPolling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const pollSubscription = useCallback(async () => {
-    setPolling(true);
-    let attempts = 0;
-    const maxAttempts = 20;
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
 
-    const poll = async () => {
-      try {
-        const res = await fetch("/api/stripe/subscription");
-        const data = await res.json();
-        if (data.status === "active") {
-          router.push("/overview");
+    setLoading(true);
+    setError(null);
+
+    try {
+      const card = elements.getElement(CardElement);
+      if (!card) return;
+
+      // Create payment method
+      const { paymentMethod, error: pmError } = await stripe.createPaymentMethod({
+        type: "card",
+        card,
+      });
+
+      if (pmError) {
+        setError(pmError.message ?? "Invalid card details");
+        setLoading(false);
+        return;
+      }
+
+      // Create subscription
+      const res = await fetch("/api/stripe/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethodId: paymentMethod.id }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? "Failed to create subscription");
+        setLoading(false);
+        return;
+      }
+
+      // Handle 3D Secure / SCA
+      if (data.status === "requires_action" && data.clientSecret) {
+        const { error: confirmError } = await stripe.confirmCardPayment(data.clientSecret);
+        if (confirmError) {
+          setError(confirmError.message ?? "Payment authentication failed");
+          setLoading(false);
           return;
         }
-      } catch { /* retry */ }
-
-      attempts++;
-      if (attempts < maxAttempts) {
-        setTimeout(poll, 1500);
-      } else {
-        setPolling(false);
       }
-    };
 
-    poll();
-  }, [router]);
-
-  useEffect(() => {
-    if (sessionId) {
-      pollSubscription();
-    }
-  }, [sessionId, pollSubscription]);
-
-  async function handleSubscribe() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/stripe/checkout", { method: "POST" });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      }
+      // Success — redirect to dashboard
+      router.push("/overview");
     } catch {
+      setError("Something went wrong. Please try again.");
       setLoading(false);
     }
   }
 
-  if (polling) {
-    return (
+  return (
+    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {error && (
+        <div style={{
+          background: "rgba(255,77,0,0.06)",
+          border: "0.5px solid rgba(255,77,0,0.3)",
+          borderRadius: "8px",
+          padding: "10px 14px",
+          fontSize: "13px",
+          color: "#FF4D00",
+        }}>
+          {error}
+        </div>
+      )}
+
+      <div>
+        <label style={{
+          fontSize: "12px",
+          fontWeight: 500,
+          letterSpacing: "0.02em",
+          color: "#555555",
+          textTransform: "uppercase",
+          display: "block",
+          marginBottom: "6px",
+        }}>
+          Card details
+        </label>
+        <div style={{
+          background: "#0A0A0A",
+          border: "0.5px solid #1E1E1E",
+          borderRadius: "8px",
+          padding: "12px 14px",
+        }}>
+          <CardElement
+            options={{
+              style: {
+                base: {
+                  fontSize: "14px",
+                  color: "#F0EEE8",
+                  fontFamily: "inherit",
+                  "::placeholder": { color: "#555555" },
+                },
+                invalid: { color: "#FF4D00" },
+              },
+            }}
+          />
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        disabled={loading || !stripe}
+        style={{
+          width: "100%",
+          background: loading ? "#2A2A2A" : "#FF4D00",
+          color: loading ? "#555555" : "#FFFFFF",
+          border: "none",
+          borderRadius: "10px",
+          padding: "13px",
+          fontSize: "15px",
+          fontWeight: 500,
+          cursor: loading ? "not-allowed" : "pointer",
+          letterSpacing: "-0.01em",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px",
+        }}
+      >
+        {loading ? (
+          <>
+            <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+            Processing payment…
+          </>
+        ) : (
+          "Subscribe — $20/month"
+        )}
+      </button>
+
       <div style={{
-        minHeight: "100vh",
-        background: "#0A0A0A",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        gap: "6px",
+        fontSize: "11px",
+        color: "#444444",
       }}>
-        <div style={{ textAlign: "center", color: "#F0EEE8" }}>
-          <Loader2
-            size={32}
-            style={{ animation: "spin 1s linear infinite", margin: "0 auto 16px" }}
-          />
-          <p style={{ fontSize: "16px", fontWeight: 500 }}>
-            Confirming your subscription…
-          </p>
-          <p style={{ fontSize: "13px", color: "#555555", marginTop: "8px" }}>
-            This usually takes a few seconds.
-          </p>
-        </div>
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        <Lock size={10} />
+        <span>Secured by Stripe. Cancel anytime.</span>
       </div>
-    );
-  }
+    </form>
+  );
+}
 
+export function SubscribeContent() {
   return (
     <div style={{
       minHeight: "100vh",
@@ -126,20 +207,6 @@ export function SubscribeContent() {
           </div>
         </div>
 
-        {canceled && (
-          <div style={{
-            background: "rgba(255,77,0,0.06)",
-            border: "0.5px solid rgba(255,77,0,0.3)",
-            borderRadius: "8px",
-            padding: "10px 14px",
-            fontSize: "13px",
-            color: "#FF4D00",
-            marginBottom: "1.5rem",
-          }}>
-            Checkout was canceled. You can try again when you&apos;re ready.
-          </div>
-        )}
-
         <h1 style={{
           fontSize: "clamp(1.5rem, 3vw, 1.9rem)",
           fontWeight: 500,
@@ -154,7 +221,7 @@ export function SubscribeContent() {
           Access all features with a simple monthly plan.
         </p>
 
-        {/* Price */}
+        {/* Price & Features */}
         <div style={{
           background: "#0A0A0A",
           border: "0.5px solid #1E1E1E",
@@ -179,35 +246,17 @@ export function SubscribeContent() {
           </div>
         </div>
 
-        <button
-          onClick={handleSubscribe}
-          disabled={loading}
-          style={{
-            width: "100%",
-            background: loading ? "#2A2A2A" : "#FF4D00",
-            color: loading ? "#555555" : "#FFFFFF",
-            border: "none",
-            borderRadius: "10px",
-            padding: "13px",
-            fontSize: "15px",
-            fontWeight: 500,
-            cursor: loading ? "not-allowed" : "pointer",
-            letterSpacing: "-0.01em",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-          }}
-        >
-          {loading ? (
-            <>
-              <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
-              Redirecting…
-            </>
-          ) : (
-            "Subscribe →"
-          )}
-        </button>
+        {/* Divider */}
+        <div style={{
+          height: "0.5px",
+          background: "linear-gradient(90deg, transparent, #1E1E1E 20%, #1E1E1E 80%, transparent)",
+          margin: "0 0 1.5rem",
+        }} />
+
+        {/* Payment Form */}
+        <Elements stripe={getStripe()}>
+          <PaymentForm />
+        </Elements>
 
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
