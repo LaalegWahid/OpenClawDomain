@@ -7,6 +7,8 @@ import {
   saveAccount,
 } from "@/feature/settings/actions/settings.actions";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { CreditCard } from "lucide-react";
 
 
 function useSaved() {
@@ -208,6 +210,35 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
           <Field label="New password" type="password" value={nextPw} onChange={setNextPw} placeholder="Min. 8 characters" />
           <Field label="Confirm new password" type="password" value={confirmPw} onChange={setConfirmPw} placeholder="••••••••" />
         </Card>
+
+        {/* Billing */}
+        <Link href="/settings/billing" style={{ textDecoration: "none" }}>
+          <div style={{
+            background: "#111111",
+            border: "0.5px solid #1E1E1E",
+            borderRadius: "16px",
+            padding: "1.75rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+            transition: "border-color 0.15s",
+          }}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = "#FF4D00")}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = "#1E1E1E")}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <CreditCard size={18} style={{ color: "#FF4D00" }} />
+              <div>
+                <div style={{ fontSize: "15px", fontWeight: 500, color: "#F0EEE8", marginBottom: "4px" }}>Billing</div>
+                <div style={{ fontSize: "13px", color: "#555555", lineHeight: 1.6 }}>
+                  Manage your subscription, payment methods, and invoices.
+                </div>
+              </div>
+            </div>
+            <span style={{ fontSize: "18px", color: "#555555" }}>&rarr;</span>
+          </div>
+        </Link>
 
         {/* Account */}
         <form onSubmit={handleAccount} style={{
