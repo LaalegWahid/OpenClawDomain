@@ -56,7 +56,7 @@ export async function launchContainer(
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
-    taskDefinition: `openclaw-agent-${agentType}`,
+    taskDefinition: `openclawmanager-agent-${agentType}`,
     launchType: "FARGATE",
     networkConfiguration: {
       awsvpcConfiguration: {
