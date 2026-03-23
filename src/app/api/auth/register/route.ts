@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 
     if (!result?.user?.id) {
       return NextResponse.json(
-        { error: "Failed to create account" },
+        { error: "Database insert failed during user registration. Check DB connection." },
         { status: 500 },
       );
     }
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     }
     logger.error({ err }, "Registration failed");
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Unhandled error in POST /api/auth/register. Check server logs." },
       { status: 500 },
     );
   }

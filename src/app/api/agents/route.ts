@@ -104,7 +104,7 @@ export async function POST(req: Request) {
     } catch (err) {
       logger.error({ err }, "Failed to launch agent container");
       return NextResponse.json(
-        { error: "Failed to launch agent container" },
+        { error: "ECS task failed to start for this agent. Check cluster logs and task definition." },
         { status: 500 },
       );
     }
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
       await deleteWebhook(botToken).catch(() => {});
       logger.error({ err }, "Failed to set webhook");
       return NextResponse.json(
-        { error: "Failed to set Telegram webhook" },
+        { error: "Telegram API rejected the webhook setup. Verify bot token and webhook URL." },
         { status: 500 },
       );
     }
@@ -168,13 +168,13 @@ export async function POST(req: Request) {
       await deleteWebhook(botToken).catch(() => {});
       logger.error({ err }, "Failed to save agent to database");
       return NextResponse.json(
-        { error: "Failed to save agent" },
+        { error: "Database insert failed for agent after container and webhook succeeded. Rolled back." },
         { status: 500 },
       );
     }
   } catch (err) {
     if (err instanceof Response) return err;
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Unhandled error in POST /api/agents. Check server logs." }, { status: 500 });
   }
 }
 
@@ -191,6 +191,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ agents });
   } catch (err) {
     if (err instanceof Response) return err;
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Unhandled error in GET /api/agents. Check server logs." }, { status: 500 });
   }
 }

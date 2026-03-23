@@ -17,7 +17,7 @@ export async function DELETE(
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to delete payment method");
     return NextResponse.json(
-      { error: "Failed to delete payment method" },
+      { error: "Stripe API failed to detach payment method. Check Stripe dashboard." },
       { status: 500 },
     );
   }

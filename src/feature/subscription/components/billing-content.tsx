@@ -58,14 +58,14 @@ function ChangeCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCanc
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error ?? "Failed to update card");
+        setError(data.error ?? "We couldn't update your card. Please try again.");
         setLoading(false);
         return;
       }
 
       onSuccess();
     } catch {
-      setError("Failed to update card");
+      setError("We couldn't update your card. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -235,16 +235,23 @@ export function BillingContent() {
   const [showChangeCard, setShowChangeCard] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
-    const [subRes, pmRes] = await Promise.all([
-      fetch("/api/stripe/subscription"),
-      fetch("/api/stripe/payment-methods"),
-    ]);
-    const subData = await subRes.json();
-    const pmData = await pmRes.json();
-    setSub(subData);
-    setMethods(pmData.paymentMethods ?? []);
-    setLoadingSub(false);
+    try {
+      const [subRes, pmRes] = await Promise.all([
+        fetch("/api/stripe/subscription"),
+        fetch("/api/stripe/payment-methods"),
+      ]);
+      const subData = await subRes.json();
+      const pmData = await pmRes.json();
+      setSub(subData);
+      setMethods(pmData.paymentMethods ?? []);
+    } catch {
+      setFetchError("We couldn't load your billing info. Please refresh the page.");
+    } finally {
+      setLoadingSub(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -277,6 +284,22 @@ export function BillingContent() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4rem 0" }}>
         <Loader2 size={24} style={{ color: "#FF4D00", animation: "spin 1s linear infinite" }} />
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div style={{
+        background: "rgba(255,77,0,0.06)",
+        border: "0.5px solid rgba(255,77,0,0.3)",
+        borderRadius: "8px",
+        padding: "10px 14px",
+        fontSize: "13px",
+        color: "#FF4D00",
+        maxWidth: "640px",
+      }}>
+        {fetchError}
       </div>
     );
   }

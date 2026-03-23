@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to create checkout session");
     return NextResponse.json(
-      { error: "Failed to create checkout session" },
+      { error: "Stripe checkout session creation failed. Check Stripe API key and price config." },
       { status: 500 },
     );
   }

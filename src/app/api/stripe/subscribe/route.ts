@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to create subscription");
     return NextResponse.json(
-      { error: "Failed to create subscription" },
+      { error: "Stripe subscription creation failed. Check customer, price, and payment method in Stripe dashboard." },
       { status: 500 },
     );
   }

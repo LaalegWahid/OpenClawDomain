@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to update card");
     return NextResponse.json(
-      { error: "Failed to update card" },
+      { error: "Stripe API failed to update default payment method. Check Stripe dashboard." },
       { status: 500 },
     );
   }

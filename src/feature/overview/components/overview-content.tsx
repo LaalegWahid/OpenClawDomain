@@ -65,7 +65,7 @@ const [loading,setLoading]=useState(false)
         setAgents(data.agents ?? []);
       }
     } catch {
-      // silently fail
+      setError("We couldn't load your bots right now. Please refresh the page.");
     } finally {
       setLoading(false);
     }
@@ -92,7 +92,7 @@ const [loading,setLoading]=useState(false)
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error ?? "Failed to add bot");
+        setError(data.error ?? "We couldn't add your bot. Please try again.");
         return;
       }
 
@@ -105,7 +105,7 @@ const [loading,setLoading]=useState(false)
       setShowModal(false);
       await fetchAgents();
     } catch {
-      setError("Failed to add bot. Please try again.");
+      setError("Unable to connect. Please check your internet and try again.");
     } finally {
       setSubmitting(false);
     }
