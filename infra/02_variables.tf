@@ -1,9 +1,9 @@
 variable "region" {
-  default = "eu-north-1"
+  default = "us-west-1"
 }
 
 variable "app_name" {
-  default = "openclaw"
+  default = "openclawmanager"
 }
 
 variable "db_password" {

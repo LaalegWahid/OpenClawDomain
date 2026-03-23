@@ -19,6 +19,8 @@
 
 # production
 /build
+secret.json
+task-def.json
 
 # misc
 .DS_Store

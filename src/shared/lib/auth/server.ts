@@ -24,8 +24,9 @@ export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL || env.NEXT_PUBLIC_APP_URL,
    trustedOrigins: [
-    "https://dxi95gqnwc771.cloudfront.net",
+    "http://openclawmanager-alb-1103931143.us-west-1.elb.amazonaws.com",
     "http://localhost:3000",
+    "https://openclaw.sltverse.com"
   ],
   emailAndPassword: {
     enabled: true,

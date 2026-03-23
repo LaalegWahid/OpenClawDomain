@@ -14,7 +14,7 @@ warn()   { echo -e "${YELLOW}[warn]${NC} $1"; }
 fail()   { echo -e "${RED}[fail]${NC} $1"; exit 1; }
 
 # ── Config ───────────────────────────────────────────────────
-REGION="eu-north-1"
+REGION="us-west-1"
 APP_NAME="openclaw"
 INFRA_DIR="./infra"
 

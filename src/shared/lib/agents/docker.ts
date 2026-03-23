@@ -7,7 +7,7 @@ import {
 import { logger } from "@/shared/lib/logger";
 import { DOMAIN_CONFIGS, type AgentType } from "./config";
 
-const ecs = new ECSClient({ region: process.env.AWS_REGION || "eu-north-1" });
+const ecs = new ECSClient({ region: process.env.AWS_REGION || "us-west-1" });
 
 function getCluster(): string {
   const v = process.env.ECS_CLUSTER_ARN;
@@ -56,7 +56,7 @@ export async function launchContainer(
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
-    taskDefinition: `openclaw-agent-${agentType}`,
+    taskDefinition: `openclawmanager-agent-${agentType}`,
     launchType: "FARGATE",
     networkConfiguration: {
       awsvpcConfiguration: {

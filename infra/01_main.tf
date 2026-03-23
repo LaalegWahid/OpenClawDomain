@@ -7,9 +7,9 @@ terraform {
   }
 
   backend "s3" {
-    bucket       = "openclaw-terraform-state-ryad"
+    bucket       = "openclaw-terraform-state-005965605441"
     key          = "prod/terraform.tfstate"
-    region       = "eu-north-1"
+    region       = "us-west-1"
     use_lockfile = true
     encrypt      = true
   }
