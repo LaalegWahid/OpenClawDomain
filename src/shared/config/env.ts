@@ -11,7 +11,7 @@ export const env = createEnv({
     CRON_SECRET: z.string().min(1),
     AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
     AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
-    AWS_REGION: z.string().default("eu-north-1"),
+    AWS_REGION: z.string().default("us-west-1"),
     STRIPE_SECRET_KEY: z.string().min(1),
     STRIPE_WEBHOOK_SECRET: z.string().min(1),
     STRIPE_PRICE_ID: z.string().min(1),

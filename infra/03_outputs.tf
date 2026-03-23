@@ -3,10 +3,10 @@ output "alb_dns" {
   value       = aws_lb.main.dns_name
 }
 
-output "cloudfront_url" {
-  description = "Set WEBHOOK_BASE_URL to this value"
-  value       = "https://${aws_cloudfront_distribution.app.domain_name}"
-}
+# output "cloudfront_url" {
+#   description = "Set WEBHOOK_BASE_URL to this value"
+#   value       = "https://${aws_cloudfront_distribution.app.domain_name}"
+# }
 
 output "ecr_app_url" {
   value = aws_ecr_repository.app.repository_url
