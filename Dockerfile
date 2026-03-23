@@ -18,17 +18,13 @@ ENV BETTER_AUTH_URL=https://openclaw.sltverse.com
 ENV NEXT_PUBLIC_APP_URL=https://openclaw.sltverse.com
 ENV NEXT_PUBLIC_API_URL=https://openclaw.sltverse.com
 
-ENV TELEGRAM_BOT_TOKEN=8783429195:AAHDvrmMRjSrpF857OdfAvf54WC98WY6MuU
-ENV TELEGRAM_WEBHOOK_SECRET=071efae27a8c8ab9e3f210468a09eb297113b6a80c7b29507aec2992359c31bc
+
 ENV TELEGRAM_BOT_USERNAME=ClawManager00_bot 
 
 ENV WEBHOOK_BASE_URL=https://openclaw.sltverse.com
 
 
-ENV ECS_CLUSTER_ARN=openclaw-alb-228198685.us-west-1.elb.amazonaws.com
-ENV PRIVATE_SUBNET_IDS=005965605441.dkr.ecr.us-west-1.amazonaws.com/openclaw-agent
-ENV ECS_TASKS_SG_ID=005965605441.dkr.ecr.us-west-1.amazonaws.com/openclaw-app
-ENV GATEWAY_TOKEN=arn:aws:ecs:us-west-1:005965605441:cluster/openclaw-cluster
+
 
 
 RUN bun run build
