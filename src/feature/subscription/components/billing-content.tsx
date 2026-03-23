@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, CreditCard, Trash2, Star, Plus, AlertTriangle } from "lucide-react";
+import { Loader2, CreditCard, AlertTriangle, RefreshCw } from "lucide-react";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { getStripe } from "@/shared/lib/stripe/client";
 
@@ -21,8 +21,8 @@ interface SubData {
   cancelAtPeriodEnd: boolean;
 }
 
-/* ── Add Card Form ─────────────────────────────────────── */
-function AddCardForm({ onSuccess }: { onSuccess: () => void }) {
+/* ── Change Card Form ──────────────────────────────────── */
+function ChangeCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [loading, setLoading] = useState(false);
@@ -36,33 +36,36 @@ function AddCardForm({ onSuccess }: { onSuccess: () => void }) {
     setError(null);
 
     try {
-      const res = await fetch("/api/stripe/setup-intent", { method: "POST" });
-      const { clientSecret } = await res.json();
-
       const card = elements.getElement(CardElement);
       if (!card) return;
 
-      const { setupIntent, error: stripeError } = await stripe.confirmCardSetup(clientSecret, {
-        payment_method: { card },
+      const { paymentMethod, error: pmError } = await stripe.createPaymentMethod({
+        type: "card",
+        card,
       });
 
-      if (stripeError) {
-        setError(stripeError.message ?? "Failed to add card");
+      if (pmError) {
+        setError(pmError.message ?? "Invalid card details");
         setLoading(false);
         return;
       }
 
-      if (setupIntent?.payment_method) {
-        await fetch("/api/stripe/payment-methods", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paymentMethodId: setupIntent.payment_method }),
-        });
+      const res = await fetch("/api/stripe/update-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethodId: paymentMethod.id }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Failed to update card");
+        setLoading(false);
+        return;
       }
 
       onSuccess();
     } catch {
-      setError("Failed to add card");
+      setError("Failed to update card");
     } finally {
       setLoading(false);
     }
@@ -70,6 +73,19 @@ function AddCardForm({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} style={{ marginTop: "1rem" }}>
+      {error && (
+        <div style={{
+          background: "rgba(255,77,0,0.06)",
+          border: "0.5px solid rgba(255,77,0,0.3)",
+          borderRadius: "8px",
+          padding: "10px 14px",
+          fontSize: "13px",
+          color: "#FF4D00",
+          marginBottom: "12px",
+        }}>
+          {error}
+        </div>
+      )}
       <div style={{
         background: "#0A0A0A",
         border: "0.5px solid #1E1E1E",
@@ -82,36 +98,53 @@ function AddCardForm({ onSuccess }: { onSuccess: () => void }) {
               base: {
                 fontSize: "14px",
                 color: "#F0EEE8",
+                fontFamily: "inherit",
                 "::placeholder": { color: "#555555" },
               },
+              invalid: { color: "#FF4D00" },
             },
           }}
         />
       </div>
-      {error && (
-        <p style={{ color: "#FF4D00", fontSize: "13px", marginTop: "8px" }}>{error}</p>
-      )}
-      <button
-        type="submit"
-        disabled={loading || !stripe}
-        style={{
-          marginTop: "12px",
-          background: loading ? "#2A2A2A" : "#FF4D00",
-          color: loading ? "#555555" : "#FFFFFF",
-          border: "none",
-          borderRadius: "8px",
-          padding: "10px 20px",
-          fontSize: "13px",
-          fontWeight: 500,
-          cursor: loading ? "not-allowed" : "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-        }}
-      >
-        {loading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null}
-        {loading ? "Adding…" : "Add card"}
-      </button>
+      <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
+        <button
+          type="submit"
+          disabled={loading || !stripe}
+          style={{
+            background: loading ? "#2A2A2A" : "#FF4D00",
+            color: loading ? "#555555" : "#FFFFFF",
+            border: "none",
+            borderRadius: "8px",
+            padding: "10px 20px",
+            fontSize: "13px",
+            fontWeight: 500,
+            cursor: loading ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
+          {loading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null}
+          {loading ? "Updating…" : "Update card"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={loading}
+          style={{
+            background: "#1E1E1E",
+            color: "#F0EEE8",
+            border: "none",
+            borderRadius: "8px",
+            padding: "10px 20px",
+            fontSize: "13px",
+            fontWeight: 500,
+            cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
@@ -198,8 +231,8 @@ export function BillingContent() {
   const [sub, setSub] = useState<SubData | null>(null);
   const [methods, setMethods] = useState<PaymentMethodData[]>([]);
   const [loadingSub, setLoadingSub] = useState(true);
-  const [showAddCard, setShowAddCard] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showChangeCard, setShowChangeCard] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -239,20 +272,6 @@ export function BillingContent() {
     }
   }
 
-  async function handleDelete(pmId: string) {
-    await fetch(`/api/stripe/payment-methods/${pmId}`, { method: "DELETE" });
-    fetchData();
-  }
-
-  async function handleSetDefault(pmId: string) {
-    await fetch("/api/stripe/default-payment-method", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentMethodId: pmId }),
-    });
-    fetchData();
-  }
-
   if (loadingSub) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4rem 0" }}>
@@ -264,6 +283,7 @@ export function BillingContent() {
 
   const isActive = sub?.status === "active";
   const isCanceling = sub?.cancelAtPeriodEnd;
+  const displayPm = methods.find((m) => m.isDefault) ?? methods[0] ?? null;
 
   return (
     <div style={{ maxWidth: "640px" }}>
@@ -368,7 +388,7 @@ export function BillingContent() {
         </div>
       </div>
 
-      {/* Payment Methods */}
+      {/* Payment Method */}
       <div style={{
         background: "#111111",
         border: "0.5px solid #1E1E1E",
@@ -376,107 +396,58 @@ export function BillingContent() {
         padding: "1.5rem",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-          <h2 style={{ fontSize: "14px", fontWeight: 500, color: "#F0EEE8" }}>Payment Methods</h2>
-          <button
-            onClick={() => setShowAddCard(!showAddCard)}
-            style={{
-              background: "none",
-              border: "0.5px solid #1E1E1E",
-              borderRadius: "6px",
-              padding: "6px 12px",
-              fontSize: "12px",
-              color: "#F0EEE8",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-            }}
-          >
-            <Plus size={12} /> Add
-          </button>
+          <h2 style={{ fontSize: "14px", fontWeight: 500, color: "#F0EEE8" }}>Payment Method</h2>
+          {!showChangeCard && (
+            <button
+              onClick={() => setShowChangeCard(true)}
+              style={{
+                background: "none",
+                border: "0.5px solid #1E1E1E",
+                borderRadius: "6px",
+                padding: "6px 12px",
+                fontSize: "12px",
+                color: "#F0EEE8",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <RefreshCw size={11} /> Change
+            </button>
+          )}
         </div>
 
-        {methods.length === 0 && !showAddCard && (
-          <p style={{ fontSize: "13px", color: "#555555" }}>No payment methods saved.</p>
+        {displayPm ? (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "12px",
+            background: "#0A0A0A",
+            border: "0.5px solid #1E1E1E",
+            borderRadius: "8px",
+          }}>
+            <CreditCard size={16} style={{ color: "#FF4D00" }} />
+            <span style={{ fontSize: "13px", color: "#F0EEE8", textTransform: "capitalize" }}>
+              {displayPm.brand ?? "Card"} •••• {displayPm.last4}
+            </span>
+            <span style={{ fontSize: "12px", color: "#555555" }}>
+              {String(displayPm.expMonth).padStart(2, "0")}/{displayPm.expYear}
+            </span>
+          </div>
+        ) : (
+          <p style={{ fontSize: "13px", color: "#555555" }}>No payment method on file.</p>
         )}
 
-        {methods.map((pm) => (
-          <div
-            key={pm.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "12px",
-              background: "#0A0A0A",
-              border: `0.5px solid ${pm.isDefault ? "rgba(255,77,0,0.3)" : "#1E1E1E"}`,
-              borderRadius: "8px",
-              marginBottom: "8px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <CreditCard size={16} style={{ color: pm.isDefault ? "#FF4D00" : "#555555" }} />
-              <span style={{ fontSize: "13px", color: "#F0EEE8", textTransform: "capitalize" }}>
-                {pm.brand ?? "Card"} •••• {pm.last4}
-              </span>
-              <span style={{ fontSize: "12px", color: "#555555" }}>
-                {String(pm.expMonth).padStart(2, "0")}/{pm.expYear}
-              </span>
-              {pm.isDefault && (
-                <span style={{
-                  fontSize: "10px",
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                  background: "rgba(255,77,0,0.1)",
-                  color: "#FF4D00",
-                }}>
-                  Default
-                </span>
-              )}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              {!pm.isDefault && (
-                <button
-                  onClick={() => handleSetDefault(pm.stripePaymentMethodId)}
-                  title="Set as default"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "4px",
-                    color: "#555555",
-                  }}
-                >
-                  <Star size={14} />
-                </button>
-              )}
-              <button
-                onClick={() => handleDelete(pm.stripePaymentMethodId)}
-                title="Remove"
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "4px",
-                  color: "#555555",
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-        ))}
-
-        {showAddCard && (
+        {showChangeCard && (
           <Elements stripe={getStripe()}>
-            <AddCardForm
+            <ChangeCardForm
               onSuccess={() => {
-                setShowAddCard(false);
+                setShowChangeCard(false);
                 fetchData();
               }}
+              onCancel={() => setShowChangeCard(false)}
             />
           </Elements>
         )}

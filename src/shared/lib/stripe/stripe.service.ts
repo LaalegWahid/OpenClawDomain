@@ -308,6 +308,52 @@ export async function createSubscription(userId: string, paymentMethodId: string
   };
 }
 
+export async function updateCard(userId: string, paymentMethodId: string) {
+  const customerId = await ensureStripeCustomer(userId);
+
+  // Attach new payment method
+  await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+
+  // Set as default on customer
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+
+  // Update subscription default payment method if exists
+  const [sub] = await db
+    .select()
+    .from(subscription)
+    .where(eq(subscription.userId, userId));
+
+  if (sub?.stripeSubscriptionId) {
+    await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+      default_payment_method: paymentMethodId,
+    });
+  }
+
+  // Get card details
+  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  const card = pm.card;
+
+  // Clear old default, insert new
+  await db
+    .update(paymentMethod)
+    .set({ isDefault: false })
+    .where(eq(paymentMethod.userId, userId));
+
+  await db.insert(paymentMethod).values({
+    userId,
+    stripePaymentMethodId: paymentMethodId,
+    brand: card?.brand ?? null,
+    last4: card?.last4 ?? null,
+    expMonth: card?.exp_month ?? null,
+    expYear: card?.exp_year ?? null,
+    isDefault: true,
+  }).onConflictDoNothing();
+
+  logger.info({ userId }, "Payment card updated");
+}
+
 export async function cancelSubscription(userId: string) {
   const [sub] = await db
     .select()
