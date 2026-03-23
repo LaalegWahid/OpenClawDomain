@@ -4,13 +4,20 @@ import { agent, agentActivity, chatSession } from "../../../../../shared/db/sche
 import { logger } from "../../../../../shared/lib/logger";
 import { sendDocument, sendMessage } from "../../../../../shared/lib/telegram/bot";
 import { eq, and } from "drizzle-orm";
-import { ChatMessage, sendCommand } from "../../../../../shared/lib/agents/docker";
+import { ChatMessage, sendCommand, sendDocumentCommand } from "../../../../../shared/lib/agents/docker";
 import { AgentType } from "../../../../../shared/lib/agents/config";
-import { detectDocumentRequest, extractFilename, generatePdf } from "../../../../../shared/lib/agents/document";
-import { isSubscriptionActive } from "../../../../../shared/lib/subscription/cache";
+import {
+  detectDocumentRequest,
+  extractFilename,
+  generatePdf,
+  buildDocumentSystemInstruction,
+  rewriteAsContentPrompt,
+  stripConversationalFiller,
+  isUsableContent,
+} from "../../../../../shared/lib/agents/document";
 import { env } from "../../../../../shared/config/env";
 
-const MAX_HISTORY = 20; // Keep last 20 messages (10 turns)
+const MAX_HISTORY = 20;
 
 export async function POST(
   req: Request,
@@ -20,71 +27,33 @@ export async function POST(
   if (secret !== env.TELEGRAM_WEBHOOK_SECRET) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
+
   const { agentId } = await params;
-
-  // Look up agent
-  const [found] = await db
-    .select()
-    .from(agent)
-    .where(eq(agent.id, agentId));
-
-  if (!found) {
-    return NextResponse.json({ ok: true });
-  }
-
-  const active = await isSubscriptionActive(found.userId);
-  if (!active) {
-    const body = await req.json();
-    const chatId = String(body?.message?.chat?.id);
-    if (chatId) {
-      await sendMessage(found.botToken, chatId, "Your subscription has expired. Please renew to continue using this agent.");
-    }
-    return NextResponse.json({ ok: true });
-  }
+  const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
+  if (!found) return NextResponse.json({ ok: true });
 
   const body = await req.json();
   const message = body?.message;
-
-  if (!message?.text) {
-    return NextResponse.json({ ok: true });
-  }
+  if (!message?.text) return NextResponse.json({ ok: true });
 
   const chatId = String(message.chat.id);
   const text = message.text.trim();
 
   logger.info({ agentId, chatId, text }, "Webhook message received");
 
-  // Agent stopped
   if (found.status === "stopped") {
-    try {
-      await sendMessage(found.botToken, chatId, "This agent has been stopped. Please restart it from the dashboard.");
-    } catch (err) {
-      logger.error({ agentId, err }, "Failed to send stopped message");
-    }
+    await sendMessage(found.botToken, chatId, "This agent has been stopped. Please restart it from the dashboard.").catch(() => {});
     return NextResponse.json({ ok: true });
   }
-
-  // Agent starting
   if (found.status === "starting" || !found.containerId) {
-    try {
-      await sendMessage(found.botToken, chatId, "Agent is starting up, try again shortly.");
-    } catch (err) {
-      logger.error({ agentId, err }, "Failed to send starting message");
-    }
+    await sendMessage(found.botToken, chatId, "Agent is starting up, please try again in a moment.").catch(() => {});
     return NextResponse.json({ ok: true });
   }
-
-  // Agent errored
   if (found.status === "error") {
-    try {
-      await sendMessage(found.botToken, chatId, "This agent encountered an error. Please check the dashboard.");
-    } catch (err) {
-      logger.error({ agentId, err }, "Failed to send error message");
-    }
+    await sendMessage(found.botToken, chatId, "This agent encountered an error. Please check the dashboard.").catch(() => {});
     return NextResponse.json({ ok: true });
   }
 
-  // Load chat session and history
   const [session] = await db
     .select()
     .from(chatSession)
@@ -92,70 +61,84 @@ export async function POST(
     .limit(1);
 
   const history: ChatMessage[] = (session?.history as ChatMessage[] | null) ?? [];
+  const agentType = (found.type as AgentType) || "operations";
+  const docFormat = detectDocumentRequest(text);
 
-  // Forward to container with history
   try {
-    const responseText = await sendCommand(
-      found.containerId,
-      text,
-      history.length > 0 ? history : undefined,
-      (found.type as AgentType) || undefined,
-    );
+    let responseText: string;
 
-    // Update history: add user message + assistant response, trim to max
+    if (docFormat) {
+      // Document path — developer role injection puts the agent into
+      // document-writer mode. The tool loop in sendDocumentCommand handles
+      // any web_search calls the agent makes for data to include.
+      responseText = await sendDocumentCommand(
+        found.containerId,
+        buildDocumentSystemInstruction(agentType),
+        rewriteAsContentPrompt(text),
+        history,
+      );
+    } else {
+      // Normal chat — tool loop handles any tool calls the agent makes
+      responseText = await sendCommand(
+        found.containerId,
+        text,
+        history.length > 0 ? history : undefined,
+        agentType,
+      );
+    }
+
+    // Save history with the original user text so conversation context stays natural
     const updatedHistory: ChatMessage[] = [
       ...history,
       { role: "user" as const, content: text },
       { role: "assistant" as const, content: responseText },
     ].slice(-MAX_HISTORY);
 
-    // Upsert chat session
     if (session) {
-      await db
-        .update(chatSession)
-        .set({ history: updatedHistory })
-        .where(eq(chatSession.id, session.id));
+      await db.update(chatSession).set({ history: updatedHistory }).where(eq(chatSession.id, session.id));
     } else {
-      await db.insert(chatSession).values({
-        agentId,
-        chatId,
-        history: updatedHistory,
-      });
+      await db.insert(chatSession).values({ agentId, chatId, history: updatedHistory });
     }
 
-    // Check if user requested a document — if so, generate PDF and send as file
-    const docFormat = detectDocumentRequest(text);
     try {
       if (docFormat) {
-        const agentType = (found.type as string) || "agent";
         const filename = extractFilename(text, agentType);
-        const pdfBuffer = await generatePdf(responseText, filename.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), agentType);
-        await sendDocument(found.botToken, chatId, pdfBuffer, `${filename}.pdf`, "Here is your document.");
-        logger.info({ agentId, chatId, filename }, "Document sent as PDF");
+        const clean = stripConversationalFiller(responseText);
+
+        // If the agent somehow still gave us too little content, fall back to
+        // the last real assistant turn from history
+        let contentSource = clean;
+        if (!isUsableContent(clean)) {
+          logger.warn({ agentId, contentLength: clean.length }, "Document response too short, falling back to history");
+          const last = [...history].reverse().find(m => m.role === "assistant");
+          contentSource = last ? stripConversationalFiller(last.content) : clean;
+        }
+
+        const pdfTitle = filename.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+        logger.info({ agentId, chatId, filename, contentLength: contentSource.length }, "Generating PDF");
+
+        const pdfBuffer = await generatePdf(contentSource, pdfTitle, agentType);
+        await sendDocument(found.botToken, chatId, pdfBuffer, `${filename}.pdf`, "📄 Here is your document.");
+        logger.info({ agentId, chatId, filename }, "Document sent");
       } else {
         await sendMessage(found.botToken, chatId, responseText);
       }
     } catch (err) {
-      logger.error({ agentId, chatId, err }, "Failed to send response to user");
+      logger.error({ agentId, chatId, err }, "Failed to deliver response");
       await db.insert(agentActivity).values({
         agentId,
         type: "error",
-        message: `Failed to send message to chat ${chatId}: ${err instanceof Error ? err.message : "Unknown"}`,
+        message: `Failed to deliver to chat ${chatId}: ${err instanceof Error ? err.message : "Unknown"}`,
       });
     }
   } catch (err) {
     logger.error({ agentId, err }, "Failed to reach agent container");
-
     const isTimeout = err instanceof Error && err.name === "TimeoutError";
-    const userMessage = isTimeout
-      ? "Processing took too long, please try again."
-      : "Failed to reach the agent. It may be starting up — try again shortly.";
-
-    try {
-      await sendMessage(found.botToken, chatId, userMessage);
-    } catch (sendErr) {
-      logger.error({ agentId, sendErr }, "Failed to send error message to user");
-    }
+    await sendMessage(
+      found.botToken,
+      chatId,
+      isTimeout ? "Processing took too long, please try again." : "Failed to reach the agent. It may be starting up — try again shortly."
+    ).catch(() => {});
   }
 
   return NextResponse.json({ ok: true });

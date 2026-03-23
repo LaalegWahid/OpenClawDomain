@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Check, Lock } from "lucide-react";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { getStripe } from "@/shared/lib/stripe/client";
+import { getStripe } from "../../../shared/lib/stripe/client";
 
 const FEATURES = [
   "Unlimited AI agent deployments",
