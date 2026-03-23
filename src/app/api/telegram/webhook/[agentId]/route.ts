@@ -7,6 +7,7 @@ import { eq, and } from "drizzle-orm";
 import { ChatMessage, sendCommand } from "../../../../../shared/lib/agents/docker";
 import { AgentType } from "../../../../../shared/lib/agents/config";
 import { detectDocumentRequest, extractFilename, generatePdf } from "../../../../../shared/lib/agents/document";
+import { env } from "../../../../../shared/config/env";
 
 const MAX_HISTORY = 20; // Keep last 20 messages (10 turns)
 
@@ -15,7 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ agentId: string }> },
 ) {
   const secret = req.headers.get("x-telegram-bot-api-secret-token");
-  if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
+  if (secret !== env.TELEGRAM_WEBHOOK_SECRET) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
   const { agentId } = await params;

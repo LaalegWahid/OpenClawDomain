@@ -25,6 +25,10 @@ export async function setWebhook(token: string, url: string, secret?: string): P
   if (!res.ok) {
     throw new Error(`Failed to set webhook: ${res.status}`);
   }
+  const data = await res.json();
+  if (!data.ok) {
+    throw new Error(`Telegram setWebhook failed: ${data.description ?? "unknown error"}`);
+  }
 }
 
 export async function deleteWebhook(token: string): Promise<void> {
@@ -34,6 +38,10 @@ export async function deleteWebhook(token: string): Promise<void> {
 
   if (!res.ok) {
     throw new Error(`Failed to delete webhook: ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data.ok) {
+    throw new Error(`Telegram deleteWebhook failed: ${data.description ?? "unknown error"}`);
   }
 }
 
@@ -68,20 +76,34 @@ export async function sendDocument(
   return res.json();
 }
 
-export async function sendMessage(token: string, chatId: string, text: string) {
-  const res = await fetch(`${TELEGRAM_API}${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  });
+const TELEGRAM_MAX_LENGTH = 4096;
 
-  if (!res.ok) {
-    const status = res.status;
-    if (status === 403) {
-      throw new Error("Bot was blocked by the user");
+export async function sendMessage(token: string, chatId: string, text: string) {
+  // Split into chunks if text exceeds Telegram's 4096 char limit
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += TELEGRAM_MAX_LENGTH) {
+    chunks.push(text.slice(i, i + TELEGRAM_MAX_LENGTH));
+  }
+  if (chunks.length === 0) chunks.push(text);
+
+  let lastResult;
+  for (const chunk of chunks) {
+    const res = await fetch(`${TELEGRAM_API}${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: chunk }),
+    });
+
+    if (!res.ok) {
+      const status = res.status;
+      if (status === 403) {
+        throw new Error("Bot was blocked by the user");
+      }
+      throw new Error(`Telegram sendMessage failed: ${status}`);
     }
-    throw new Error(`Telegram sendMessage failed: ${status}`);
+
+    lastResult = await res.json();
   }
 
-  return res.json();
+  return lastResult;
 }

@@ -102,10 +102,11 @@ export async function POST(req: Request) {
     // Step 2: Set webhook — if this fails, stop the container and bail
     try {
       const webhookUrl = `${env.WEBHOOK_BASE_URL}/api/telegram/webhook/${tempAgentId}`;
-      await setWebhook(botToken, webhookUrl);
+      await setWebhook(botToken, webhookUrl, env.TELEGRAM_WEBHOOK_SECRET);
     } catch (err) {
-      // Rollback: stop the container we just started
+      // Rollback: stop the container and clean up webhook
       await stopContainer(containerId).catch(() => {});
+      await deleteWebhook(botToken).catch(() => {});
       logger.error({ err }, "Failed to set webhook");
       return NextResponse.json(
         { error: "Failed to set Telegram webhook" },
@@ -125,7 +126,7 @@ export async function POST(req: Request) {
           botUsername: botInfo.username,
           systemPrompt,
           type: type as AgentType,
-          status: "active",
+          status: "starting",
           containerId,
         })
         .returning();
