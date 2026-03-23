@@ -15,26 +15,6 @@ function getCluster(): string {
   return v;
 }
 
-export async function waitForTaskRunning(
-  taskArn: string,
-  timeoutMs = 120000
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const result = await ecs.send(new DescribeTasksCommand({
-      cluster: getCluster(),
-      tasks: [taskArn],
-    }));
-    const status = result.tasks?.[0]?.lastStatus;
-    if (status === "RUNNING") return;
-    if (status === "STOPPED" || status === "DEPROVISIONING") {
-      throw new Error(`Task failed: ${status}`);
-    }
-    await new Promise(r => setTimeout(r, 5000));
-  }
-  throw new Error("Timed out waiting for task to start");
-}
-
 function getSubnets(): string[] {
   const v = process.env.PUBLIC_SUBNET_IDS || process.env.PRIVATE_SUBNET_IDS;
   if (!v) throw new Error("No subnet IDs configured");
@@ -63,6 +43,26 @@ export interface ChatMessage {
   content: string;
 }
 
+export async function waitForTaskRunning(
+  taskArn: string,
+  timeoutMs = 120000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await ecs.send(new DescribeTasksCommand({
+      cluster: getCluster(),
+      tasks: [taskArn],
+    }));
+    const status = result.tasks?.[0]?.lastStatus;
+    if (status === "RUNNING") return;
+    if (status === "STOPPED" || status === "DEPROVISIONING") {
+      throw new Error(`Task failed: ${status}`);
+    }
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  throw new Error("Timed out waiting for task to start");
+}
+
 export async function launchContainer(
   userId: string,
   agentId: string,
@@ -86,15 +86,17 @@ export async function launchContainer(
       },
     },
     overrides: {
-  containerOverrides: [{
-    name: "agent",
-    environment: [
-      { name: "AGENT_ID",      value: agentId },
-      { name: "AGENT_TYPE",    value: agentType },
-      { name: "SYSTEM_PROMPT", value: fullSystemPrompt },
-    ],
-  }],
-},
+      containerOverrides: [{
+        name: "agent",
+        environment: [
+          { name: "AGENT_ID",      value: agentId },
+          { name: "AGENT_TYPE",    value: agentType },
+          { name: "SYSTEM_PROMPT", value: fullSystemPrompt },
+          // Per-user/agent isolated path on EFS — key fix for memory isolation
+          { name: "OPENCLAW_HOME", value: `/home/node/.openclaw/${userId}/${agentId}` },
+        ],
+      }],
+    },
   }));
 
   const task = result.tasks?.[0];

@@ -6,6 +6,17 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
+resource "aws_ecs_cluster_capacity_providers" "main" {
+  cluster_name       = aws_ecs_cluster.main.name
+  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
+
+  default_capacity_provider_strategy {
+    base              = 1
+    weight            = 1
+    capacity_provider = "FARGATE"
+  }
+}
+
 resource "aws_security_group" "ecs_tasks" {
   name   = "${var.app_name}-ecs-tasks-sg"
   vpc_id = aws_vpc.main.id
@@ -84,7 +95,7 @@ resource "aws_ecs_task_definition" "app" {
       { name = "AWS_REGION",         value = var.region },
       { name = "ECS_CLUSTER_ARN",    value = aws_ecs_cluster.main.arn },
       { name = "PRIVATE_SUBNET_IDS", value = join(",", aws_subnet.private[*].id) },
-      { name = "PUBLIC_SUBNET_IDS", value = join(",", aws_subnet.public[*].id) },
+      { name = "PUBLIC_SUBNET_IDS",  value = join(",", aws_subnet.public[*].id) },
       { name = "ECS_TASKS_SG_ID",    value = aws_security_group.ecs_tasks.id },
     ]
 
@@ -154,13 +165,17 @@ resource "aws_ecs_task_definition" "agent" {
 
     mountPoints = [{
       sourceVolume  = "agent-workspace"
+      # EFS access point /agents mounts here
+      # OPENCLAW_HOME env var then points to a subdir: /home/node/.openclaw/{userId}/{agentId}
       containerPath = "/home/node/.openclaw"
       readOnly      = false
     }]
 
     environment = [
       { name = "AGENT_TYPE", value = each.key },
-      { name = "AGENT_ID",   value = "__INJECTED_AT_RUNTIME__" },
+      # AGENT_ID and OPENCLAW_HOME are injected at runtime via RunTask overrides
+      { name = "AGENT_ID",      value = "__INJECTED_AT_RUNTIME__" },
+      { name = "OPENCLAW_HOME", value = "__INJECTED_AT_RUNTIME__" },
     ]
 
     secrets = [

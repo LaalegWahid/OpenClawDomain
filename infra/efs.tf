@@ -22,12 +22,19 @@ resource "aws_efs_mount_target" "agents" {
   security_groups = [aws_security_group.efs.id]
 }
 
+# Single access point rooted at /agents.
+# Per-agent isolation is handled by OPENCLAW_HOME env var injected at runtime:
+#   /home/node/.openclaw/{userId}/{agentId}
+# Which maps on EFS to:
+#   /agents/{userId}/{agentId}
 resource "aws_efs_access_point" "agents" {
   file_system_id = aws_efs_file_system.agents.id
+
   posix_user {
     gid = 1000
     uid = 1000
   }
+
   root_directory {
     path = "/agents"
     creation_info {
