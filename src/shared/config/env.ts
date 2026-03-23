@@ -2,8 +2,14 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 export const env = createEnv({
+  // skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   server: {
-    DATABASE_URL: z.url(),
+    DATABASE_URL: z.string(),
+      DATABASE_HOST: z.string(),
+    DATABASE_PORT: z.number(),
+    DATABASE_USER: z.string(),
+    DATABASE_PASS: z.string(),
+    DATABASE_DB: z.string(),
 
     BETTER_AUTH_SECRET: z.string().min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
     BETTER_AUTH_URL: z.url().optional(),
@@ -28,6 +34,11 @@ export const env = createEnv({
 
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
+     DATABASE_HOST: process.env.DATABASE_HOST,
+    DATABASE_PORT: process.env.DATABASE_PORT ? Number(process.env.DATABASE_PORT) : undefined,
+    DATABASE_USER: process.env.DATABASE_USER,
+    DATABASE_PASS: process.env.DATABASE_PASS,
+    DATABASE_DB: process.env.DATABASE_DB,
 
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,

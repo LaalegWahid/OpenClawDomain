@@ -1,12 +1,20 @@
-resource "aws_security_group" "rds" {
-  name   = "${var.app_name}-rds-sg"
-  vpc_id = aws_vpc.main.id
+# resource "aws_security_group" "rds" {
+#   name   = "${var.app_name}-rds-sg"
+#   vpc_id = aws_vpc.main.id
 
+#   ingress {
+#     from_port       = 5432
+#     to_port         = 5432
+#     protocol        = "tcp"
+#     security_groups = [aws_security_group.ecs_tasks.id]
+#   }
+# }
+resource "aws_security_group" "rds" {
   ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_tasks.id]
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  # ← temporary
   }
 }
 
@@ -38,7 +46,8 @@ resource "aws_db_instance" "replica" {
   identifier             = "${var.app_name}-db-replica"
   replicate_source_db    = aws_db_instance.main.identifier
   instance_class         = "db.t4g.small"
-  publicly_accessible    = false
+  publicly_accessible    = true
   skip_final_snapshot    = true
   vpc_security_group_ids = [aws_security_group.rds.id]
+  depends_on=[aws_db_instance.main]
 }

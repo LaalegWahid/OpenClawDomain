@@ -3686,10 +3686,6 @@ packages:
     resolution: {integrity: sha512-1tB5mhVo7U+ETBKNf92xT4hrQa3pm0MZ0PQvuDnWgAAGHDsfp4lPSpiS6psrSiet87wyGPh9ft6wmhOMQ0hDiw==}
     engines: {node: '>=14.16'}
 
-<<<<<<< HEAD
-  strnum@2.2.1:
-    resolution: {integrity: sha512-BwRvNd5/QoAtyW1na1y1LsJGQNvRlkde6Q/ipqqEaivoMdV+B1OMOTVdwR+N/cwVUcIt9PYyHmV8HyexCZSupg==}
-=======
   stripe@20.4.1:
     resolution: {integrity: sha512-axCguHItc8Sxt0HC6aSkdVRPffjYPV7EQqZRb2GkIa8FzWDycE7nHJM19C6xAIynH1Qp1/BHiopSi96jGBxT0w==}
     engines: {node: '>=16'}
@@ -3698,7 +3694,9 @@ packages:
     peerDependenciesMeta:
       '@types/node':
         optional: true
->>>>>>> d43a4ddd41b3514a9b97efb563a5760fc2184509
+
+  strnum@2.2.1:
+    resolution: {integrity: sha512-BwRvNd5/QoAtyW1na1y1LsJGQNvRlkde6Q/ipqqEaivoMdV+B1OMOTVdwR+N/cwVUcIt9PYyHmV8HyexCZSupg==}
 
   styled-jsx@5.1.6:
     resolution: {integrity: sha512-qSVyDTeMotdvQYoHWLNGwRFJHC+i+ZvdBRYosOFgC+Wg1vx4frN2/RG/NA7SYqqvKNLf39P2LSRA2pu6n0XYZA==}
@@ -7918,13 +7916,11 @@ snapshots:
 
   strip-json-comments@5.0.3: {}
 
-<<<<<<< HEAD
-  strnum@2.2.1: {}
-=======
   stripe@20.4.1(@types/node@20.19.30):
     optionalDependencies:
       '@types/node': 20.19.30
->>>>>>> d43a4ddd41b3514a9b97efb563a5760fc2184509
+
+  strnum@2.2.1: {}
 
   styled-jsx@5.1.6(@babel/core@7.28.6)(react@19.2.3):
     dependencies:

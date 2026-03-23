@@ -8,7 +8,7 @@ import {
 import { logger } from "@/shared/lib/logger"
 import { DOMAIN_CONFIGS, type AgentType } from "./config"
 
-const ecs = new ECSClient({ region: process.env.AWS_REGION || "eu-west-1" })
+const ecs = new ECSClient({ region: process.env.AWS_REGION || "us-west-1" })
 
 const CLUSTER        = process.env.ECS_CLUSTER_ARN!
 const SUBNETS        = process.env.PRIVATE_SUBNET_IDS!.split(",")
