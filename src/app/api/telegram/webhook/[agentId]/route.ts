@@ -7,6 +7,7 @@ import { eq, and } from "drizzle-orm";
 import { ChatMessage, sendCommand } from "../../../../../shared/lib/agents/docker";
 import { AgentType } from "../../../../../shared/lib/agents/config";
 import { detectDocumentRequest, extractFilename, generatePdf } from "../../../../../shared/lib/agents/document";
+import { isSubscriptionActive } from "../../../../../shared/lib/subscription/cache";
 import { env } from "../../../../../shared/config/env";
 
 const MAX_HISTORY = 20; // Keep last 20 messages (10 turns)
@@ -28,6 +29,16 @@ export async function POST(
     .where(eq(agent.id, agentId));
 
   if (!found) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const active = await isSubscriptionActive(found.userId);
+  if (!active) {
+    const body = await req.json();
+    const chatId = String(body?.message?.chat?.id);
+    if (chatId) {
+      await sendMessage(found.botToken, chatId, "Your subscription has expired. Please renew to continue using this agent.");
+    }
     return NextResponse.json({ ok: true });
   }
 

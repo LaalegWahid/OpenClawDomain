@@ -20,7 +20,9 @@ export async function proxy(request: NextRequest) {
 
   const session = await auth.api.getSession({ headers: request.headers });
   const isAuthenticated = session?.user;
-  const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
+  const isPublicRoute = PUBLIC_ROUTES.some(
+    (route) => pathname === route || (route !== "/" && pathname.startsWith(route + "/")),
+  );
 
   if ((pathname === "/login" || pathname === "/register") && isAuthenticated) {
     return NextResponse.redirect(new URL("/overview", request.url));

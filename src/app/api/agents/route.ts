@@ -7,6 +7,7 @@ import { deleteWebhook, setWebhook, validateBotToken } from "../../../shared/lib
 import { agent, agentActivity } from "../../../shared/db/schema";
 import { launchContainer, stopContainer, waitForTaskRunning } from "../../../shared/lib/agents/docker";
 import { logger } from "../../../shared/lib/logger";
+import { isSubscriptionActive } from "../../../shared/lib/subscription/cache";
 import { env } from "../../../shared/config/env";
 
 const MAX_BOTS_PER_USER = 3;
@@ -14,6 +15,15 @@ const MAX_BOTS_PER_USER = 3;
 export async function POST(req: Request) {
   try {
     const session = await getSessionOrThrow(req);
+
+    const active = await isSubscriptionActive(session.user.id);
+    if (!active) {
+      return NextResponse.json(
+        { error: "Active subscription required" },
+        { status: 403 },
+      );
+    }
+
     const { botToken, botUsername, name, systemPrompt, type } = await req.json();
 
     if (!botToken || !botUsername || !name || !systemPrompt || !type) {
