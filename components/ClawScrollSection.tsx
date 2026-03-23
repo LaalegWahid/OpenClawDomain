@@ -380,7 +380,7 @@ export default function ClawScrollSection() {
           height: '100vh',
           width: '100%',
           overflow: 'hidden',
-          background: '#0A0A0A',
+          background: '#1A1A1A',
         }}
       >
         {/* LAYER 1 — Hand images (crossfade) */}
@@ -438,6 +438,17 @@ export default function ClawScrollSection() {
               pointerEvents: 'none',
             }}
           />
+          {/* Bottom fade — makes the wrist dissolve into the background */}
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '140%',
+            height: '52%',
+            background: 'radial-gradient(ellipse 80% 70% at 50% 100%, #1A1A1A 38%, rgba(26,26,26,0.85) 58%, rgba(26,26,26,0.4) 75%, transparent 100%)',
+            pointerEvents: 'none',
+          }} />
         </div>
 
         {/* LAYER 2 — Canvas particle system */}
@@ -554,7 +565,7 @@ export default function ClawScrollSection() {
                 window.location.href = '/register'
               }}
             >
-              Deploy OpenClaw →
+              Deploy OpenClaw
             </button>
           </div>
         </div>
