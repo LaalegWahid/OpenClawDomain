@@ -84,6 +84,7 @@ resource "aws_ecs_task_definition" "app" {
       { name = "AWS_REGION",         value = var.region },
       { name = "ECS_CLUSTER_ARN",    value = aws_ecs_cluster.main.arn },
       { name = "PRIVATE_SUBNET_IDS", value = join(",", aws_subnet.private[*].id) },
+      { name = "PUBLIC_SUBNET_IDS", value = join(",", aws_subnet.public[*].id) },
       { name = "ECS_TASKS_SG_ID",    value = aws_security_group.ecs_tasks.id },
     ]
 

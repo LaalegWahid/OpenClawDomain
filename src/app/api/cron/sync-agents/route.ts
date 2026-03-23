@@ -4,7 +4,7 @@ import { db } from "../../../../shared/lib/drizzle";
 import { agent } from "../../../../shared/db/schema";
 import { getContainerStatus, launchContainer } from "../../../../shared/lib/agents/docker";
 import { logger } from "../../../../shared/lib/logger";
-import { env } from "@/shared/config/env";
+import { env } from "../../../../shared/config/env";
 import { AgentType } from "../../../../shared/lib/agents/config";
 
 

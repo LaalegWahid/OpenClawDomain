@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/shared/lib/auth/server";
-import { logger } from "@/shared/lib/logger";
+import { auth } from "../../../../shared/lib/auth/server";
+import { logger } from "../../../../shared/lib/logger";
 
 export async function POST(req: Request) {
   try {

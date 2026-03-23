@@ -1,4 +1,4 @@
-import { auth } from "@/shared/lib/auth/server";
+import { auth } from "./server";
 
 export async function getSessionOrThrow(req: Request) {
   const session = await auth.api.getSession({

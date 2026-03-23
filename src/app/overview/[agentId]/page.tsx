@@ -1,7 +1,7 @@
-import { SidebarProvider } from "@/shared/components/ui/sidebar";
-import { AppSidebar } from "@/feature/overview/components/app-sidebar";
-import { AgentDetailContent } from "@/feature/agents/components/agent-detail-content";
-import { getCurrentUser } from "@/feature/overview/actions/user.actions";
+import { SidebarProvider } from "../../../shared/components/ui/sidebar";
+import { AppSidebar } from "../../../feature/overview/components/app-sidebar";
+import { AgentDetailContent } from "../../../feature/agents/components/agent-detail-content";
+import { getCurrentUser } from "../../../feature/overview/actions/user.actions";
 
 export default async function AgentDetailPage({
   params,

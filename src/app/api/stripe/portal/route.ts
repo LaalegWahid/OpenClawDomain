@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getSessionOrThrow } from "@/shared/lib/auth/getSessionOrThrow";
-import { createPortalSession } from "@/shared/lib/stripe/stripe.service";
-import { env } from "@/shared/config/env";
-import { logger } from "@/shared/lib/logger";
+import { getSessionOrThrow } from "../../../../shared/lib/auth/getSessionOrThrow";
+import { createPortalSession } from "../../../../shared/lib/stripe/stripe.service";
+import { env } from "../../../../shared/config/env";
+import { logger } from "../../../../shared/lib/logger";
 
 export async function POST(req: Request) {
   try {

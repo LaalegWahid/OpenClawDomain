@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getSessionOrThrow } from "@/shared/lib/auth/getSessionOrThrow";
-import { deletePaymentMethod } from "@/shared/lib/stripe/stripe.service";
-import { logger } from "@/shared/lib/logger";
+import { getSessionOrThrow } from "../../../../../shared/lib/auth/getSessionOrThrow";
+import { deletePaymentMethod } from "../../../../../shared/lib/stripe/stripe.service";
+import { logger } from "../../../../../shared/lib/logger";
 
 export async function DELETE(
   req: Request,

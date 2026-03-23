@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
-import { LoginForm } from "@/feature/auth/components/login-form";
+import { LoginForm } from "../../feature/auth/components/login-form";
 
 export default function LoginPage() {
   return (

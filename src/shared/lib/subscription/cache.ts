@@ -1,6 +1,6 @@
-import { db } from "@/shared/lib/drizzle";
+import { db } from "../drizzle";
 import { eq } from "drizzle-orm";
-import { subscription } from "@/shared/db/schema/subscription";
+import { subscription } from "../../db/schema/subscription";
 
 export async function isSubscriptionActive(userId: string): Promise<boolean> {
   const [sub] = await db

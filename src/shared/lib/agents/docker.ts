@@ -4,7 +4,7 @@ import {
   StopTaskCommand,
   DescribeTasksCommand,
 } from "@aws-sdk/client-ecs";
-import { logger } from "@/shared/lib/logger";
+import { logger } from "../logger";
 import { DOMAIN_CONFIGS, type AgentType } from "./config";
 
 const ecs = new ECSClient({ region: process.env.AWS_REGION || "us-west-1" });
@@ -15,9 +15,29 @@ function getCluster(): string {
   return v;
 }
 
+export async function waitForTaskRunning(
+  taskArn: string,
+  timeoutMs = 120000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await ecs.send(new DescribeTasksCommand({
+      cluster: getCluster(),
+      tasks: [taskArn],
+    }));
+    const status = result.tasks?.[0]?.lastStatus;
+    if (status === "RUNNING") return;
+    if (status === "STOPPED" || status === "DEPROVISIONING") {
+      throw new Error(`Task failed: ${status}`);
+    }
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  throw new Error("Timed out waiting for task to start");
+}
+
 function getSubnets(): string[] {
-  const v = process.env.PRIVATE_SUBNET_IDS;
-  if (!v) throw new Error("PRIVATE_SUBNET_IDS is not set");
+  const v = process.env.PUBLIC_SUBNET_IDS || process.env.PRIVATE_SUBNET_IDS;
+  if (!v) throw new Error("No subnet IDs configured");
   return v.split(",");
 }
 
@@ -62,7 +82,7 @@ export async function launchContainer(
       awsvpcConfiguration: {
         subnets: getSubnets(),
         securityGroups: [getSecurityGroup()],
-        assignPublicIp: "DISABLED",
+        assignPublicIp: "ENABLED",
       },
     },
     overrides: {

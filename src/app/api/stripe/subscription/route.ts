@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getSessionOrThrow } from "@/shared/lib/auth/getSessionOrThrow";
-import { getSubscriptionStatus } from "@/shared/lib/stripe/stripe.service";
+import { getSessionOrThrow } from "../../../../shared/lib/auth/getSessionOrThrow";
+import { getSubscriptionStatus } from "../../../../shared/lib/stripe/stripe.service";
 
 export async function GET(req: Request) {
   try {

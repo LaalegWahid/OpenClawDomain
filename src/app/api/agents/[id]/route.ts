@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getSessionOrThrow } from "@/shared/lib/auth/getSessionOrThrow";
-import { db } from "@/shared/lib/drizzle";
-import { agent, agentActivity } from "@/shared/db/schema/agent";
+import { getSessionOrThrow } from "../../../../shared/lib/auth/getSessionOrThrow";
+import { db } from "../../../../shared/lib/drizzle";
+import { agent, agentActivity } from "../../../../shared/db/schema/agent";
 import { eq, and, desc } from "drizzle-orm";
-import { stopContainer } from "@/shared/lib/agents/docker";
-import { deleteWebhook } from "@/shared/lib/telegram/bot";
-import { logger } from "@/shared/lib/logger";
+import { stopContainer } from "../../../../shared/lib/agents/docker";
+import { deleteWebhook } from "../../../../shared/lib/telegram/bot";
+import { logger } from "../../../../shared/lib/logger";
 
 export async function GET(
   req: Request,

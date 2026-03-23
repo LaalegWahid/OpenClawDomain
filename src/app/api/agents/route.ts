@@ -5,7 +5,7 @@ import { db } from "../../../shared/lib/drizzle";
 import { eq } from "drizzle-orm";
 import { deleteWebhook, setWebhook, validateBotToken } from "../../../shared/lib/telegram/bot";
 import { agent, agentActivity } from "../../../shared/db/schema";
-import { launchContainer, stopContainer } from "../../../shared/lib/agents/docker";
+import { launchContainer, stopContainer, waitForTaskRunning } from "../../../shared/lib/agents/docker";
 import { logger } from "../../../shared/lib/logger";
 import { env } from "../../../shared/config/env";
 
@@ -136,6 +136,19 @@ export async function POST(req: Request) {
         type: "launch",
         message: `${name} launched successfully`,
       });
+
+      waitForTaskRunning(containerId)
+  .then(() =>
+    db.update(agent)
+      .set({ status: "active" })
+      .where(eq(agent.id, tempAgentId))
+  )
+  .catch(async (err) => {
+    logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
+    await db.update(agent)
+      .set({ status: "error" })
+      .where(eq(agent.id, tempAgentId));
+  });
 
       logger.info({ agentId: newAgent.id, userId: session.user.id }, "Agent launched");
       return NextResponse.json({ agent: newAgent }, { status: 201 });

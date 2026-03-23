@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSessionOrThrow } from "@/shared/lib/auth/getSessionOrThrow";
+import { getSessionOrThrow } from "../../../../shared/lib/auth/getSessionOrThrow";
 import {
   getSavedPaymentMethods,
   attachPaymentMethod,
-} from "@/shared/lib/stripe/stripe.service";
-import { logger } from "@/shared/lib/logger";
+} from "../../../../shared/lib/stripe/stripe.service";
+import { logger } from "../../../../shared/lib/logger";
 
 export async function GET(req: Request) {
   try {
