@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   } catch (err) {
     if (err instanceof Response) return err;
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Unhandled error in GET /api/stripe/subscription. Check Stripe service or DB." },
       { status: 500 },
     );
   }

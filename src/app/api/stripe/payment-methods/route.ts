@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   } catch (err) {
     if (err instanceof Response) return err;
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Unhandled error in GET /api/stripe/payment-methods. Check Stripe service or DB." },
       { status: 500 },
     );
   }
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to attach payment method");
     return NextResponse.json(
-      { error: "Failed to attach payment method" },
+      { error: "Stripe API rejected payment method attachment. Check Stripe dashboard for details." },
       { status: 500 },
     );
   }

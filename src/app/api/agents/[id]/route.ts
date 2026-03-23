@@ -35,7 +35,7 @@ export async function GET(
     return NextResponse.json({ agent: found, activities });
   } catch (err) {
     if (err instanceof Response) return err;
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Unhandled error in GET /api/agents/[id]. Check server logs." }, { status: 500 });
   }
 }
 
@@ -83,6 +83,6 @@ export async function DELETE(
   } catch (err) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to stop agent");
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Unhandled error in DELETE /api/agents/[id]. Check server logs." }, { status: 500 });
   }
 }

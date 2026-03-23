@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to create setup intent");
     return NextResponse.json(
-      { error: "Failed to create setup intent" },
+      { error: "Stripe setup intent creation failed. Check Stripe API key and customer." },
       { status: 500 },
     );
   }

@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to create portal session");
     return NextResponse.json(
-      { error: "Failed to create portal session" },
+      { error: "Stripe billing portal session failed. Check portal configuration in Stripe dashboard." },
       { status: 500 },
     );
   }

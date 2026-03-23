@@ -42,6 +42,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [stopping, setStopping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchAgent = useCallback(async () => {
     try {
@@ -52,7 +53,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
         setActivities(data.activities ?? []);
       }
     } catch {
-      // silently fail
+      setError("We couldn't load this agent. Please refresh the page.");
     } finally {
       setLoading(false);
     }
@@ -64,9 +65,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
 
   const handleStop = async () => {
     setStopping(true);
+    setError(null);
     try {
       await fetch(`/api/agents/${agentId}`, { method: "DELETE" });
       await fetchAgent();
+    } catch {
+      setError("We couldn't stop this bot. Please try again.");
     } finally {
       setStopping(false);
     }
@@ -81,6 +85,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
             Back to Overview
           </Button>
         </Link>
+
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            {error}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-20">

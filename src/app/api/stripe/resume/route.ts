@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to resume subscription");
     return NextResponse.json(
-      { error: "Failed to resume subscription" },
+      { error: "Stripe API failed to resume subscription. Check subscription status in Stripe dashboard." },
       { status: 500 },
     );
   }

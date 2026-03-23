@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to set default payment method");
     return NextResponse.json(
-      { error: "Failed to set default payment method" },
+      { error: "Stripe API failed to update default payment method. Check customer in Stripe dashboard." },
       { status: 500 },
     );
   }

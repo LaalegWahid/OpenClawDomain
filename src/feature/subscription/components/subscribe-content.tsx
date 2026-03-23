@@ -54,7 +54,7 @@ function PaymentForm() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error ?? "Failed to create subscription");
+        setError(data.error ?? "We couldn't process your subscription. Please check your payment details and try again.");
         setLoading(false);
         return;
       }
@@ -63,7 +63,7 @@ function PaymentForm() {
       if (data.status === "requires_action" && data.clientSecret) {
         const { error: confirmError } = await stripe.confirmCardPayment(data.clientSecret);
         if (confirmError) {
-          setError(confirmError.message ?? "Payment authentication failed");
+          setError(confirmError.message ?? "Payment verification failed. Please try again or use a different card.");
           setLoading(false);
           return;
         }
@@ -72,7 +72,7 @@ function PaymentForm() {
       // Success — redirect to dashboard
       router.push("/overview");
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError("We couldn't complete the payment. Please check your internet and try again.");
       setLoading(false);
     }
   }
