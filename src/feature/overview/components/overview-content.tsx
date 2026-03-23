@@ -5,7 +5,12 @@ import { Bot, Loader2, X } from "lucide-react";
 import Link from "next/link";
 
 type AgentType = "finance" | "marketing" | "operations";
-
+const skeleton: React.CSSProperties = {
+  background: "linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%)",
+  backgroundSize: "600px 100%",
+  animation: "shimmer 1.4s infinite",
+  borderRadius: 6,
+};
 const AGENT_TYPE_OPTIONS: { value: AgentType; label: string }[] = [
   { value: "finance", label: "Finance" },
   { value: "marketing", label: "Marketing" },
@@ -48,10 +53,11 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   const [botToken, setBotToken] = useState("");
   const [botUsername, setBotUsername] = useState("");
   const [botName, setBotName] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
+const [systemPrompt, setSystemPrompt] = useState(DEFAULT_PROMPTS["finance"]);
   const [agentType, setAgentType] = useState<AgentType>("finance");
-
+const [loading,setLoading]=useState(false)
   const fetchAgents = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch("/api/agents");
       if (res.ok) {
@@ -60,6 +66,8 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       }
     } catch {
       // silently fail
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -135,7 +143,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       <div style={{ marginBottom: "14px" }}>
         <button
           onClick={() => setShowModal(true)}
-          disabled={activeAgents.length >= MAX_BOTS}
+          disabled={activeAgents.length >= MAX_BOTS || loading}
           style={{
             background: activeAgents.length >= MAX_BOTS ? "#2A2A2A" : "#FF4D00",
             color: activeAgents.length >= MAX_BOTS ? "#555555" : "#fff",
@@ -153,6 +161,44 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       </div>
 
       {/* Agent cards */}
+      {loading ? (
+  <div style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+    gap: "14px",
+  }}>
+    {Array.from({ length: 3 }).map((_, i) => (
+      <div key={i} style={{
+        background: "#111111",
+        border: "0.5px solid #1E1E1E",
+        borderRadius: "16px",
+        padding: "1.5rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+      }}>
+        {/* Icon + status row */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, ...skeleton }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", ...skeleton }} />
+            <div style={{ width: 44, height: 10, ...skeleton }} />
+          </div>
+        </div>
+        {/* Text rows */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ width: "70%", height: 15, ...skeleton }} />
+          <div style={{ width: "45%", height: 11, ...skeleton }} />
+          <div style={{ width: 52, height: 18, borderRadius: 4, marginTop: 2, ...skeleton }} />
+        </div>
+        {/* Divider */}
+        <div style={{ height: "0.5px", background: "#1E1E1E" }} />
+        {/* Button */}
+        <div style={{ width: "100%", height: 36, borderRadius: 8, ...skeleton }} />
+      </div>
+    ))}
+  </div>
+) : (
       <div style={{
         display: "grid",
         gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
@@ -256,7 +302,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
             </Link>
           </div>
         ))}
-      </div>
+      </div>)}
 
       {/* Add Bot Modal */}
       {showModal && (
