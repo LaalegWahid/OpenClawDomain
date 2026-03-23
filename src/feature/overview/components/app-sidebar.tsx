@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import { Mail, LogOut } from "lucide-react";
-import { authClient } from "@/shared/lib/auth/client";
 import {
   Sidebar,
   SidebarContent,
@@ -17,8 +16,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
-} from "@/shared/components/ui/sidebar";
-import { navItems } from "@/feature/overview/lib/nav.lib";
+} from "../../../shared/components/ui/sidebar";
+import { authClient } from "../../../shared/lib/auth/client";
+import { navItems } from "../lib/nav.lib";
 
 interface AppSidebarProps {
   userEmail: string | null | undefined;
@@ -38,7 +38,7 @@ export function AppSidebar({ userEmail, userName }: AppSidebarProps) {
     <Sidebar collapsible="icon">
       {/* Header */}
       <SidebarHeader className="px-4 py-5">
-        <span className="text-lg font-bold bg-gradient-to-r from-brand-dark to-brand-light bg-clip-text text-transparent truncate">
+        <span className="text-lg font-bold bg-linear-to-r from-brand-dark to-brand-light bg-clip-text text-transparent truncate">
           OpenClaw
         </span>
       </SidebarHeader>
@@ -92,7 +92,7 @@ export function AppSidebar({ userEmail, userName }: AppSidebarProps) {
 
         {/* User info */}
         <div className="flex items-center gap-3 overflow-hidden">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-dark to-brand text-xs font-bold text-white uppercase">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-brand-dark to-brand text-xs font-bold text-white uppercase">
             {userName?.[0] ?? userEmail?.[0] ?? "U"}
           </div>
           <div className="flex min-w-0 flex-col">

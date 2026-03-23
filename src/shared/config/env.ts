@@ -3,48 +3,39 @@ import { z } from "zod";
 
 export const env = createEnv({
   server: {
-    DATABASE_URL: z.url(),
-
-    BETTER_AUTH_SECRET: z.string().min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
-    BETTER_AUTH_URL: z.url().optional(),
-
+    DATABASE_URL: z.string().url(),
+    BETTER_AUTH_SECRET: z.string().min(32),
+    BETTER_AUTH_URL: z.string().url().optional(),
     WEBHOOK_BASE_URL: z.string().min(1),
-
+    GATEWAY_TOKEN: z.string().min(1),
+    CRON_SECRET: z.string().min(1),
     AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
     AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
-    AWS_REGION: z.string().default("us-east-1"),
-    AGENT_DATA_DIR: z.string().default("./data/agents"),
-
+    AWS_REGION: z.string().default("eu-north-1"),
     STRIPE_SECRET_KEY: z.string().min(1),
     STRIPE_WEBHOOK_SECRET: z.string().min(1),
     STRIPE_PRICE_ID: z.string().min(1),
+    TELEGRAM_WEBHOOK_SECRET: z.string().min(1),
   },
-
   client: {
-    NEXT_PUBLIC_APP_URL: z.url().optional(),
-    NEXT_PUBLIC_API_URL: z.url().optional(),
+    NEXT_PUBLIC_APP_URL: z.string().url().optional(),
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1),
   },
-
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
-
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
-
     WEBHOOK_BASE_URL: process.env.WEBHOOK_BASE_URL,
-
+    GATEWAY_TOKEN: process.env.GATEWAY_TOKEN,
+    CRON_SECRET: process.env.CRON_SECRET,
     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
     AWS_REGION: process.env.AWS_REGION,
-    AGENT_DATA_DIR: process.env.AGENT_DATA_DIR,
-
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     STRIPE_PRICE_ID: process.env.STRIPE_PRICE_ID,
-
+    TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
   },
 });

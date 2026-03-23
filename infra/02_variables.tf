@@ -1,13 +1,9 @@
 variable "region" {
-  default = "eu-west-1"
+  default = "eu-north-1"
 }
 
 variable "app_name" {
   default = "openclaw"
-}
-
-variable "domain" {
-  description = "Your domain e.g. openclaw.app"
 }
 
 variable "db_password" {
@@ -31,5 +27,33 @@ variable "telegram_bot_username" {
 }
 
 variable "telegram_webhook_secret" {
+  sensitive = true
+}
+
+variable "gateway_token" {
+  sensitive = true
+}
+
+variable "webhook_base_url" {
+  description = "The public HTTPS base URL for Telegram webhooks (CloudFront URL)"
+}
+
+variable "stripe_secret_key" {
+  sensitive = true
+}
+
+variable "stripe_webhook_secret" {
+  sensitive = true
+}
+
+variable "stripe_price_id" {
+  sensitive = true
+}
+
+variable "stripe_publishable_key" {
+  sensitive = true
+}
+
+variable "cron_secret" {
   sensitive = true
 }

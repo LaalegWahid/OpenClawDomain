@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { db } from "@/shared/lib/drizzle";
-import { agent, agentActivity, chatSession } from "@/shared/db/schema/agent";
+import { db } from "../../../../../shared/lib/drizzle";
+import { agent, agentActivity, chatSession } from "../../../../../shared/db/schema";
+import { logger } from "../../../../../shared/lib/logger";
+import { sendDocument, sendMessage } from "../../../../../shared/lib/telegram/bot";
 import { eq, and } from "drizzle-orm";
-import { sendMessage, sendDocument } from "@/shared/lib/telegram/bot";
-import { sendCommand } from "@/shared/lib/agents/docker";
-import type { ChatMessage } from "@/shared/lib/agents/docker";
-import type { AgentType } from "@/shared/lib/agents/config";
-import { detectDocumentRequest, extractFilename, generatePdf } from "@/shared/lib/agents/document";
-import { logger } from "@/shared/lib/logger";
+import { ChatMessage, sendCommand } from "../../../../../shared/lib/agents/docker";
+import { AgentType } from "../../../../../shared/lib/agents/config";
+import { detectDocumentRequest, extractFilename, generatePdf } from "../../../../../shared/lib/agents/document";
 
 const MAX_HISTORY = 20; // Keep last 20 messages (10 turns)
 
@@ -15,6 +14,10 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ agentId: string }> },
 ) {
+  const secret = req.headers.get("x-telegram-bot-api-secret-token");
+  if (secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
+    return NextResponse.json({ ok: false }, { status: 401 });
+  }
   const { agentId } = await params;
 
   // Look up agent

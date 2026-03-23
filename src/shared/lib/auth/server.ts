@@ -23,6 +23,10 @@ export const auth = betterAuth({
   },
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL || env.NEXT_PUBLIC_APP_URL,
+   trustedOrigins: [
+    "https://dxi95gqnwc771.cloudfront.net",
+    "http://localhost:3000",
+  ],
   emailAndPassword: {
     enabled: true,
   },

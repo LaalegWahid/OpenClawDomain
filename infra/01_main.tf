@@ -7,12 +7,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "openclaw-terraform-state-244116256157"  # ← your new bucket
-    key            = "prod/terraform.tfstate"
-    region         = "eu-west-1"
-    use_lockfile   = true                                      # ← replaces dynamodb_table
-    dynamodb_table = "openclaw-terraform-locks"               # ← keep for now, just ignore the warning
-    encrypt        = true
+    bucket       = "openclaw-terraform-state-ryad"
+    key          = "prod/terraform.tfstate"
+    region       = "eu-north-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 

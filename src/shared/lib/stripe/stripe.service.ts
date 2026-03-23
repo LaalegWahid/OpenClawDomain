@@ -1,10 +1,9 @@
 import { eq, and } from "drizzle-orm";
 import { stripe } from "./index";
-import { db } from "@/shared/lib/drizzle";
-import { user, userProfile } from "@/shared/db/schema/auth";
-import { subscription, paymentMethod } from "@/shared/db/schema/subscription";
-import { env } from "@/shared/config/env";
-import { logger } from "@/shared/lib/logger";
+import { db } from "../drizzle";
+import { paymentMethod, subscription, user, userProfile } from "../../db/schema";
+import { env } from "../../config/env";
+import { logger } from "../logger";
 
 export async function ensureStripeCustomer(userId: string): Promise<string> {
   const [profile] = await db

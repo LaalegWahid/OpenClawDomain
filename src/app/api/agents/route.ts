@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { getSessionOrThrow } from "@/shared/lib/auth/getSessionOrThrow";
-import { db } from "@/shared/lib/drizzle";
-import { agent, agentActivity } from "@/shared/db/schema/agent";
+import { getSessionOrThrow } from "../../../shared/lib/auth/getSessionOrThrow";
+import { AGENT_TYPES, AgentType } from "../../../shared/lib/agents/config";
+import { db } from "../../../shared/lib/drizzle";
 import { eq } from "drizzle-orm";
-import { validateBotToken, setWebhook, deleteWebhook } from "@/shared/lib/telegram/bot";
-import { launchContainer, stopContainer } from "@/shared/lib/agents/docker";
-import { AGENT_TYPES, type AgentType } from "@/shared/lib/agents/config";
-import { env } from "@/shared/config/env";
-import { logger } from "@/shared/lib/logger";
+import { deleteWebhook, setWebhook, validateBotToken } from "../../../shared/lib/telegram/bot";
+import { agent, agentActivity } from "../../../shared/db/schema";
+import { launchContainer, stopContainer } from "../../../shared/lib/agents/docker";
+import { logger } from "../../../shared/lib/logger";
+import { env } from "../../../shared/config/env";
 
 const MAX_BOTS_PER_USER = 3;
 

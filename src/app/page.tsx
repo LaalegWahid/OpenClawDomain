@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback, RefObject, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ClawScrollSection from '../../components/ClawScrollSection'
 
 // ─── Types ───────────────────────────────────────────────────────────────────

@@ -10,6 +10,14 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 
+export const processedStripeEvent = pgTable(
+  "processed_stripe_event",
+  {
+    eventId: text("event_id").primaryKey(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+);
+
 export const subscription = pgTable(
   "subscription",
   {

@@ -1,6 +1,11 @@
 output "alb_dns" {
-  description = "Point your domain CNAME here"
+  description = "ALB DNS — point CloudFront origin here"
   value       = aws_lb.main.dns_name
+}
+
+output "cloudfront_url" {
+  description = "Set WEBHOOK_BASE_URL to this value"
+  value       = "https://${aws_cloudfront_distribution.app.domain_name}"
 }
 
 output "ecr_app_url" {
@@ -13,15 +18,4 @@ output "ecr_agent_url" {
 
 output "ecs_cluster_arn" {
   value = aws_ecs_cluster.main.arn
-}
-
-output "acm_validation_records" {
-  description = "Add these to Cloudflare DNS before terraform finishes"
-  value = {
-    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
-      name  = dvo.resource_record_name
-      type  = dvo.resource_record_type
-      value = dvo.resource_record_value
-    }
-  }
 }
