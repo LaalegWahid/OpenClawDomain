@@ -19,3 +19,13 @@ output "ecr_agent_url" {
 output "ecs_cluster_arn" {
   value = aws_ecs_cluster.main.arn
 }
+
+output "acm_validation_records" {
+  value = {
+    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
+      name  = dvo.resource_record_name
+      type  = dvo.resource_record_type
+      value = dvo.resource_record_value
+    }
+  }
+}

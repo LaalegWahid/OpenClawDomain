@@ -57,3 +57,7 @@ variable "stripe_publishable_key" {
 variable "cron_secret" {
   sensitive = true
 }
+
+variable "domain" {
+  description = "Your domain e.g. app.yourdomain.com"
+}
