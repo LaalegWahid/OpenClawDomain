@@ -5,7 +5,7 @@ import {
   saveProfile,
   savePassword,
   saveAccount,
-} from "@/feature/settings/actions/settings.actions";
+} from "../actions/settings.actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CreditCard } from "lucide-react";

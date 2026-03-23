@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
-import { signIn } from "@/feature/auth/actions/auth.actions";
-import { validatePasswordLength } from "@/feature/auth/lib/auth.lib";
+import { signIn } from "../actions/auth.actions";
+import { validatePasswordLength } from "../lib/auth.lib";
 
 /* ── Field ──────────────────────────────────────────────────── */
 function Field({

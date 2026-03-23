@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
-import { signIn } from "@/feature/auth/actions/auth.actions";
+import { signIn } from "../actions/auth.actions";
 
 /* ── Field ──────────────────────────────────────────────────── */
 function Field({

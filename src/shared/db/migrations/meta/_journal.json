@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1773664844526,
+      "tag": "0000_boring_quicksilver",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773670065219,
+      "tag": "0001_skinny_hawkeye",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773710927039,
+      "tag": "0002_stiff_warhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774070400000,
+      "tag": "0003_per_user_telegram_bot",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774072800000,
+      "tag": "0004_chat_session",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774156800000,
+      "tag": "0005_agent_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774243200000,
+      "tag": "0006_stripe_subscription",
+      "breakpoints": true
+    }
+  ]
+}

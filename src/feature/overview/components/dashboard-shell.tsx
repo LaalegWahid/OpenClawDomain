@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, Settings, LogOut, Menu } from "lucide-react";
-import { authClient } from "@/shared/lib/auth/client";
+import { authClient } from "../../../shared/lib/auth/client";
 
 const NAV = [
   { label: "Dashboard", href: "/overview", icon: LayoutDashboard },

@@ -1,5 +1,5 @@
 import "server-only";
-import { auth } from "@/shared/lib/auth/server";
+import { auth } from "../../../shared/lib/auth/server";
 import { headers } from "next/headers";
 
 export async function getCurrentUser() {

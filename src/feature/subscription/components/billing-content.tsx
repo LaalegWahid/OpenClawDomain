@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, CreditCard, Trash2, Star, Plus, AlertTriangle } from "lucide-react";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { getStripe } from "@/shared/lib/stripe/client";
+import { getStripe } from "../../../shared/lib/stripe/client";
 
 interface PaymentMethodData {
   id: string;

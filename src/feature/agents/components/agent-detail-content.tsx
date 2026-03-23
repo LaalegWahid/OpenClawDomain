@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, Power, RefreshCw, Bot } from "lucide-react";
-import { SidebarInset } from "@/shared/components/ui/sidebar";
-import { Separator } from "@/shared/components/ui/separator";
-import { Button } from "@/shared/components/ui/button";
+import { SidebarInset } from "../../../shared/components/ui/sidebar";
+import { Separator } from "../../../shared/components/ui/separator";
+import { Button } from "../../../shared/components/ui/button";
 import Link from "next/link";
 
 type AgentType = "finance" | "marketing" | "operations";
