@@ -167,11 +167,15 @@ async function callGateway(ip: string, input: unknown, timeoutMs: number): Promi
       "Authorization": `Bearer ${getGatewayToken()}`,
       "x-openclaw-agent-id": "main",
     },
-    body: JSON.stringify({ model: "openclaw", input, stream: false }),
+    body: JSON.stringify({ model: "openclaw", input }),
     signal: AbortSignal.timeout(timeoutMs),
   });
 
-  if (!res.ok) throw new Error(`Gateway responded ${res.status}`);
+  if (!res.ok) {
+    const errorBody = await res.text().catch(() => "unable to read body");
+    logger.error({ status: res.status, errorBody }, "Gateway error response");
+    throw new Error(`Gateway responded ${res.status}: ${errorBody}`);
+  }
   return res.json();
 }
 
@@ -270,16 +274,14 @@ export async function sendCommand(
   // Use structured input array when we have history or an agentType reminder,
   // plain string for simple single-turn messages
   if (history && history.length > 0 || agentType) {
-    type InputItem =
-      | { role: "developer"; content: string }
-      | { role: "user";      content: string }
-      | { role: "assistant"; content: string };
+    type InputItem = { type: "message"; role: "developer" | "user" | "assistant"; content: string };
 
     const items: InputItem[] = [];
 
     if (agentType) {
       const domainConfig = DOMAIN_CONFIGS[agentType];
       items.push({
+        type: "message",
         role: "developer",
         content: `[REMINDER: You are a ${domainConfig.label}. If the question is NOT about ${agentType}, refuse politely.]`,
       });
@@ -287,11 +289,11 @@ export async function sendCommand(
 
     if (history && history.length > 0) {
       for (const msg of history.slice(-10)) {
-        items.push({ role: msg.role, content: msg.content });
+        items.push({ type: "message", role: msg.role, content: msg.content });
       }
     }
 
-    items.push({ role: "user", content: command });
+    items.push({ type: "message", role: "user", content: command });
     input = items;
   } else {
     input = command;
@@ -313,23 +315,20 @@ export async function sendDocumentCommand(
 ): Promise<string> {
   const ip = await getTaskIp(taskArn);
 
-  type InputItem =
-    | { role: "developer"; content: string }
-    | { role: "user";      content: string }
-    | { role: "assistant"; content: string };
+  type InputItem = { type: "message"; role: "developer" | "user" | "assistant"; content: string };
 
   const items: InputItem[] = [
-    { role: "developer", content: developerInstruction },
+    { type: "message", role: "developer", content: developerInstruction },
   ];
 
   // Include recent history so "write a report about what we discussed" works
   if (history && history.length > 0) {
     for (const msg of history.slice(-10)) {
-      items.push({ role: msg.role, content: msg.content });
+      items.push({ type: "message", role: msg.role, content: msg.content });
     }
   }
 
-  items.push({ role: "user", content: contentPrompt });
+  items.push({ type: "message", role: "user", content: contentPrompt });
 
   return runAgentLoop(ip, items, 90_000);
 }

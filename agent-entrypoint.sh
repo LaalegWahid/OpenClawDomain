@@ -1,17 +1,22 @@
 #!/bin/bash
 set -e
 
+export HOME="${HOME:-/home/node}"
+
 OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
-CONFIG_FILE="${OPENCLAW_HOME}/openclaw.json"
+DEFAULT_OC_DIR="/home/node/.openclaw"
+CONFIG_FILE="${DEFAULT_OC_DIR}/openclaw.json"
 WORKSPACE="${OPENCLAW_HOME}/workspace"
 
 echo "Starting OpenClaw agent: ${AGENT_ID} (${AGENT_TYPE})"
+echo "HOME=${HOME} CONFIG_FILE=${CONFIG_FILE} WORKSPACE=${WORKSPACE}"
 
 mkdir -p "${OPENCLAW_HOME}"
+mkdir -p "${DEFAULT_OC_DIR}"
 mkdir -p "${WORKSPACE}"
 
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful AI assistant.}"
-AGENT_MODEL="google/gemini-2.5-flash"
+AGENT_MODEL="${AGENT_MODEL:-anthropic/claude-haiku-4-5-20251001}"
 
 # Write SYSTEM.md always (system prompt can legitimately change per deployment)
 cat > "${WORKSPACE}/SYSTEM.md" << EOSYSTEM
@@ -119,6 +124,9 @@ cat > "${CONFIG_FILE}" << EOJSON
 {
   "models": {
     "providers": {
+      "anthropic": {
+        "apiKey": "${ANTHROPIC_API_KEY}"
+      },
       "google": {
         "apiKey": "${GEMINI_API_KEY}",
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
@@ -153,7 +161,7 @@ cat > "${CONFIG_FILE}" << EOJSON
     "bind": "lan",
     "port": 18789,
     "controlUi": {
-      "allowedOrigins": ["http://localhost:18789", "http://127.0.0.1:18789"]
+      "dangerouslyAllowHostHeaderOriginFallback": true
     },
     "auth": { "token": "${GATEWAY_TOKEN}" },
     "http": { "endpoints": { "responses": { "enabled": true } } }
@@ -166,4 +174,31 @@ cat > "${CONFIG_FILE}" << EOJSON
 EOJSON
 
 echo "Config written | Agent: ${AGENT_ID} | Type: ${AGENT_TYPE} | Home: ${OPENCLAW_HOME}"
-exec openclaw gateway --bind lan --port 18789
+
+# Verify config is readable
+echo "Config check: $(cat ${CONFIG_FILE} | head -c 50)..."
+ls -la "${CONFIG_FILE}"
+
+# ── Connectivity diagnostics ──────────────────────────────────────────────────
+echo "=== CONNECTIVITY TEST ==="
+echo "GEMINI_API_KEY set: ${GEMINI_API_KEY:+YES}"
+echo "GATEWAY_TOKEN set: ${GATEWAY_TOKEN:+YES}"
+echo "AGENT_MODEL: ${AGENT_MODEL}"
+
+# Test DNS resolution
+echo "DNS test (google):"
+nslookup generativelanguage.googleapis.com 2>&1 | head -5 || echo "nslookup not found, trying getent"
+getent hosts generativelanguage.googleapis.com 2>&1 | head -2 || echo "getent failed"
+
+# Test outbound HTTPS
+echo "Outbound HTTPS test (google):"
+curl -sS -m 5 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" https://generativelanguage.googleapis.com/ 2>&1 || echo "CURL FAILED - no internet access"
+
+echo "Outbound HTTPS test (anthropic):"
+curl -sS -m 5 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" https://api.anthropic.com/ 2>&1 || echo "CURL FAILED - no internet access"
+
+echo "=== END CONNECTIVITY TEST ==="
+
+export OPENCLAW_CONFIG_PATH="${CONFIG_FILE}"
+
+exec openclaw gateway --bind lan --port 18789 --allow-unconfigured
