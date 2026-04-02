@@ -69,16 +69,44 @@ export async function waitForTaskRunning(
   throw new Error("Timed out waiting for task to start");
 }
 
+export interface ChannelConfig {
+  discord?: { botToken: string };
+  /** Baileys/QR-based WhatsApp — credentials live on EFS, we just enable the channel */
+  whatsapp?: { enabled: true };
+}
+
+export interface McpServerConfig {
+  transport: "stdio" | "http";
+  config: Record<string, unknown>;
+}
+
 export async function launchContainer(
   userId: string,
   agentId: string,
   systemPrompt: string,
   agentType: AgentType,
+  channels?: ChannelConfig,
+  mcpServers?: Record<string, McpServerConfig>,
 ): Promise<LaunchResult> {
   const domainConfig = DOMAIN_CONFIGS[agentType];
   const fullSystemPrompt = domainConfig.boundaryPreamble + systemPrompt;
 
   logger.info({ agentId, agentType }, "Launching ECS agent task");
+
+  const extraEnv: { name: string; value: string }[] = [];
+
+  if (channels?.discord?.botToken) {
+    extraEnv.push({ name: "DISCORD_BOT_TOKEN", value: channels.discord.botToken });
+  }
+  if (channels?.whatsapp?.enabled) {
+    // Credentials live on EFS (written by the WhatsApp linker task).
+    // We only need to tell the entrypoint to enable the channel in openclaw.json.
+    extraEnv.push({ name: "WHATSAPP_ENABLED", value: "true" });
+  }
+  if (mcpServers && Object.keys(mcpServers).length > 0) {
+    const mcpConfigB64 = Buffer.from(JSON.stringify(mcpServers)).toString("base64");
+    extraEnv.push({ name: "MCP_CONFIG_B64", value: mcpConfigB64 });
+  }
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
@@ -99,6 +127,7 @@ export async function launchContainer(
           { name: "AGENT_TYPE",    value: agentType },
           { name: "SYSTEM_PROMPT", value: fullSystemPrompt },
           { name: "OPENCLAW_HOME", value: `/home/node/.openclaw/${userId}/${agentId}` },
+          ...extraEnv,
         ],
       }],
     },
@@ -111,6 +140,48 @@ export async function launchContainer(
 
   logger.info({ taskArn: task.taskArn, agentId }, "ECS task started");
   return { containerId: task.taskArn, port: 18789 };
+}
+
+export async function launchWhatsappLinker(
+  userId: string,
+  agentId: string,
+  agentType: AgentType,
+): Promise<string> {
+  const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+  if (!webhookBaseUrl) throw new Error("WEBHOOK_BASE_URL is not set");
+
+  const result = await ecs.send(new RunTaskCommand({
+    cluster: getCluster(),
+    taskDefinition: `openclawmanager-agent-${agentType}`,
+    launchType: "FARGATE",
+    networkConfiguration: {
+      awsvpcConfiguration: {
+        subnets: getSubnets(),
+        securityGroups: [getSecurityGroup()],
+        assignPublicIp: "ENABLED",
+      },
+    },
+    overrides: {
+      containerOverrides: [{
+        name: "agent",
+        environment: [
+          { name: "OPENCLAW_MODE",   value: "whatsapp_link" },
+          { name: "AGENT_ID",        value: agentId },
+          { name: "OPENCLAW_HOME",   value: `/home/node/.openclaw/${userId}/${agentId}` },
+          { name: "WEBHOOK_BASE_URL", value: webhookBaseUrl },
+          { name: "GATEWAY_TOKEN",   value: getGatewayToken() },
+        ],
+      }],
+    },
+  }));
+
+  const task = result.tasks?.[0];
+  if (!task?.taskArn) {
+    throw new Error(`Linker ECS task failed to start: ${JSON.stringify(result.failures)}`);
+  }
+
+  logger.info({ taskArn: task.taskArn, agentId }, "WhatsApp linker task started");
+  return task.taskArn;
 }
 
 export async function stopContainer(taskArn: string): Promise<void> {

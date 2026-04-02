@@ -3,6 +3,11 @@ set -e
 
 export HOME="${HOME:-/home/node}"
 
+# ── WhatsApp linker mode ───────────────────────────────────────────────────────
+if [ "${OPENCLAW_MODE}" = "whatsapp_link" ]; then
+  exec /home/node/whatsapp-linker.sh
+fi
+
 OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
 DEFAULT_OC_DIR="/home/node/.openclaw"
 CONFIG_FILE="${DEFAULT_OC_DIR}/openclaw.json"
@@ -172,6 +177,65 @@ cat > "${CONFIG_FILE}" << EOJSON
   }
 }
 EOJSON
+
+# ── Discord channel ───────────────────────────────────────────────────────────
+if [ -n "${DISCORD_BOT_TOKEN}" ]; then
+  echo "Adding Discord channel config..."
+  python3 - "${CONFIG_FILE}" "${DISCORD_BOT_TOKEN}" << 'PYEOF'
+import json, sys
+path = sys.argv[1]
+token = sys.argv[2]
+with open(path) as f:
+    cfg = json.load(f)
+cfg.setdefault("channels", {})["discord"] = {
+    "enabled": True,
+    "botToken": token,
+    "dmPolicy": "open",
+    "allowFrom": ["*"]
+}
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+PYEOF
+  echo "Discord channel configured."
+fi
+
+# ── WhatsApp channel (Baileys / QR-based) ────────────────────────────────────
+# Credentials live on EFS (written by the whatsapp-linker task).
+# We only need to enable the channel in openclaw.json so the gateway picks them up.
+if [ -n "${WHATSAPP_ENABLED}" ]; then
+  echo "Adding WhatsApp channel config (Baileys)..."
+  python3 - "${CONFIG_FILE}" << 'PYEOF'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    cfg = json.load(f)
+cfg.setdefault("channels", {})["whatsapp"] = {
+    "enabled": True,
+    "dmPolicy": "open",
+    "allowFrom": ["*"]
+}
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+PYEOF
+  echo "WhatsApp channel configured."
+fi
+
+# ── MCP servers ───────────────────────────────────────────────────────────────
+if [ -n "${MCP_CONFIG_B64}" ]; then
+  echo "Adding MCP server config..."
+  python3 - "${CONFIG_FILE}" "${MCP_CONFIG_B64}" << 'PYEOF'
+import json, sys, base64
+path = sys.argv[1]
+mcp_b64 = sys.argv[2]
+mcp_servers = json.loads(base64.b64decode(mcp_b64).decode())
+with open(path) as f:
+    cfg = json.load(f)
+cfg.setdefault("mcp", {})["servers"] = mcp_servers
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+PYEOF
+  echo "MCP servers configured."
+fi
 
 echo "Config written | Agent: ${AGENT_ID} | Type: ${AGENT_TYPE} | Home: ${OPENCLAW_HOME}"
 

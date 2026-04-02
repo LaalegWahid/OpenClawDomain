@@ -21,6 +21,7 @@
 /build
 secret.json
 task-def.json
+dokcer_build_push.sh
 
 # misc
 .DS_Store
@@ -58,3 +59,4 @@ override.tf.json
 *_override.tf.json
 .terraformrc
 terraform.rc
+docker_build_push.sh

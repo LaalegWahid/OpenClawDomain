@@ -4,7 +4,7 @@ import { AGENT_TYPES, AgentType } from "../../../shared/lib/agents/config";
 import { db } from "../../../shared/lib/drizzle";
 import { eq } from "drizzle-orm";
 import { deleteWebhook, setWebhook, validateBotToken } from "../../../shared/lib/telegram/bot";
-import { agent, agentActivity } from "../../../shared/db/schema";
+import { agent, agentActivity, agentChannel } from "../../../shared/db/schema/agent";
 import { launchContainer, stopContainer, waitForTaskRunning } from "../../../shared/lib/agents/docker";
 import { logger } from "../../../shared/lib/logger";
 import { isSubscriptionActive } from "../../../shared/lib/subscription/cache";
@@ -18,17 +18,15 @@ export async function POST(req: Request) {
 
     const active = await isSubscriptionActive(session.user.id);
     if (!active) {
-      return NextResponse.json(
-        { error: "Active subscription required" },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: "Active subscription required" }, { status: 403 });
     }
 
-    const { botToken, botUsername, name, systemPrompt, type } = await req.json();
+    const body = await req.json();
+    const { platform = "telegram", name, systemPrompt, type } = body;
 
-    if (!botToken || !botUsername || !name || !systemPrompt || !type) {
+    if (!name || !systemPrompt || !type) {
       return NextResponse.json(
-        { error: "botToken, botUsername, name, systemPrompt, and type are required" },
+        { error: "name, systemPrompt, and type are required" },
         { status: 400 },
       );
     }
@@ -40,6 +38,10 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!["telegram", "discord", "whatsapp"].includes(platform)) {
+      return NextResponse.json({ error: "Invalid platform" }, { status: 400 });
+    }
+
     // Check bot cap
     const existingAgents = await db
       .select()
@@ -48,130 +50,203 @@ export async function POST(req: Request) {
       .then((rows) => rows.filter((r) => r.status !== "stopped"));
 
     if (existingAgents.length >= MAX_BOTS_PER_USER) {
-      return NextResponse.json(
-        { error: "Maximum 3 bots reached" },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: "Maximum 3 bots reached" }, { status: 403 });
     }
 
-    // Validate bot token with Telegram
-    let botInfo;
-    try {
-      botInfo = await validateBotToken(botToken);
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid bot token. Please check your token from BotFather." },
-        { status: 400 },
-      );
-    }
-
-    if (botInfo.username.toLowerCase() !== botUsername.toLowerCase()) {
-      return NextResponse.json(
-        { error: `Bot username mismatch. Token belongs to @${botInfo.username}` },
-        { status: 400 },
-      );
-    }
-
-    // Check uniqueness
-    const [existingBot] = await db
-      .select()
-      .from(agent)
-      .where(eq(agent.botToken, botToken))
-      .limit(1);
-
-    if (existingBot) {
-      return NextResponse.json(
-        { error: "Bot already registered" },
-        { status: 409 },
-      );
-    }
-
-    // Generate a temporary agent ID for the container data dir
     const tempAgentId = crypto.randomUUID();
 
-    // Step 1: Launch Docker container FIRST — if this fails, nothing is persisted
-    let containerId: string;
-    let port: number;
-    try {
-      const result = await launchContainer(
-        session.user.id,
-        tempAgentId,
-        systemPrompt,
-        type as AgentType,
-      );
-      containerId = result.containerId;
-      port = result.port;
-    } catch (err) {
-      logger.error({ err }, "Failed to launch agent container");
-      return NextResponse.json(
-        { error: "ECS task failed to start for this agent. Check cluster logs and task definition." },
-        { status: 500 },
-      );
+    // ── TELEGRAM ─────────────────────────────────────────────────────────────
+    if (platform === "telegram") {
+      const { botToken, botUsername } = body;
+
+      if (!botToken || !botUsername) {
+        return NextResponse.json(
+          { error: "botToken and botUsername are required for Telegram" },
+          { status: 400 },
+        );
+      }
+
+      let botInfo;
+      try {
+        botInfo = await validateBotToken(botToken);
+      } catch {
+        return NextResponse.json(
+          { error: "Invalid bot token. Please check your token from BotFather." },
+          { status: 400 },
+        );
+      }
+
+      if (botInfo.username.toLowerCase() !== botUsername.toLowerCase()) {
+        return NextResponse.json(
+          { error: `Bot username mismatch. Token belongs to @${botInfo.username}` },
+          { status: 400 },
+        );
+      }
+
+      const [existingBot] = await db
+        .select()
+        .from(agent)
+        .where(eq(agent.botToken, botToken))
+        .limit(1);
+
+      if (existingBot) {
+        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
+      }
+
+      let containerId: string;
+      try {
+        const result = await launchContainer(session.user.id, tempAgentId, systemPrompt, type as AgentType);
+        containerId = result.containerId;
+      } catch (err) {
+        logger.error({ err }, "Failed to launch agent container");
+        return NextResponse.json(
+          { error: "ECS task failed to start for this agent. Check cluster logs and task definition." },
+          { status: 500 },
+        );
+      }
+
+      try {
+        const webhookUrl = `${env.WEBHOOK_BASE_URL}/api/telegram/webhook/${tempAgentId}`;
+        await setWebhook(botToken, webhookUrl, env.TELEGRAM_WEBHOOK_SECRET);
+      } catch (err) {
+        await stopContainer(containerId).catch(() => {});
+        await deleteWebhook(botToken).catch(() => {});
+        logger.error({ err }, "Failed to set webhook");
+        return NextResponse.json(
+          { error: "Telegram API rejected the webhook setup. Verify bot token and webhook URL." },
+          { status: 500 },
+        );
+      }
+
+      try {
+        const [newAgent] = await db
+          .insert(agent)
+          .values({ id: tempAgentId, userId: session.user.id, name, botToken, botUsername: botInfo.username, systemPrompt, type: type as AgentType, status: "starting", containerId })
+          .returning();
+
+        await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Telegram` });
+
+        waitForTaskRunning(containerId)
+          .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
+          .catch(async (err) => {
+            logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
+            await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));
+          });
+
+        logger.info({ agentId: newAgent.id, userId: session.user.id, platform: "telegram" }, "Agent launched");
+        return NextResponse.json({ agent: newAgent }, { status: 201 });
+      } catch (err) {
+        await stopContainer(containerId).catch(() => {});
+        await deleteWebhook(botToken).catch(() => {});
+        logger.error({ err }, "Failed to save agent to database");
+        return NextResponse.json(
+          { error: "Database insert failed after container and webhook succeeded. Rolled back." },
+          { status: 500 },
+        );
+      }
     }
 
-    // Step 2: Set webhook — if this fails, stop the container and bail
-    try {
-      const webhookUrl = `${env.WEBHOOK_BASE_URL}/api/telegram/webhook/${tempAgentId}`;
-      await setWebhook(botToken, webhookUrl, env.TELEGRAM_WEBHOOK_SECRET);
-    } catch (err) {
-      // Rollback: stop the container and clean up webhook
-      await stopContainer(containerId).catch(() => {});
-      await deleteWebhook(botToken).catch(() => {});
-      logger.error({ err }, "Failed to set webhook");
-      return NextResponse.json(
-        { error: "Telegram API rejected the webhook setup. Verify bot token and webhook URL." },
-        { status: 500 },
-      );
-    }
+    // ── DISCORD ───────────────────────────────────────────────────────────────
+    if (platform === "discord") {
+      const credentials = body.credentials as { botToken?: string } | undefined;
+      if (!credentials?.botToken) {
+        return NextResponse.json({ error: "credentials.botToken is required for Discord" }, { status: 400 });
+      }
 
-    // Step 3: Everything succeeded — now persist to DB
-    try {
-      const [newAgent] = await db
-        .insert(agent)
-        .values({
-          id: tempAgentId,
-          userId: session.user.id,
-          name,
-          botToken,
-          botUsername: botInfo.username,
+      const discordToken = credentials.botToken;
+      // Use agentId as unique username placeholder since Discord bots don't have usernames in the same sense
+      const placeholderUsername = `discord_${tempAgentId.split("-")[0]}`;
+
+      let containerId: string;
+      try {
+        const result = await launchContainer(
+          session.user.id,
+          tempAgentId,
           systemPrompt,
-          type: type as AgentType,
-          status: "starting",
-          containerId,
-        })
-        .returning();
+          type as AgentType,
+          { discord: { botToken: discordToken } },
+        );
+        containerId = result.containerId;
+      } catch (err) {
+        logger.error({ err }, "Failed to launch agent container");
+        return NextResponse.json(
+          { error: "ECS task failed to start for this agent." },
+          { status: 500 },
+        );
+      }
 
-      await db.insert(agentActivity).values({
-        agentId: newAgent.id,
-        type: "launch",
-        message: `${name} launched successfully`,
-      });
+      try {
+        const [newAgent] = await db
+          .insert(agent)
+          .values({ id: tempAgentId, userId: session.user.id, name, botToken: discordToken, botUsername: placeholderUsername, systemPrompt, type: type as AgentType, status: "starting", containerId })
+          .returning();
 
-      waitForTaskRunning(containerId)
-  .then(() =>
-    db.update(agent)
-      .set({ status: "active" })
-      .where(eq(agent.id, tempAgentId))
-  )
-  .catch(async (err) => {
-    logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
-    await db.update(agent)
-      .set({ status: "error" })
-      .where(eq(agent.id, tempAgentId));
-  });
+        await db.insert(agentChannel).values({ agentId: newAgent.id, platform: "discord", credentials: { botToken: discordToken } });
+        await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Discord` });
 
-      logger.info({ agentId: newAgent.id, userId: session.user.id }, "Agent launched");
-      return NextResponse.json({ agent: newAgent }, { status: 201 });
-    } catch (err) {
-      // Rollback: stop container and remove webhook
-      await stopContainer(containerId).catch(() => {});
-      await deleteWebhook(botToken).catch(() => {});
-      logger.error({ err }, "Failed to save agent to database");
-      return NextResponse.json(
-        { error: "Database insert failed for agent after container and webhook succeeded. Rolled back." },
-        { status: 500 },
-      );
+        waitForTaskRunning(containerId)
+          .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
+          .catch(async (err) => {
+            logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
+            await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));
+          });
+
+        logger.info({ agentId: newAgent.id, userId: session.user.id, platform: "discord" }, "Agent launched");
+        return NextResponse.json({ agent: newAgent }, { status: 201 });
+      } catch (err) {
+        await stopContainer(containerId).catch(() => {});
+        logger.error({ err }, "Failed to save Discord agent");
+        return NextResponse.json({ error: "Database insert failed. Rolled back." }, { status: 500 });
+      }
     }
+
+    // ── WHATSAPP ──────────────────────────────────────────────────────────────
+    // QR/Baileys-based — no credentials needed at creation time.
+    // The user links their account afterwards via the "Link WhatsApp" QR flow.
+    if (platform === "whatsapp") {
+      const placeholderToken = `whatsapp_${tempAgentId.split("-")[0]}`;
+      const placeholderUsername = `whatsapp_${tempAgentId.replace(/-/g, "").slice(0, 12)}`;
+
+      let containerId: string;
+      try {
+        const result = await launchContainer(
+          session.user.id,
+          tempAgentId,
+          systemPrompt,
+          type as AgentType,
+          // whatsapp channel will be enabled after QR linking via relaunchAgentWithChannels
+        );
+        containerId = result.containerId;
+      } catch (err) {
+        logger.error({ err }, "Failed to launch agent container");
+        return NextResponse.json({ error: "ECS task failed to start for this agent." }, { status: 500 });
+      }
+
+      try {
+        const [newAgent] = await db
+          .insert(agent)
+          .values({ id: tempAgentId, userId: session.user.id, name, botToken: placeholderToken, botUsername: placeholderUsername, systemPrompt, type: type as AgentType, status: "starting", containerId })
+          .returning();
+
+        await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched — link WhatsApp to activate` });
+
+        waitForTaskRunning(containerId)
+          .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
+          .catch(async (err) => {
+            logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
+            await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));
+          });
+
+        logger.info({ agentId: newAgent.id, userId: session.user.id, platform: "whatsapp" }, "WhatsApp agent launched (pending QR link)");
+        return NextResponse.json({ agent: newAgent }, { status: 201 });
+      } catch (err) {
+        await stopContainer(containerId).catch(() => {});
+        logger.error({ err }, "Failed to save WhatsApp agent");
+        return NextResponse.json({ error: "Database insert failed. Rolled back." }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({ error: "Unsupported platform" }, { status: 400 });
   } catch (err) {
     if (err instanceof Response) return err;
     return NextResponse.json({ error: "Unhandled error in POST /api/agents. Check server logs." }, { status: 500 });
