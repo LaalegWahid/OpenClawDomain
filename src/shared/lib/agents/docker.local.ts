@@ -1,4 +1,5 @@
 import Dockerode from "dockerode";
+import net from "net";
 import path from "path";
 import fs from "fs";
 import { logger } from "../logger";
@@ -11,16 +12,17 @@ const docker = new Dockerode();
 const PORT_RANGE_START = 18789;
 const PORT_RANGE_END = 18800;
 
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once("error", () => resolve(false));
+    srv.listen({ host: "127.0.0.1", port }, () => srv.close(() => resolve(true)));
+  });
+}
+
 async function localFindFreePort(): Promise<number> {
-  const containers = await docker.listContainers();
-  const usedPorts = new Set<number>();
-  for (const c of containers) {
-    for (const p of c.Ports) {
-      if (p.PublicPort) usedPorts.add(p.PublicPort);
-    }
-  }
   for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
-    if (!usedPorts.has(port)) return port;
+    if (await isPortFree(port)) return port;
   }
   throw new Error(`No free ports available in range ${PORT_RANGE_START}-${PORT_RANGE_END}`);
 }
