@@ -265,4 +265,23 @@ echo "=== END CONNECTIVITY TEST ==="
 
 export OPENCLAW_CONFIG_PATH="${CONFIG_FILE}"
 
+# ── Auth profiles ─────────────────────────────────────────────────────────────
+# OpenClaw reads API keys from auth-profiles.json, not from openclaw.json
+AUTH_DIR="${OPENCLAW_HOME}/.openclaw/agents/main/agent"
+mkdir -p "${AUTH_DIR}"
+python3 - "${AUTH_DIR}/auth-profiles.json" << PYEOF
+import json, sys, os
+path = sys.argv[1]
+profiles = {}
+if os.environ.get("ANTHROPIC_API_KEY"):
+    profiles["anthropic"] = {"apiKey": os.environ["ANTHROPIC_API_KEY"]}
+if os.environ.get("GEMINI_API_KEY"):
+    profiles["google"] = {"apiKey": os.environ["GEMINI_API_KEY"]}
+if os.environ.get("OPENROUTER_API_KEY"):
+    profiles["openrouter"] = {"apiKey": os.environ["OPENROUTER_API_KEY"]}
+with open(path, "w") as f:
+    json.dump(profiles, f, indent=2)
+print(f"Auth profiles written: {list(profiles.keys())}")
+PYEOF
+
 exec openclaw gateway --bind lan --port 18789 --allow-unconfigured
