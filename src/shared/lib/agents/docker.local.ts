@@ -8,6 +8,31 @@ import { DOMAIN_CONFIGS } from "./config";
 
 const docker = new Dockerode();
 
+const PORT_RANGE_START = 18789;
+const PORT_RANGE_END = 18800;
+
+async function localFindFreePort(): Promise<number> {
+  const containers = await docker.listContainers();
+  const usedPorts = new Set<number>();
+  for (const c of containers) {
+    for (const p of c.Ports) {
+      if (p.PublicPort) usedPorts.add(p.PublicPort);
+    }
+  }
+  for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
+    if (!usedPorts.has(port)) return port;
+  }
+  throw new Error(`No free ports available in range ${PORT_RANGE_START}-${PORT_RANGE_END}`);
+}
+
+export async function localGetContainerPort(containerId: string): Promise<number> {
+  const info = await docker.getContainer(containerId).inspect();
+  const bindings = info.HostConfig.PortBindings?.["18789/tcp"];
+  const hostPort = bindings?.[0]?.HostPort;
+  if (!hostPort) throw new Error(`No port binding found for container ${containerId}`);
+  return parseInt(hostPort, 10);
+}
+
 export async function localLaunchContainer(
   userId: string,
   agentId: string,
@@ -42,19 +67,21 @@ export async function localLaunchContainer(
     env.push(`MCP_CONFIG_B64=${Buffer.from(JSON.stringify(mcpServers)).toString("base64")}`);
   }
 
+  const port = await localFindFreePort();
+
   const container = await docker.createContainer({
     Image: image,
     Env: env,
     ExposedPorts: { "18789/tcp": {} },
     HostConfig: {
-      PortBindings: { "18789/tcp": [{ HostIp: "127.0.0.1", HostPort: "18789" }] },
+      PortBindings: { "18789/tcp": [{ HostIp: "127.0.0.1", HostPort: String(port) }] },
       Binds: [`${hostHome}:/home/node/.openclaw/${userId}/${agentId}`],
     },
     Labels: { "openclaw.agentId": agentId, "openclaw.local": "true" },
   });
   await container.start();
-  logger.info({ containerId: container.id, agentId }, "Local Docker agent started");
-  return { containerId: container.id, port: 18789 };
+  logger.info({ containerId: container.id, agentId, port }, "Local Docker agent started");
+  return { containerId: container.id, port };
 }
 
 export async function localStopContainer(containerId: string): Promise<void> {

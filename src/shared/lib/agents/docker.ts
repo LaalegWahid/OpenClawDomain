@@ -229,8 +229,12 @@ export async function getContainerStatus(taskArn: string): Promise<string> {
   }
 }
 
-async function getTaskIp(taskArn: string): Promise<string> {
-  if (process.env.LOCAL_DEV === "true") return "127.0.0.1";
+async function getContainerBaseUrl(taskArn: string): Promise<string> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localGetContainerPort } = await import("./docker.local");
+    const port = await localGetContainerPort(taskArn);
+    return `http://127.0.0.1:${port}`;
+  }
   const result = await ecs.send(new DescribeTasksCommand({
     cluster: getCluster(),
     tasks: [taskArn],
@@ -246,13 +250,13 @@ async function getTaskIp(taskArn: string): Promise<string> {
     ?.value;
 
   if (!privateIp) throw new Error("Could not resolve task private IP");
-  return privateIp;
+  return `http://${privateIp}:18789`;
 }
 
 // ─── Core gateway caller ──────────────────────────────────────────────────────
 
-async function callGateway(ip: string, input: unknown, timeoutMs: number): Promise<{ output: OutputItem[] }> {
-  const res = await fetch(`http://${ip}:18789/v1/responses`, {
+async function callGateway(baseUrl: string, input: unknown, timeoutMs: number): Promise<{ output: OutputItem[] }> {
+  const res = await fetch(`${baseUrl}/v1/responses`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -284,7 +288,7 @@ async function callGateway(ip: string, input: unknown, timeoutMs: number): Promi
 // The loop has a max of 8 iterations to prevent runaway tool chains.
 
 async function runAgentLoop(
-  ip: string,
+  baseUrl: string,
   initialInput: unknown,
   timeoutMs: number,
 ): Promise<string> {
@@ -292,7 +296,7 @@ async function runAgentLoop(
   let input = initialInput;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const data = await callGateway(ip, input, timeoutMs);
+    const data = await callGateway(baseUrl, input, timeoutMs);
     const output: OutputItem[] = data.output ?? [];
 
     // Collect any text from message items
@@ -359,7 +363,7 @@ export async function sendCommand(
   history?: ChatMessage[],
   agentType?: AgentType,
 ): Promise<string> {
-  const ip = await getTaskIp(taskArn);
+  const baseUrl = await getContainerBaseUrl(taskArn);
 
   let input: unknown;
 
@@ -391,7 +395,7 @@ export async function sendCommand(
     input = command;
   }
 
-  return runAgentLoop(ip, input, 60_000);
+  return runAgentLoop(baseUrl, input, 60_000);
 }
 
 /**
@@ -405,7 +409,7 @@ export async function sendDocumentCommand(
   contentPrompt: string,
   history?: ChatMessage[],
 ): Promise<string> {
-  const ip = await getTaskIp(taskArn);
+  const baseUrl = await getContainerBaseUrl(taskArn);
 
   type InputItem = { type: "message"; role: "developer" | "user" | "assistant"; content: string };
 
@@ -422,5 +426,5 @@ export async function sendDocumentCommand(
 
   items.push({ type: "message", role: "user", content: contentPrompt });
 
-  return runAgentLoop(ip, items, 90_000);
+  return runAgentLoop(baseUrl, items, 90_000);
 }
