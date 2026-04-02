@@ -157,6 +157,16 @@ export async function POST(req: Request) {
       // Use agentId as unique username placeholder since Discord bots don't have usernames in the same sense
       const placeholderUsername = `discord_${tempAgentId.split("-")[0]}`;
 
+      const [existingDiscordBot] = await db
+        .select()
+        .from(agent)
+        .where(eq(agent.botToken, discordToken))
+        .limit(1);
+
+      if (existingDiscordBot) {
+        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
+      }
+
       let containerId: string;
       try {
         const result = await launchContainer(
