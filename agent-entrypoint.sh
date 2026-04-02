@@ -120,8 +120,9 @@ This file contains important facts about this user that should persist across al
 EOF
 fi
 
-MODEL_ID=$(echo "${AGENT_MODEL}" | cut -d'/' -f2)
-MODEL_NAME=$(echo "${MODEL_ID}" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
+AGENT_PROVIDER=$(echo "${AGENT_MODEL}" | cut -d'/' -f1)
+MODEL_ID=$(echo "${AGENT_MODEL}" | cut -d'/' -f2-)
+MODEL_NAME=$(echo "${MODEL_ID##*/}" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
 OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '[\d.]+' | head -1 || echo "2026.3.13")
 OC_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
@@ -130,20 +131,19 @@ cat > "${CONFIG_FILE}" << EOJSON
   "models": {
     "providers": {
       "anthropic": {
-        "apiKey": "${ANTHROPIC_API_KEY}"
+        "apiKey": "${ANTHROPIC_API_KEY}",
+        "baseUrl": "https://api.anthropic.com",
+        "models": $([ "${AGENT_PROVIDER}" = "anthropic" ] && echo '[{"id":"'"${MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]' || echo '[]')
       },
       "google": {
         "apiKey": "${GEMINI_API_KEY}",
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
-        "models": [{
-          "id": "${MODEL_ID}",
-          "name": "${MODEL_NAME}",
-          "reasoning": false,
-          "input": ["text"],
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "contextWindow": 1000000,
-          "maxTokens": 8192
-        }]
+        "models": $([ "${AGENT_PROVIDER}" = "google" ] && echo '[{"id":"'"${MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]' || echo '[]')
+      },
+      "openrouter": {
+        "apiKey": "${OPENROUTER_API_KEY}",
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "models": $([ "${AGENT_PROVIDER}" = "openrouter" ] && echo '[{"id":"'"${MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]' || echo '[]')
       }
     }
   },
