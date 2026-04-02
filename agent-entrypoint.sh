@@ -189,7 +189,7 @@ with open(path) as f:
     cfg = json.load(f)
 cfg.setdefault("channels", {})["discord"] = {
     "enabled": True,
-    "botToken": token,
+    "token": token,
     "dmPolicy": "open",
     "allowFrom": ["*"]
 }
