@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY agent-entrypoint.sh /home/node/entrypoint.sh
+
 RUN sed -i 's/\r$//' /home/node/entrypoint.sh && chmod +x /home/node/entrypoint.sh
 
 USER node

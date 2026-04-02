@@ -1,0 +1,14 @@
+
+Outputs:
+
+acm_validation_records = {
+  "openclaw.zkyc.tech" = {
+    "name" = "_a5dcf5ff72a4cd1fa5edafb236465547.openclaw.zkyc.tech."
+    "type" = "CNAME"
+    "value" = "_05b1930c51b18ebd77ac0b4f244bd835.jkddzztszm.acm-validations.aws."
+  }
+}
+alb_dns = "openclawmanager-staging-alb-1615694533.us-east-1.elb.amazonaws.com"
+ecr_agent_url = "005965605441.dkr.ecr.us-east-1.amazonaws.com/openclawmanager-staging-agent"
+ecr_app_url = "005965605441.dkr.ecr.us-east-1.amazonaws.com/openclawmanager-staging-app"
+ecs_cluster_arn = "arn:aws:ecs:us-east-1:005965605441:cluster/openclawmanager-staging-cluster"

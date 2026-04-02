@@ -18,6 +18,10 @@ variable "gemini_api_key" {
   sensitive = true
 }
 
+variable "anthropic_api_key" {
+  sensitive = true
+}
+
 variable "telegram_bot_token" {
   sensitive = true
 }
@@ -60,4 +64,15 @@ variable "cron_secret" {
 
 variable "domain" {
   description = "Your domain e.g. app.yourdomain.com"
+}
+
+variable "hosted_zone_name" {
+  description = "Route53 hosted zone for automatic DNS validation (e.g. zkyc.tech). Leave empty to skip."
+  default     = ""
+}
+
+locals {
+  environment     = terraform.workspace == "default" ? "prod" : terraform.workspace
+  app_task_cpu    = local.environment == "staging" ? 512 : 1024
+  app_task_memory = local.environment == "staging" ? 1024 : 2048
 }

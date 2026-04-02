@@ -1,5 +1,5 @@
 resource "aws_security_group" "alb" {
-  name   = "${var.app_name}-alb-sg"
+  name   = "${var.app_name}-${local.environment}-alb-sg"
   vpc_id = aws_vpc.main.id
 
   ingress {
@@ -25,7 +25,7 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_lb" "main" {
-  name               = "${var.app_name}-alb"
+  name               = "${var.app_name}-${local.environment}-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -33,7 +33,7 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "app" {
-  name        = "${var.app_name}-tg"
+  name        = "${var.app_name}-${local.environment}-tg"
   port        = 3000
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
@@ -84,6 +84,10 @@ resource "aws_acm_certificate" "main" {
 }
 
 resource "aws_acm_certificate_validation" "main" {
-  certificate_arn         = aws_acm_certificate.main.arn
-  validation_record_fqdns = [for record in aws_acm_certificate.main.domain_validation_options : record.resource_record_name]
+  certificate_arn = aws_acm_certificate.main.arn
+  validation_record_fqdns = var.hosted_zone_name != "" ? [
+    for record in aws_route53_record.cert_validation : record.fqdn
+  ] : [
+    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.resource_record_name
+  ]
 }

@@ -1,5 +1,5 @@
 resource "aws_secretsmanager_secret" "app" {
-  name = "${var.app_name}/prod"
+  name = "${var.app_name}/${local.environment}"
 }
     # DATABASE_URL                       = "postgresql://openclaw:${var.db_password}@${aws_db_instance.main.endpoint}/openclaw"
 
@@ -9,6 +9,7 @@ resource "aws_secretsmanager_secret_version" "app" {
     DATABASE_URL = "postgresql://openclaw:${var.db_password}@${aws_db_instance.main.endpoint}/openclaw?sslmode=require"
     BETTER_AUTH_SECRET                 = var.better_auth_secret
     GEMINI_API_KEY                     = var.gemini_api_key
+    ANTHROPIC_API_KEY                  = var.anthropic_api_key
     TELEGRAM_BOT_TOKEN                 = var.telegram_bot_token
     TELEGRAM_BOT_USERNAME              = var.telegram_bot_username
     TELEGRAM_WEBHOOK_SECRET            = var.telegram_webhook_secret

@@ -1,5 +1,5 @@
 resource "aws_security_group" "rds" {
-  name   = "${var.app_name}-rds-sg"
+  name   = "${var.app_name}-${local.environment}-rds-sg"
   vpc_id = aws_vpc.main.id
 
   ingress {
@@ -11,12 +11,12 @@ resource "aws_security_group" "rds" {
 }
 
 resource "aws_db_subnet_group" "main" {
-  name       = "${var.app_name}-db-subnet"
+  name       = "${var.app_name}-${local.environment}-db-subnet"
   subnet_ids = aws_subnet.public[*].id
 }
 
 resource "aws_db_instance" "main" {
-  identifier              = "${var.app_name}-db"
+  identifier              = "${var.app_name}-${local.environment}-db"
   engine                  = "postgres"
   engine_version          = "16"
   instance_class          = "db.t4g.micro"

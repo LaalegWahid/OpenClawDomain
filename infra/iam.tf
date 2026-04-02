@@ -1,6 +1,6 @@
 # Execution role — pulls images, reads secrets
 resource "aws_iam_role" "ecs_execution" {
-  name = "${var.app_name}-ecs-execution"
+  name = "${var.app_name}-${local.environment}-ecs-execution"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -31,7 +31,7 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
 
 # Task role — what your running app container can do
 resource "aws_iam_role" "ecs_task" {
-  name = "${var.app_name}-ecs-task"
+  name = "${var.app_name}-${local.environment}-ecs-task"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

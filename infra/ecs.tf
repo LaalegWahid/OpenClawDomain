@@ -1,5 +1,5 @@
 resource "aws_ecs_cluster" "main" {
-  name = "${var.app_name}-cluster"
+  name = "${var.app_name}-${local.environment}-cluster"
   setting {
     name  = "containerInsights"
     value = "enabled"
@@ -18,7 +18,7 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 }
 
 resource "aws_security_group" "ecs_tasks" {
-  name   = "${var.app_name}-ecs-tasks-sg"
+  name   = "${var.app_name}-${local.environment}-ecs-tasks-sg"
   vpc_id = aws_vpc.main.id
 
   ingress {
@@ -44,23 +44,23 @@ resource "aws_security_group" "ecs_tasks" {
 }
 
 resource "aws_cloudwatch_log_group" "app" {
-  name              = "/ecs/${var.app_name}/app"
+  name              = "/ecs/${var.app_name}-${local.environment}/app"
   retention_in_days = 14
 }
 
 resource "aws_cloudwatch_log_group" "agents" {
-  name              = "/ecs/${var.app_name}/agents"
+  name              = "/ecs/${var.app_name}-${local.environment}/agents"
   retention_in_days = 14
 }
 
 resource "aws_ecr_repository" "app" {
-  name                 = "${var.app_name}-app"
+  name                 = "${var.app_name}-${local.environment}-app"
   image_tag_mutability = "MUTABLE"
   image_scanning_configuration { scan_on_push = true }
 }
 
 resource "aws_ecr_repository" "agent" {
-  name                 = "${var.app_name}-agent"
+  name                 = "${var.app_name}-${local.environment}-agent"
   image_tag_mutability = "MUTABLE"
   image_scanning_configuration { scan_on_push = true }
 }
@@ -70,8 +70,8 @@ resource "aws_ecs_task_definition" "app" {
   family                   = "${var.app_name}-app"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 1024
-  memory                   = 2048
+  cpu                      = local.app_task_cpu
+  memory                   = local.app_task_memory
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
@@ -118,7 +118,7 @@ resource "aws_ecs_task_definition" "app" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = "/ecs/${var.app_name}/app"
+        "awslogs-group"         = "/ecs/${var.app_name}-${local.environment}/app"
         "awslogs-region"        = var.region
         "awslogs-stream-prefix" = "app"
       }
@@ -179,14 +179,14 @@ resource "aws_ecs_task_definition" "agent" {
     ]
 
     secrets = [
-      { name = "GEMINI_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:GEMINI_API_KEY::" },
+      { name = "ANTHROPIC_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:ANTHROPIC_API_KEY::" },
       { name = "GATEWAY_TOKEN",  valueFrom = "${aws_secretsmanager_secret.app.arn}:GATEWAY_TOKEN::" },
     ]
 
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = "/ecs/${var.app_name}/agents"
+        "awslogs-group"         = "/ecs/${var.app_name}-${local.environment}/agents"
         "awslogs-region"        = var.region
         "awslogs-stream-prefix" = each.key
       }
@@ -196,7 +196,7 @@ resource "aws_ecs_task_definition" "agent" {
 
 # ── ECS Service ───────────────────────────────────────────────
 resource "aws_ecs_service" "app" {
-  name                   = "${var.app_name}-service"
+  name                   = "${var.app_name}-${local.environment}-service"
   cluster                = aws_ecs_cluster.main.id
   task_definition        = aws_ecs_task_definition.app.arn
   desired_count          = 1
@@ -219,6 +219,8 @@ resource "aws_ecs_service" "app" {
     enable   = true
     rollback = true
   }
+
+  depends_on = [aws_lb_listener.https]
 
   lifecycle {
     ignore_changes = [desired_count, task_definition]

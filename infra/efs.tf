@@ -1,10 +1,10 @@
 resource "aws_efs_file_system" "agents" {
   encrypted = true
-  tags = { Name = "${var.app_name}-agents-efs" }
+  tags = { Name = "${var.app_name}-${local.environment}-agents-efs" }
 }
 
 resource "aws_security_group" "efs" {
-  name   = "${var.app_name}-efs-sg"
+  name   = "${var.app_name}-${local.environment}-efs-sg"
   vpc_id = aws_vpc.main.id
 
   ingress {

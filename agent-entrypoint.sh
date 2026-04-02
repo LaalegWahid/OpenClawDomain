@@ -1,22 +1,33 @@
 #!/bin/bash
 set -e
 
+export HOME="${HOME:-/home/node}"
+
 OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
-CONFIG_FILE="${OPENCLAW_HOME}/openclaw.json"
+DEFAULT_OC_DIR="/home/node/.openclaw"
+CONFIG_FILE="${DEFAULT_OC_DIR}/openclaw.json"
 WORKSPACE="${OPENCLAW_HOME}/workspace"
 
 echo "Starting OpenClaw agent: ${AGENT_ID} (${AGENT_TYPE})"
+echo "HOME=${HOME} CONFIG_FILE=${CONFIG_FILE} WORKSPACE=${WORKSPACE}"
 
 mkdir -p "${OPENCLAW_HOME}"
+mkdir -p "${DEFAULT_OC_DIR}"
 mkdir -p "${WORKSPACE}"
 
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful AI assistant.}"
-AGENT_MODEL="google/gemini-2.5-flash"
+AGENT_MODEL="anthropic/claude-sonnet-4-6"
 
 # Write SYSTEM.md always (system prompt can legitimately change per deployment)
 cat > "${WORKSPACE}/SYSTEM.md" << EOSYSTEM
 ${SYSTEM_PROMPT}
 EOSYSTEM
+echo "=== ENV DEBUG ==="
+echo "AGENT_ID=${AGENT_ID}"
+echo "AGENT_TYPE=${AGENT_TYPE}"
+echo "GATEWAY_TOKEN=${GATEWAY_TOKEN:0:6}..."   # partial, don't expose full token
+echo "GEMINI_API_KEY=${GEMINI_API_KEY:0:6}..."
+echo "================="
 
 # ── Role files: only write on FIRST launch ──────────────────
 # If SOUL.md already exists on EFS, this is a restart — preserve it
@@ -115,24 +126,11 @@ MODEL_NAME=$(echo "${MODEL_ID}" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
 OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '[\d.]+' | head -1 || echo "2026.3.13")
 OC_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
+
 cat > "${CONFIG_FILE}" << EOJSON
 {
-  "models": {
-    "providers": {
-      "google": {
-        "apiKey": "${GEMINI_API_KEY}",
-        "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
-        "models": [{
-          "id": "${MODEL_ID}",
-          "name": "${MODEL_NAME}",
-          "reasoning": false,
-          "input": ["text"],
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "contextWindow": 1000000,
-          "maxTokens": 8192
-        }]
-      }
-    }
+  "env": {
+    "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
   },
   "agents": {
     "defaults": {
@@ -140,7 +138,13 @@ cat > "${CONFIG_FILE}" << EOJSON
       "workspace": "${WORKSPACE}",
       "skipBootstrap": true,
       "compaction": { "mode": "safeguard" }
-    }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true
+      }
+    ]
   },
   "commands": {
     "native": "auto",
@@ -153,7 +157,7 @@ cat > "${CONFIG_FILE}" << EOJSON
     "bind": "lan",
     "port": 18789,
     "controlUi": {
-      "allowedOrigins": ["http://localhost:18789", "http://127.0.0.1:18789"]
+      "dangerouslyAllowHostHeaderOriginFallback": true
     },
     "auth": { "token": "${GATEWAY_TOKEN}" },
     "http": { "endpoints": { "responses": { "enabled": true } } }
@@ -166,4 +170,10 @@ cat > "${CONFIG_FILE}" << EOJSON
 EOJSON
 
 echo "Config written | Agent: ${AGENT_ID} | Type: ${AGENT_TYPE} | Home: ${OPENCLAW_HOME}"
+
+# Verify config is readable
+echo "Config check: $(cat ${CONFIG_FILE} | head -c 50)..."
+ls -la "${CONFIG_FILE}"
+
+export OPENCLAW_CONFIG_PATH="${CONFIG_FILE}"
 exec openclaw gateway --bind lan --port 18789

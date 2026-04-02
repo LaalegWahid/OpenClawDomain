@@ -1,5 +1,5 @@
 resource "aws_elasticache_cluster" "main" {
-  cluster_id           = "${var.app_name}-redis"
+  cluster_id           = "${var.app_name}-${local.environment}-redis"
   engine               = "redis"
   node_type            = "cache.t4g.micro"
   num_cache_nodes      = 1
@@ -8,12 +8,12 @@ resource "aws_elasticache_cluster" "main" {
 }
 
 resource "aws_elasticache_subnet_group" "main" {
-  name       = "${var.app_name}-redis-subnet"
+  name       = "${var.app_name}-${local.environment}-redis-subnet"
   subnet_ids = aws_subnet.private[*].id
 }
 
 resource "aws_security_group" "redis" {
-  name   = "${var.app_name}-redis-sg"
+  name   = "${var.app_name}-${local.environment}-redis-sg"
   vpc_id = aws_vpc.main.id
 
   ingress {
