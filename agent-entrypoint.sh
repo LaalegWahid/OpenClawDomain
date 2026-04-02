@@ -274,13 +274,14 @@ import json, sys, os
 path = sys.argv[1]
 profiles = {}
 if os.environ.get("ANTHROPIC_API_KEY"):
-    profiles["anthropic"] = {"apiKey": os.environ["ANTHROPIC_API_KEY"]}
+    profiles["anthropic:default"] = {"type": "api_key", "provider": "anthropic", "key": os.environ["ANTHROPIC_API_KEY"]}
 if os.environ.get("GEMINI_API_KEY"):
-    profiles["google"] = {"apiKey": os.environ["GEMINI_API_KEY"]}
+    profiles["google:default"] = {"type": "api_key", "provider": "google", "key": os.environ["GEMINI_API_KEY"]}
 if os.environ.get("OPENROUTER_API_KEY"):
-    profiles["openrouter"] = {"apiKey": os.environ["OPENROUTER_API_KEY"]}
+    profiles["openrouter:default"] = {"type": "api_key", "provider": "openrouter", "key": os.environ["OPENROUTER_API_KEY"]}
+data = {"version": 1, "profiles": profiles}
 with open(path, "w") as f:
-    json.dump(profiles, f, indent=2)
+    json.dump(data, f, indent=2)
 print(f"Auth profiles written: {list(profiles.keys())}")
 PYEOF
 
