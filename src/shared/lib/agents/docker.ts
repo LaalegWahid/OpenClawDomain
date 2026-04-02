@@ -53,6 +53,10 @@ export async function waitForTaskRunning(
   taskArn: string,
   timeoutMs = 120000
 ): Promise<void> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localWaitForContainerRunning } = await import("./docker.local");
+    return localWaitForContainerRunning(taskArn, timeoutMs);
+  }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const result = await ecs.send(new DescribeTasksCommand({
@@ -88,6 +92,10 @@ export async function launchContainer(
   channels?: ChannelConfig,
   mcpServers?: Record<string, McpServerConfig>,
 ): Promise<LaunchResult> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localLaunchContainer } = await import("./docker.local");
+    return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers);
+  }
   const domainConfig = DOMAIN_CONFIGS[agentType];
   const fullSystemPrompt = domainConfig.boundaryPreamble + systemPrompt;
 
@@ -147,6 +155,10 @@ export async function launchWhatsappLinker(
   agentId: string,
   agentType: AgentType,
 ): Promise<string> {
+  if (process.env.LOCAL_DEV === "true") {
+    logger.warn({ agentId }, "[LOCAL_DEV] WhatsApp linker skipped — requires ECS");
+    return `local-whatsapp-stub-${Date.now()}`;
+  }
   const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
   if (!webhookBaseUrl) throw new Error("WEBHOOK_BASE_URL is not set");
 
@@ -185,6 +197,10 @@ export async function launchWhatsappLinker(
 }
 
 export async function stopContainer(taskArn: string): Promise<void> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localStopContainer } = await import("./docker.local");
+    return localStopContainer(taskArn);
+  }
   try {
     await ecs.send(new StopTaskCommand({
       cluster: getCluster(),
@@ -198,6 +214,10 @@ export async function stopContainer(taskArn: string): Promise<void> {
 }
 
 export async function getContainerStatus(taskArn: string): Promise<string> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localGetContainerStatus } = await import("./docker.local");
+    return localGetContainerStatus(taskArn);
+  }
   try {
     const result = await ecs.send(new DescribeTasksCommand({
       cluster: getCluster(),
@@ -210,6 +230,7 @@ export async function getContainerStatus(taskArn: string): Promise<string> {
 }
 
 async function getTaskIp(taskArn: string): Promise<string> {
+  if (process.env.LOCAL_DEV === "true") return "127.0.0.1";
   const result = await ecs.send(new DescribeTasksCommand({
     cluster: getCluster(),
     tasks: [taskArn],

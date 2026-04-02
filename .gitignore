@@ -60,3 +60,4 @@ override.tf.json
 .terraformrc
 terraform.rc
 docker_build_push.sh
+*.pem

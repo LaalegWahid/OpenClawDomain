@@ -13,9 +13,12 @@ url.searchParams.delete('sslrootcert');
 const cleanUrl = url.toString();
 
 const certPath = path.join(process.cwd(), 'global-bundle.pem');
-const sslOptions = fs.existsSync(certPath)
-  ? { ca: fs.readFileSync(certPath).toString() }
-  : true;
+const isLocalHost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+const sslOptions = (process.env.LOCAL_DEV === "true" && isLocalHost)
+  ? false
+  : fs.existsSync(certPath)
+    ? { ca: fs.readFileSync(certPath).toString() }
+    : true;
 
 const client = postgres(cleanUrl, {
   max: 10,
