@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Settings, LogOut, Menu } from "lucide-react";
+import { LayoutDashboard, Settings, LogOut, Menu, ShieldAlert } from "lucide-react";
 import { authClient } from "../../../shared/lib/auth/client";
 
 const NAV = [
@@ -11,14 +11,17 @@ const NAV = [
   { label: "Settings",  href: "/settings",  icon: Settings },
 ];
 
+const ADMIN_NAV = { label: "Admin", href: "/admin", icon: ShieldAlert };
+
 interface DashboardShellProps {
   children: React.ReactNode;
   userEmail?: string | null;
   userName?: string | null;
   pageTitle: string;
+  isAdmin?: boolean;
 }
 
-export function DashboardShell({ children, userEmail, userName, pageTitle }: DashboardShellProps) {
+export function DashboardShell({ children, userEmail, userName, pageTitle, isAdmin }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -119,7 +122,7 @@ useEffect(() => {
 
           {/* Nav */}
           <nav style={{ flex: 1, padding: "0.75rem 0.75rem 0" }}>
-            {NAV.map(item => {
+            {[...NAV, ...(isAdmin ? [ADMIN_NAV] : [])].map(item => {
               const active = pathname === item.href;
               const Icon = item.icon;
               return (

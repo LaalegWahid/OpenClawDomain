@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { signIn } from "../actions/auth.actions";
 import { validatePasswordLength } from "../lib/auth.lib";
 
@@ -20,6 +20,10 @@ function Field({
   autoComplete?: string;
 }) {
   const [focused, setFocused] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const isPassword = type === 'password';
+  const inputType = isPassword ? (visible ? 'text' : 'password') : type;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <label htmlFor={id} style={{
@@ -31,29 +35,53 @@ function Field({
       }}>
         {label}
       </label>
-      <input
-        id={id}
-        type={type}
-        autoComplete={autoComplete}
-        required
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={{
-          background: '#0A0A0A',
-          border: `0.5px solid ${focused ? '#FF4D00' : '#1E1E1E'}`,
-          borderRadius: '8px',
-          padding: '11px 14px',
-          fontSize: '14px',
-          color: '#F0EEE8',
-          outline: 'none',
-          width: '100%',
-          transition: 'border-color 0.15s',
-          boxSizing: 'border-box',
-        }}
-      />
+      <div style={{ position: 'relative' }}>
+        <input
+          id={id}
+          type={inputType}
+          autoComplete={autoComplete}
+          required
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            background: '#0A0A0A',
+            border: `0.5px solid ${focused ? '#FF4D00' : '#1E1E1E'}`,
+            borderRadius: '8px',
+            padding: isPassword ? '11px 40px 11px 14px' : '11px 14px',
+            fontSize: '14px',
+            color: '#F0EEE8',
+            outline: 'none',
+            width: '100%',
+            transition: 'border-color 0.15s',
+            boxSizing: 'border-box',
+          }}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setVisible(v => !v)}
+            tabIndex={-1}
+            style={{
+              position: 'absolute',
+              right: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              color: '#555555',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {visible ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -195,7 +223,7 @@ export function RegisterForm() {
               Creating account…
             </>
           ) : (
-            "Create account →"
+            "Create account"
           )}
         </button>
       </form>

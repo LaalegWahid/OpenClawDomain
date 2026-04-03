@@ -1,13 +1,31 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import fs from 'fs';
+import path from 'path';
 import { env } from '../../config/env';
 
-const client = postgres(env.DATABASE_URL, {
+// Strip sslmode/sslrootcert from the URL — postgres.js forwards unknown
+// query params as server startup parameters, which PostgreSQL rejects.
+// SSL is handled entirely via the `ssl` option below.
+const url = new URL(env.DATABASE_URL);
+url.searchParams.delete('sslmode');
+url.searchParams.delete('sslrootcert');
+const cleanUrl = url.toString();
+
+const certPath = path.join(process.cwd(), 'global-bundle.pem');
+const isLocalHost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+const sslOptions = (process.env.LOCAL_DEV === "true" && isLocalHost)
+  ? false
+  : fs.existsSync(certPath)
+    ? { ca: fs.readFileSync(certPath).toString() }
+    : true;
+
+const client = postgres(cleanUrl, {
   max: 10,
   idle_timeout: 20,
   connect_timeout: 30,
   max_lifetime: 60 * 30,
-  ssl: "require",
+  ssl: sslOptions,
 });
 
 // Configure connection pool to prevent connection exhaustion

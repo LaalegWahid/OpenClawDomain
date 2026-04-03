@@ -2,14 +2,21 @@ FROM --platform=linux/arm64 ghcr.io/openclaw/openclaw:latest
 
 USER root
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+RUN apt-get update && apt-get install -y --no-install-recommends curl python3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY agent-entrypoint.sh /home/node/entrypoint.sh
-RUN sed -i 's/\r$//' /home/node/entrypoint.sh && chmod +x /home/node/entrypoint.sh
+COPY whatsapp-linker.sh /home/node/whatsapp-linker.sh
+RUN sed -i 's/\r$//' /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \
+    && chmod +x /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \
+    && mkdir -p /home/node/.openclaw \
+    && chown node:node /home/node/.openclaw
 
 USER node
 WORKDIR /home/node
+
+# Pre-install WhatsApp channel plugin so the linker doesn't need to install it at runtime
+RUN openclaw plugins install @openclaw/whatsapp
 
 EXPOSE 18789
 

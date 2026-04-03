@@ -53,6 +53,10 @@ export async function waitForTaskRunning(
   taskArn: string,
   timeoutMs = 120000
 ): Promise<void> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localWaitForContainerRunning } = await import("./docker.local");
+    return localWaitForContainerRunning(taskArn, timeoutMs);
+  }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const result = await ecs.send(new DescribeTasksCommand({
@@ -69,16 +73,48 @@ export async function waitForTaskRunning(
   throw new Error("Timed out waiting for task to start");
 }
 
+export interface ChannelConfig {
+  discord?: { botToken: string };
+  /** Baileys/QR-based WhatsApp — credentials live on EFS, we just enable the channel */
+  whatsapp?: { enabled: true };
+}
+
+export interface McpServerConfig {
+  transport: "stdio" | "http";
+  config: Record<string, unknown>;
+}
+
 export async function launchContainer(
   userId: string,
   agentId: string,
   systemPrompt: string,
   agentType: AgentType,
+  channels?: ChannelConfig,
+  mcpServers?: Record<string, McpServerConfig>,
 ): Promise<LaunchResult> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localLaunchContainer } = await import("./docker.local");
+    return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers);
+  }
   const domainConfig = DOMAIN_CONFIGS[agentType];
   const fullSystemPrompt = domainConfig.boundaryPreamble + systemPrompt;
 
   logger.info({ agentId, agentType }, "Launching ECS agent task");
+
+  const extraEnv: { name: string; value: string }[] = [];
+
+  if (channels?.discord?.botToken) {
+    extraEnv.push({ name: "DISCORD_BOT_TOKEN", value: channels.discord.botToken });
+  }
+  if (channels?.whatsapp?.enabled) {
+    // Credentials live on EFS (written by the WhatsApp linker task).
+    // We only need to tell the entrypoint to enable the channel in openclaw.json.
+    extraEnv.push({ name: "WHATSAPP_ENABLED", value: "true" });
+  }
+  if (mcpServers && Object.keys(mcpServers).length > 0) {
+    const mcpConfigB64 = Buffer.from(JSON.stringify(mcpServers)).toString("base64");
+    extraEnv.push({ name: "MCP_CONFIG_B64", value: mcpConfigB64 });
+  }
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
@@ -99,6 +135,7 @@ export async function launchContainer(
           { name: "AGENT_TYPE",    value: agentType },
           { name: "SYSTEM_PROMPT", value: fullSystemPrompt },
           { name: "OPENCLAW_HOME", value: `/home/node/.openclaw/${userId}/${agentId}` },
+          ...extraEnv,
         ],
       }],
     },
@@ -113,7 +150,57 @@ export async function launchContainer(
   return { containerId: task.taskArn, port: 18789 };
 }
 
+export async function launchWhatsappLinker(
+  userId: string,
+  agentId: string,
+  agentType: AgentType,
+): Promise<string> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localLaunchWhatsappLinker } = await import("./docker.local");
+    return localLaunchWhatsappLinker(userId, agentId);
+  }
+  const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+  if (!webhookBaseUrl) throw new Error("WEBHOOK_BASE_URL is not set");
+
+  const result = await ecs.send(new RunTaskCommand({
+    cluster: getCluster(),
+    taskDefinition: `openclawmanager-agent-${agentType}`,
+    launchType: "FARGATE",
+    networkConfiguration: {
+      awsvpcConfiguration: {
+        subnets: getSubnets(),
+        securityGroups: [getSecurityGroup()],
+        assignPublicIp: "ENABLED",
+      },
+    },
+    overrides: {
+      containerOverrides: [{
+        name: "agent",
+        environment: [
+          { name: "OPENCLAW_MODE",   value: "whatsapp_link" },
+          { name: "AGENT_ID",        value: agentId },
+          { name: "OPENCLAW_HOME",   value: `/home/node/.openclaw/${userId}/${agentId}` },
+          { name: "WEBHOOK_BASE_URL", value: webhookBaseUrl },
+          { name: "GATEWAY_TOKEN",   value: getGatewayToken() },
+        ],
+      }],
+    },
+  }));
+
+  const task = result.tasks?.[0];
+  if (!task?.taskArn) {
+    throw new Error(`Linker ECS task failed to start: ${JSON.stringify(result.failures)}`);
+  }
+
+  logger.info({ taskArn: task.taskArn, agentId }, "WhatsApp linker task started");
+  return task.taskArn;
+}
+
 export async function stopContainer(taskArn: string): Promise<void> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localStopContainer } = await import("./docker.local");
+    return localStopContainer(taskArn);
+  }
   try {
     await ecs.send(new StopTaskCommand({
       cluster: getCluster(),
@@ -127,6 +214,10 @@ export async function stopContainer(taskArn: string): Promise<void> {
 }
 
 export async function getContainerStatus(taskArn: string): Promise<string> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localGetContainerStatus } = await import("./docker.local");
+    return localGetContainerStatus(taskArn);
+  }
   try {
     const result = await ecs.send(new DescribeTasksCommand({
       cluster: getCluster(),
@@ -138,7 +229,12 @@ export async function getContainerStatus(taskArn: string): Promise<string> {
   }
 }
 
-async function getTaskIp(taskArn: string): Promise<string> {
+async function getContainerBaseUrl(taskArn: string): Promise<string> {
+  if (process.env.LOCAL_DEV === "true") {
+    const { localGetContainerPort } = await import("./docker.local");
+    const port = await localGetContainerPort(taskArn);
+    return `http://127.0.0.1:${port}`;
+  }
   const result = await ecs.send(new DescribeTasksCommand({
     cluster: getCluster(),
     tasks: [taskArn],
@@ -154,24 +250,28 @@ async function getTaskIp(taskArn: string): Promise<string> {
     ?.value;
 
   if (!privateIp) throw new Error("Could not resolve task private IP");
-  return privateIp;
+  return `http://${privateIp}:18789`;
 }
 
 // ─── Core gateway caller ──────────────────────────────────────────────────────
 
-async function callGateway(ip: string, input: unknown, timeoutMs: number): Promise<{ output: OutputItem[] }> {
-  const res = await fetch(`http://${ip}:18789/v1/responses`, {
+async function callGateway(baseUrl: string, input: unknown, timeoutMs: number): Promise<{ output: OutputItem[] }> {
+  const res = await fetch(`${baseUrl}/v1/responses`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${getGatewayToken()}`,
       "x-openclaw-agent-id": "main",
     },
-    body: JSON.stringify({ model: "openclaw", input, stream: false }),
+    body: JSON.stringify({ model: "openclaw", input }),
     signal: AbortSignal.timeout(timeoutMs),
   });
 
-  if (!res.ok) throw new Error(`Gateway responded ${res.status}`);
+  if (!res.ok) {
+    const errorBody = await res.text().catch(() => "unable to read body");
+    logger.error({ status: res.status, errorBody }, "Gateway error response");
+    throw new Error(`Gateway responded ${res.status}: ${errorBody}`);
+  }
   return res.json();
 }
 
@@ -188,7 +288,7 @@ async function callGateway(ip: string, input: unknown, timeoutMs: number): Promi
 // The loop has a max of 8 iterations to prevent runaway tool chains.
 
 async function runAgentLoop(
-  ip: string,
+  baseUrl: string,
   initialInput: unknown,
   timeoutMs: number,
 ): Promise<string> {
@@ -196,7 +296,7 @@ async function runAgentLoop(
   let input = initialInput;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const data = await callGateway(ip, input, timeoutMs);
+    const data = await callGateway(baseUrl, input, timeoutMs);
     const output: OutputItem[] = data.output ?? [];
 
     // Collect any text from message items
@@ -263,23 +363,21 @@ export async function sendCommand(
   history?: ChatMessage[],
   agentType?: AgentType,
 ): Promise<string> {
-  const ip = await getTaskIp(taskArn);
+  const baseUrl = await getContainerBaseUrl(taskArn);
 
   let input: unknown;
 
   // Use structured input array when we have history or an agentType reminder,
   // plain string for simple single-turn messages
   if (history && history.length > 0 || agentType) {
-    type InputItem =
-      | { role: "developer"; content: string }
-      | { role: "user";      content: string }
-      | { role: "assistant"; content: string };
+    type InputItem = { type: "message"; role: "developer" | "user" | "assistant"; content: string };
 
     const items: InputItem[] = [];
 
     if (agentType) {
       const domainConfig = DOMAIN_CONFIGS[agentType];
       items.push({
+        type: "message",
         role: "developer",
         content: `[REMINDER: You are a ${domainConfig.label}. If the question is NOT about ${agentType}, refuse politely.]`,
       });
@@ -287,17 +385,17 @@ export async function sendCommand(
 
     if (history && history.length > 0) {
       for (const msg of history.slice(-10)) {
-        items.push({ role: msg.role, content: msg.content });
+        items.push({ type: "message", role: msg.role, content: msg.content });
       }
     }
 
-    items.push({ role: "user", content: command });
+    items.push({ type: "message", role: "user", content: command });
     input = items;
   } else {
     input = command;
   }
 
-  return runAgentLoop(ip, input, 60_000);
+  return runAgentLoop(baseUrl, input, 60_000);
 }
 
 /**
@@ -311,25 +409,22 @@ export async function sendDocumentCommand(
   contentPrompt: string,
   history?: ChatMessage[],
 ): Promise<string> {
-  const ip = await getTaskIp(taskArn);
+  const baseUrl = await getContainerBaseUrl(taskArn);
 
-  type InputItem =
-    | { role: "developer"; content: string }
-    | { role: "user";      content: string }
-    | { role: "assistant"; content: string };
+  type InputItem = { type: "message"; role: "developer" | "user" | "assistant"; content: string };
 
   const items: InputItem[] = [
-    { role: "developer", content: developerInstruction },
+    { type: "message", role: "developer", content: developerInstruction },
   ];
 
   // Include recent history so "write a report about what we discussed" works
   if (history && history.length > 0) {
     for (const msg of history.slice(-10)) {
-      items.push({ role: msg.role, content: msg.content });
+      items.push({ type: "message", role: msg.role, content: msg.content });
     }
   }
 
-  items.push({ role: "user", content: contentPrompt });
+  items.push({ type: "message", role: "user", content: contentPrompt });
 
-  return runAgentLoop(ip, items, 90_000);
+  return runAgentLoop(baseUrl, items, 90_000);
 }

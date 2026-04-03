@@ -5,9 +5,9 @@ import {
   timestamp,
   uuid,
   index,
-  integer,
   jsonb,
   uniqueIndex,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 
@@ -79,12 +79,56 @@ export const chatSession = pgTable(
   ],
 );
 
-export const chatSessionRelations = relations(chatSession, ({ one }) => ({
-  agent: one(agent, {
-    fields: [chatSession.agentId],
-    references: [agent.id],
-  }),
-}));
+export const agentChannel = pgTable(
+  "agent_channel",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    platform: text("platform").notNull(), // "discord" | "whatsapp"
+    credentials: jsonb("credentials").notNull(), // { botToken } or { accountSid, authToken, fromNumber }
+    enabled: boolean("enabled").default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("agent_channel_agentId_idx").on(table.agentId)],
+);
+
+export const agentMcp = pgTable(
+  "agent_mcp",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    serverName: text("server_name").notNull(),
+    transport: text("transport").notNull(), // "stdio" | "http"
+    config: jsonb("config").notNull(), // { command, args, env } or { url, headers }
+    enabled: boolean("enabled").default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("agent_mcp_agentId_idx").on(table.agentId)],
+);
+
+export const whatsappLinkSession = pgTable(
+  "whatsapp_link_session",
+  {
+    id: uuid("id").default(sql`pg_catalog.gen_random_uuid()`).primaryKey(),
+    agentId: uuid("agent_id").notNull().references(() => agent.id, { onDelete: "cascade" }),
+    taskArn: text("task_arn"),
+    status: text("status").notNull().default("pending"), // pending | qr_ready | linked | failed | expired
+    qrData: text("qr_data"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().$onUpdate(() => new Date()).notNull(),
+  },
+  (table) => [index("whatsapp_link_agentId_idx").on(table.agentId)],
+);
+
+// ─── Relations ────────────────────────────────────────────────────────────────
 
 export const agentRelations = relations(agent, ({ one, many }) => ({
   user: one(user, {
@@ -93,11 +137,41 @@ export const agentRelations = relations(agent, ({ one, many }) => ({
   }),
   activities: many(agentActivity),
   chatSessions: many(chatSession),
+  channels: many(agentChannel),
+  mcpServers: many(agentMcp),
 }));
 
 export const agentActivityRelations = relations(agentActivity, ({ one }) => ({
   agent: one(agent, {
     fields: [agentActivity.agentId],
+    references: [agent.id],
+  }),
+}));
+
+export const chatSessionRelations = relations(chatSession, ({ one }) => ({
+  agent: one(agent, {
+    fields: [chatSession.agentId],
+    references: [agent.id],
+  }),
+}));
+
+export const agentChannelRelations = relations(agentChannel, ({ one }) => ({
+  agent: one(agent, {
+    fields: [agentChannel.agentId],
+    references: [agent.id],
+  }),
+}));
+
+export const agentMcpRelations = relations(agentMcp, ({ one }) => ({
+  agent: one(agent, {
+    fields: [agentMcp.agentId],
+    references: [agent.id],
+  }),
+}));
+
+export const whatsappLinkSessionRelations = relations(whatsappLinkSession, ({ one }) => ({
+  agent: one(agent, {
+    fields: [whatsappLinkSession.agentId],
     references: [agent.id],
   }),
 }));
