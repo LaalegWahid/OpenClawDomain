@@ -188,7 +188,7 @@ cfg.setdefault("channels", {})["discord"] = {
     "dmPolicy": "open",
     "allowFrom": ["*"],
     "execApprovals": {
-        "enabled": "auto"
+        "enabled": true
     }
 }
 with open(path, "w") as f:
