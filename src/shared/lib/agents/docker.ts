@@ -156,8 +156,8 @@ export async function launchWhatsappLinker(
   agentType: AgentType,
 ): Promise<string> {
   if (process.env.LOCAL_DEV === "true") {
-    logger.warn({ agentId }, "[LOCAL_DEV] WhatsApp linker skipped — requires ECS");
-    return `local-whatsapp-stub-${Date.now()}`;
+    const { localLaunchWhatsappLinker } = await import("./docker.local");
+    return localLaunchWhatsappLinker(userId, agentId);
   }
   const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
   if (!webhookBaseUrl) throw new Error("WEBHOOK_BASE_URL is not set");

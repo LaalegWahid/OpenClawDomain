@@ -99,6 +99,46 @@ export async function localStopContainer(containerId: string): Promise<void> {
   }
 }
 
+export async function localLaunchWhatsappLinker(
+  userId: string,
+  agentId: string,
+): Promise<string> {
+  const image = process.env.LOCAL_AGENT_IMAGE;
+  if (!image) throw new Error("LOCAL_AGENT_IMAGE is not set");
+
+  const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+  if (!webhookBaseUrl) throw new Error("WEBHOOK_BASE_URL is not set");
+
+  const baseDir = path.resolve(process.env.LOCAL_OPENCLAW_HOME ?? "./local-agent-data");
+  const hostHome = path.join(baseDir, userId, agentId);
+  fs.mkdirSync(hostHome, { recursive: true });
+
+  const env: string[] = [
+    `OPENCLAW_MODE=whatsapp_link`,
+    `AGENT_ID=${agentId}`,
+    `OPENCLAW_HOME=/home/node/.openclaw/${userId}/${agentId}`,
+    `WEBHOOK_BASE_URL=${webhookBaseUrl}`,
+    `GATEWAY_TOKEN=${process.env.GATEWAY_TOKEN ?? ""}`,
+  ];
+
+  const container = await docker.createContainer({
+    Image: image,
+    Env: env,
+    HostConfig: {
+      Binds: [`${hostHome}:/home/node/.openclaw/${userId}/${agentId}`],
+      ExtraHosts: ["host.docker.internal:host-gateway"],
+    },
+    Labels: {
+      "openclaw.agentId": agentId,
+      "openclaw.local": "true",
+      "openclaw.mode": "whatsapp_link",
+    },
+  });
+  await container.start();
+  logger.info({ containerId: container.id, agentId }, "Local WhatsApp linker started");
+  return container.id;
+}
+
 export async function localGetContainerStatus(containerId: string): Promise<string> {
   try {
     const info = await docker.getContainer(containerId).inspect();
