@@ -576,7 +576,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                               <p className="text-xs text-white/40">{handle}</p>
                             ) : (
                               <p className="text-xs text-white/30">
-                                {isWhatsApp ? "Link your WhatsApp account via QR scan" : "Not connected · click to connect"}
+                                {isWhatsApp ? "Coming soon" : "Not connected · click to connect"}
                               </p>
                             )}
                           </div>
@@ -595,14 +595,9 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                             </button>
                           )}
                           {!isConnected && isWhatsApp && (
-                            <Button
-                              size="sm"
-                              disabled={agent.status !== "active"}
-                              onClick={startWhatsappLink}
-                              className="bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs"
-                            >
-                              Link WhatsApp
-                            </Button>
+                            <span className="text-xs text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                              Coming Soon
+                            </span>
                           )}
                           {!isConnected && !isWhatsApp && (
                             <span className="text-xs text-white/30">{isExpanded ? "▲" : "▼"}</span>

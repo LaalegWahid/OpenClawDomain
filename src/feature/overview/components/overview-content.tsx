@@ -381,30 +381,39 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                     discord:  { border: "rgba(88,101,242,0.5)", bg: "rgba(88,101,242,0.08)", label: "#5865F2" },
                     whatsapp: { border: "rgba(37,211,102,0.5)", bg: "rgba(37,211,102,0.08)", label: "#25D366" },
                   };
+                  const isWhatsAppOption = p.value === "whatsapp";
                   const active = platform === p.value;
                   const ac = ACTIVE_COLORS[p.value];
                   return (
                     <button
                       key={p.value}
                       type="button"
-                      onClick={() => setPlatform(p.value)}
+                      onClick={() => { if (!isWhatsAppOption) setPlatform(p.value); }}
+                      disabled={isWhatsAppOption}
                       style={{
                         background: active ? ac.bg : "#0A0A0A",
                         border: active ? `0.5px solid ${ac.border}` : "0.5px solid #1E1E1E",
                         borderRadius: "10px",
                         padding: "12px 8px",
-                        cursor: "pointer",
+                        cursor: isWhatsAppOption ? "not-allowed" : "pointer",
+                        opacity: isWhatsAppOption ? 0.5 : 1,
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
                         gap: "6px",
                         transition: "all 0.15s",
+                        position: "relative",
                       }}
                     >
                       <PlatformSvg platform={p.value} size={22} />
                       <span style={{ fontSize: "11px", fontWeight: 500, color: active ? ac.label : "#555", letterSpacing: "0.03em" }}>
                         {p.label}
                       </span>
+                      {isWhatsAppOption && (
+                        <span style={{ fontSize: "9px", fontWeight: 600, color: "#888", background: "#1A1A1A", border: "0.5px solid #333", borderRadius: "4px", padding: "1px 5px", letterSpacing: "0.05em" }}>
+                          SOON
+                        </span>
+                      )}
                     </button>
                   );
                 })}
