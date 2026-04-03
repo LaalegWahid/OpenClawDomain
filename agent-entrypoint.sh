@@ -186,7 +186,10 @@ cfg.setdefault("channels", {})["discord"] = {
     "enabled": True,
     "token": token,
     "dmPolicy": "open",
-    "allowFrom": ["*"]
+    "allowFrom": ["*"],
+    "execApprovals": {
+        "enabled": "auto"
+    }
 }
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)
