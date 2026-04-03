@@ -10,6 +10,7 @@ export default async function OverviewPage() {
       userEmail={user?.email}
       userName={user?.name}
       pageTitle="Dashboard"
+      isAdmin={user?.role === "admin"}
     >
       <OverviewContent userName={user?.name} />
     </DashboardShell>

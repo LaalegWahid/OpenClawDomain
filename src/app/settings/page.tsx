@@ -10,6 +10,7 @@ export default async function SettingsPage() {
       userEmail={user?.email}
       userName={user?.name}
       pageTitle="Settings"
+      isAdmin={user?.role === "admin"}
     >
       <SettingsContent userName={user?.name} userEmail={user?.email} />
     </DashboardShell>
