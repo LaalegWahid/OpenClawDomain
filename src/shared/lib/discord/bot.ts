@@ -40,7 +40,7 @@ export async function sendDiscordDocument(
   const formData = new FormData();
   const file = new File([new Uint8Array(buffer)], safeFilename, { type: "application/pdf" });
   formData.append("files[0]", file);
-  formData.append("content", caption);
+  formData.append("payload_json", JSON.stringify({ content: caption }));
 
   const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
     method: "POST",
