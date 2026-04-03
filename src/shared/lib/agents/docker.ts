@@ -103,9 +103,6 @@ export async function launchContainer(
 
   const extraEnv: { name: string; value: string }[] = [];
 
-  if (channels?.discord?.botToken) {
-    extraEnv.push({ name: "DISCORD_BOT_TOKEN", value: channels.discord.botToken });
-  }
   if (channels?.whatsapp?.enabled) {
     // Credentials live on EFS (written by the WhatsApp linker task).
     // We only need to tell the entrypoint to enable the channel in openclaw.json.

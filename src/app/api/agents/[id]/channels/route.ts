@@ -7,6 +7,7 @@ import { logger } from "../../../../../shared/lib/logger";
 import { validateBotToken, setWebhook } from "../../../../../shared/lib/telegram/bot";
 import { env } from "../../../../../shared/config/env";
 import { relaunchAgentWithChannels } from "../../../../../shared/lib/agents/relaunch";
+import { startDiscordBot } from "../../../../../shared/lib/discord/manager";
 
 const ALLOWED_PLATFORMS = ["telegram", "discord", "whatsapp"] as const;
 type Platform = (typeof ALLOWED_PLATFORMS)[number];
@@ -118,10 +119,17 @@ export async function POST(
 
     logger.info({ agentId: id, platform }, "Channel added");
 
-    // Relaunch the agent container so it picks up the new channel config
-    relaunchAgentWithChannels(id).catch((err) =>
-      logger.error({ err, agentId: id, platform }, "Relaunch after channel add failed"),
-    );
+    if (platform === "discord") {
+      // Next.js owns Discord — start the bot in-process instead of relaunching the container
+      const agentType = found.type;
+      startDiscordBot(id, credentials.botToken, agentType as import("../../../../../shared/lib/agents/config").AgentType)
+        .catch((err) => logger.error({ err, agentId: id }, "Failed to start Discord bot after connect"));
+    } else {
+      // Relaunch the agent container so it picks up the new channel config (WhatsApp etc.)
+      relaunchAgentWithChannels(id).catch((err) =>
+        logger.error({ err, agentId: id, platform }, "Relaunch after channel add failed"),
+      );
+    }
 
     return NextResponse.json({ channel: created }, { status: 201 });
   } catch (err) {

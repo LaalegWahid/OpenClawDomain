@@ -40,20 +40,14 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
 
   // Primary platform — the agent was originally created with this platform
   const username = agentRecord.botUsername ?? "";
-  if (username.startsWith("discord_")) {
-    // botToken stores the Discord bot token for primary Discord agents
-    channelConfig.discord = { botToken: agentRecord.botToken };
-  }
+  // Note: Discord is intentionally excluded — Next.js manages Discord via manager.ts.
+  // The Discord agentChannel record stays in DB for initAllDiscordBots() on startup.
   if (username.startsWith("whatsapp_")) {
     channelConfig.whatsapp = { enabled: true };
   }
 
-  // Additional channels added later
+  // Additional channels added later (Discord excluded — managed by Next.js)
   for (const ch of channels) {
-    const creds = ch.credentials as Record<string, string>;
-    if (ch.platform === "discord" && creds.botToken && !channelConfig.discord) {
-      channelConfig.discord = { botToken: creds.botToken };
-    }
     if (ch.platform === "whatsapp" && !channelConfig.whatsapp) {
       channelConfig.whatsapp = { enabled: true };
     }

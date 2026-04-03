@@ -63,7 +63,6 @@ export async function localLaunchContainer(
   if (process.env.GEMINI_API_KEY) env.push(`GEMINI_API_KEY=${process.env.GEMINI_API_KEY}`);
   if (process.env.OPENROUTER_API_KEY) env.push(`OPENROUTER_API_KEY=${process.env.OPENROUTER_API_KEY}`);
   if (process.env.AGENT_MODEL) env.push(`AGENT_MODEL=${process.env.AGENT_MODEL}`);
-  if (channels?.discord?.botToken) env.push(`DISCORD_BOT_TOKEN=${channels.discord.botToken}`);
   if (channels?.whatsapp?.enabled) env.push(`WHATSAPP_ENABLED=true`);
   if (mcpServers && Object.keys(mcpServers).length > 0) {
     env.push(`MCP_CONFIG_B64=${Buffer.from(JSON.stringify(mcpServers)).toString("base64")}`);
