@@ -165,6 +165,17 @@ export async function startDiscordBot(
 
   await client.login(token);
   clients.set(agentId, client);
+
+  // Evict any container still holding this Discord token.
+  // Fires on both startup (via initAllDiscordBots) and live connect (via channels/route.ts).
+  const [agentRecord] = await db
+    .select({ containerId: agent.containerId })
+    .from(agent)
+    .where(eq(agent.id, agentId))
+    .limit(1);
+  if (agentRecord?.containerId) {
+    evictContainerDiscordIfNeeded(agentId, agentRecord.containerId);
+  }
 }
 
 export async function stopDiscordBot(agentId: string): Promise<void> {
@@ -183,12 +194,43 @@ export async function stopDiscordBot(agentId: string): Promise<void> {
 
 // ─── Startup initialiser ──────────────────────────────────────────────────────
 
+/**
+ * Checks whether a running container has DISCORD_BOT_TOKEN in its environment
+ * (i.e. it was launched before Next.js took over Discord ownership). If so,
+ * relaunches it — the updated launchContainer no longer passes that token, so
+ * the container starts clean and stops competing for the Discord WebSocket.
+ *
+ * Only runs in LOCAL_DEV mode; on ECS the task definition never included the
+ * token after the code change, so tasks launched after the deploy are already clean.
+ */
+async function evictContainerDiscordIfNeeded(agentId: string, containerId: string): Promise<void> {
+  if (process.env.LOCAL_DEV !== "true") return;
+
+  try {
+    const Dockerode = (await import("dockerode")).default;
+    const docker = new Dockerode();
+    const info = await docker.getContainer(containerId).inspect();
+    const hasToken = (info.Config.Env ?? []).some((e: string) => e.startsWith("DISCORD_BOT_TOKEN="));
+
+    if (!hasToken) return; // Already clean — nothing to do
+
+    logger.info({ agentId, containerId }, "Container has DISCORD_BOT_TOKEN — relaunching to evict it");
+    const { relaunchAgentWithChannels } = await import("../agents/relaunch");
+    relaunchAgentWithChannels(agentId).catch((err) =>
+      logger.error({ agentId, err }, "Container relaunch for Discord eviction failed"),
+    );
+  } catch {
+    // Container may not exist or inspection failed — not critical
+  }
+}
+
 export async function initAllDiscordBots(): Promise<void> {
   logger.info("Initialising Discord bots from DB...");
 
   const discordChannels = await db
     .select({
       agentId: agentChannel.agentId,
+      containerId: agent.containerId,
       credentials: agentChannel.credentials,
       agentType: agent.type,
     })
