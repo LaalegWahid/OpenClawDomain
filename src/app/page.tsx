@@ -14,8 +14,8 @@ interface FAQItem { q: string; a: string }
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const steps: StepCard[] = [
   { num: '01', title: 'Sign Up Free', desc: 'Create your account in under a minute. No credit card required to get started.' },
-  { num: '02', title: 'Launch an Agent', desc: 'Choose Finance, Marketing, or Ops. Paste your Telegram bot token and your agent is live instantly.' },
-  { num: '03', title: 'Command via Telegram', desc: 'Send commands, receive reports, and get proactive alerts directly where you already are.' },
+  { num: '02', title: 'Launch an Agent', desc: 'Choose Finance, Marketing, or Ops. Connect Telegram, Discord, or WhatsApp and your agent is live instantly.' },
+  { num: '03', title: 'Command Anywhere', desc: 'Send commands, receive reports, and get proactive alerts on the platform you already use every day.' },
 ]
 
 const agents: AgentDetail[] = [
@@ -45,8 +45,8 @@ const agents: AgentDetail[] = [
 const telegramFeatures = [
   { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>, title: 'Instant commands', desc: 'Type /report and get a full business summary in seconds. No loading, no waiting.' },
   { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>, title: 'Proactive alerts', desc: 'Your agents message you when something needs attention — anomalies, overdue invoices, deadlines.' },
-  { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>, title: 'PDF delivery', desc: 'Request any report as a PDF and receive it directly in your Telegram chat, ready to share.' },
-  { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>, title: 'Dashboard sync', desc: 'Every Telegram command appears in your web activity log in real time.' },
+  { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>, title: 'PDF delivery', desc: 'Request any report as a PDF and receive it directly in your chat, ready to share.' },
+  { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>, title: 'Dashboard sync', desc: 'Every command appears in your web activity log in real time, regardless of platform.' },
 ]
 
 const activityRows = [
@@ -97,7 +97,7 @@ const pricing: PricingTier[] = [
     features: [
       '1 active agent',
       '200 commands / month',
-      'Telegram integration',
+      'Telegram, Discord & WhatsApp',
       'Activity log (7 days)',
       'Community support',
     ],
@@ -140,8 +140,8 @@ const pricing: PricingTier[] = [
 
 const faqItems: FAQItem[] = [
   {
-    q: 'Do I need a Telegram account to use OpenClaw?',
-    a: 'Yes — each agent runs as a Telegram bot. You create a free bot via BotFather on Telegram (takes 30 seconds), paste the token into OpenClaw, and your agent is live immediately.',
+    q: 'Which messaging platforms are supported?',
+    a: 'OpenClaw supports Telegram, Discord, and WhatsApp. Connect whichever platform your team already uses — each agent runs as a dedicated bot on that service and is live within minutes.',
   },
   {
     q: 'How is my data kept secure?',
@@ -157,11 +157,11 @@ const faqItems: FAQItem[] = [
   },
   {
     q: 'How long does it take to set up?',
-    a: 'Most users have their first agent running within 2 minutes. Sign up, create a Telegram bot, paste the token — done. No infrastructure to manage.',
+    a: 'Most users have their first agent running within 2 minutes. Sign up, connect your preferred platform (Telegram, Discord, or WhatsApp), and your agent is live. No infrastructure to manage.',
   },
   {
     q: 'Can my agent send PDF reports?',
-    a: 'Yes. Any agent can generate a formatted PDF on demand. Ask your Finance agent for a "monthly summary as PDF" and it delivers a professionally formatted document directly in your Telegram chat.',
+    a: 'Yes. Any agent can generate a formatted PDF on demand. Ask your Finance agent for a "monthly summary as PDF" and it delivers a professionally formatted document directly in your chat — Telegram, Discord, or WhatsApp.',
   },
   {
     q: 'What happens if my agent goes offline?',
@@ -190,7 +190,7 @@ function SectionLabel({ text }: { text: string }) {
       fontSize: '11px',
       letterSpacing: '0.12em',
       textTransform: 'uppercase',
-      color: '#FF4D00',
+      color: '#555555',
       marginBottom: '1rem',
       fontWeight: 500,
     }}>
@@ -200,7 +200,7 @@ function SectionLabel({ text }: { text: string }) {
 }
 
 function Check() {
-  return <span style={{ color: '#FF4D00', marginRight: '8px', fontSize: '12px', flexShrink: 0 }}>✓</span>
+  return <span style={{ color: '#555555', marginRight: '8px', fontSize: '12px', flexShrink: 0 }}>✓</span>
 }
 
 // ─── StatCard — animated counter ─────────────────────────────────────────────
@@ -615,7 +615,7 @@ export default function LandingPage() {
   const navLinks = [
     { label: 'How it works', id: 'how-it-works' },
     { label: 'Agents', id: 'agents' },
-    { label: 'Telegram', id: 'telegram' },
+    { label: 'Integrations', id: 'telegram' },
     { label: 'Pricing', id: 'pricing' },
     { label: 'FAQ', id: 'faq' },
   ]
@@ -910,7 +910,7 @@ export default function LandingPage() {
           {/* Subtext */}
           <p ref={heroSubRef} style={{
             fontSize: '1.1rem',
-            color: '#505050',
+            color: '#888888',
             maxWidth: '520px',
             lineHeight: 2,
             margin: '0 auto 3.5rem',
@@ -918,8 +918,8 @@ export default function LandingPage() {
             position: 'relative', zIndex: 1,
           }}>
             Deploy domain-locked AI agents that work 24/7.<br />
-            Command them from Telegram. Monitor everything<br />
-            from one dashboard.
+            Command them from Telegram, Discord, or WhatsApp.<br />
+            Monitor everything from one dashboard.
           </p>
 
           {/* CTAs */}
@@ -936,8 +936,12 @@ export default function LandingPage() {
             </button>
             <button
               style={{
-                background: 'transparent', color: '#888888',
-                border: '0.5px solid #2A2A2A', padding: '16px 32px',
+                background: 'rgba(255,255,255,0.04)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                color: '#C8C6C0',
+                border: '0.5px solid rgba(255,255,255,0.1)',
+                padding: '16px 32px',
                 borderRadius: '10px', fontSize: '15px', cursor: 'pointer',
               }}
               onClick={() => scrollTo('how-it-works')}
@@ -975,8 +979,8 @@ export default function LandingPage() {
                     position: 'relative', overflow: 'hidden',
                   }}
                 >
-                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: '#FF4D00' }} />
-                  <div style={{ fontSize: '4rem', fontWeight: 500, lineHeight: 1, color: 'rgba(255,77,0,0.45)', marginBottom: '1.25rem' }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1px', background: '#2A2A2A' }} />
+                  <div style={{ fontSize: '4rem', fontWeight: 500, lineHeight: 1, color: '#222222', marginBottom: '1.25rem' }}>
                     {step.num}
                   </div>
                   <div style={{ fontSize: '15px', fontWeight: 500, marginBottom: '8px' }}>{step.title}</div>
@@ -1058,10 +1062,10 @@ export default function LandingPage() {
             <div>
               <SectionLabel text="Command Interface" />
               <h2 className="oc-section-heading" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 500, letterSpacing: '-0.03em', marginBottom: '0.75rem' }}>
-                Your agents live in Telegram.
+                Your agents, where you already are.
               </h2>
               <p style={{ color: '#555555', fontSize: '0.95rem', lineHeight: 1.7, marginBottom: '1.75rem' }}>
-                No new apps. No dashboards you have to check. Your agents reach you where you already are.
+                Connect via Telegram, Discord, or WhatsApp — no new apps to learn. Your agents reach you on the platform your team already uses every day.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {telegramFeatures.map(f => (
@@ -1426,7 +1430,7 @@ export default function LandingPage() {
             Your AI team is<br />ready to <span style={{ color: '#FF4D00' }}>deploy.</span>
           </h2>
           <p style={{ color: '#C0BAB0', fontSize: '1rem', lineHeight: 1.8, marginBottom: '2.5rem', position: 'relative' }}>
-            Sign up in seconds. Launch your first agent.<br />Command it on Telegram before end of day.
+            Sign up in seconds. Launch your first agent.<br />Command it on Telegram, Discord, or WhatsApp before end of day.
           </p>
           <button
             className="oc-cta-btn"
@@ -1463,7 +1467,7 @@ export default function LandingPage() {
                   </div>
                 </div>
                 <p style={{ fontSize: '12px', color: '#888888', lineHeight: 1.8, maxWidth: '220px' }}>
-                  Deploy domain-locked AI agents for Finance, Marketing, and Operations. Command via Telegram.
+                  Deploy domain-locked AI agents for Finance, Marketing, and Operations. Command via Telegram, Discord, or WhatsApp.
                 </p>
               </div>
 
@@ -1475,7 +1479,7 @@ export default function LandingPage() {
                 {[
                   { label: 'How it works', id: 'how-it-works' },
                   { label: 'Agents', id: 'agents' },
-                  { label: 'Telegram', id: 'telegram' },
+                  { label: 'Integrations', id: 'telegram' },
                   { label: 'Pricing', id: 'pricing' },
                 ].map(link => (
                   <button
