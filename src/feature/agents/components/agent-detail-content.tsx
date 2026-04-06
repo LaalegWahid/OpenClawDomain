@@ -561,9 +561,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                     <div key={platform}>
                       {/* Row */}
                       <div
-                        className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${colors.ring} ${colors.bg} ${!isConnected && !isWhatsApp ? "cursor-pointer hover:border-white/10 hover:bg-white/5" : ""}`}
+                        className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${colors.ring} ${colors.bg} ${!isConnected ? "cursor-pointer hover:border-white/10 hover:bg-white/5" : ""}`}
                         onClick={() => {
-                          if (!isConnected && !isWhatsApp) setExpandedPlatform(isExpanded ? null : platform);
+                          if (!isConnected) {
+                            if (isWhatsApp) { setShowWaModal(true); startWhatsappLink(); }
+                            else setExpandedPlatform(isExpanded ? null : platform);
+                          }
                         }}
                       >
                         <div className="flex items-center gap-3">
@@ -576,7 +579,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                               <p className="text-xs text-white/40">{handle}</p>
                             ) : (
                               <p className="text-xs text-white/30">
-                                {isWhatsApp ? "Coming soon" : "Not connected · click to connect"}
+                                Not connected · click to connect
                               </p>
                             )}
                           </div>
@@ -594,13 +597,8 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                               <X className="size-4" />
                             </button>
                           )}
-                          {!isConnected && isWhatsApp && (
-                            <span className="text-xs text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                              Coming Soon
-                            </span>
-                          )}
-                          {!isConnected && !isWhatsApp && (
-                            <span className="text-xs text-white/30">{isExpanded ? "▲" : "▼"}</span>
+                          {!isConnected && (
+                            <span className="text-xs text-white/30">{isWhatsApp ? "→" : isExpanded ? "▲" : "▼"}</span>
                           )}
                         </div>
                       </div>

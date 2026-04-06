@@ -158,10 +158,11 @@ OC_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 echo "DEBUG [parse] AGENT_MODEL=${AGENT_MODEL}"
 echo "DEBUG [parse] AGENT_PROVIDER=${AGENT_PROVIDER} | MODEL_ID=${MODEL_ID} | MODEL_NAME=${MODEL_NAME}"
 
-# Strip accidental whitespace from keys (copy-paste / Secrets Manager padding)
-ANTHROPIC_API_KEY="$(echo "${ANTHROPIC_API_KEY}" | tr -d ' \t\r\n')"
-GEMINI_API_KEY="$(echo "${GEMINI_API_KEY}" | tr -d ' \t\r\n')"
-OPENROUTER_API_KEY="$(echo "${OPENROUTER_API_KEY}" | tr -d ' \t\r\n')"
+# Strip accidental whitespace and surrounding quotes from keys
+# (ECS console sometimes saves values as `"sk-or-..."` with literal quotes)
+ANTHROPIC_API_KEY="$(echo "${ANTHROPIC_API_KEY}" | tr -d ' \t\r\n"')"
+GEMINI_API_KEY="$(echo "${GEMINI_API_KEY}" | tr -d ' \t\r\n"')"
+OPENROUTER_API_KEY="$(echo "${OPENROUTER_API_KEY}" | tr -d ' \t\r\n"')"
 
 echo "DEBUG [keys] ANTHROPIC_API_KEY=$([ -n "${ANTHROPIC_API_KEY}" ] && echo 'SET' || echo 'UNSET')"
 echo "DEBUG [keys] GEMINI_API_KEY=$([ -n "${GEMINI_API_KEY}" ] && echo 'SET' || echo 'UNSET')"

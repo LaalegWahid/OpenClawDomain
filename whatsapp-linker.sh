@@ -2,7 +2,7 @@
 # WhatsApp linking entrypoint — runs inside the ECS agent container
 # Env vars required: AGENT_ID, OPENCLAW_HOME, WEBHOOK_BASE_URL, GATEWAY_TOKEN
 
-set -e
+set -Eeuo pipefail
 
 export HOME="${HOME:-/home/node}"
 OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
@@ -12,8 +12,13 @@ echo "WhatsApp linker starting for agent: ${AGENT_ID}"
 # Ensure openclaw home directory exists (EFS mount)
 mkdir -p "${OPENCLAW_HOME}"
 
-# Install WhatsApp channel plugin (idempotent)
-openclaw channels add --channel whatsapp 2>&1 || true
+# Write a minimal openclaw.json so credentials are anchored to the EFS path.
+# Without this, openclaw defaults to $HOME/.openclaw/ (container-local, not EFS)
+# and credentials are lost on every container restart.
+if [ ! -f "${OPENCLAW_HOME}/openclaw.json" ]; then
+  echo '{}' > "${OPENCLAW_HOME}/openclaw.json"
+fi
+export OPENCLAW_CONFIG_PATH="${OPENCLAW_HOME}/openclaw.json"
 
 echo "Starting WhatsApp login flow..."
 
