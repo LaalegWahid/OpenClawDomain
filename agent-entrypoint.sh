@@ -126,6 +126,43 @@ MODEL_NAME=$(echo "${MODEL_ID##*/}" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
 OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '[\d.]+' | head -1 || echo "2026.3.13")
 OC_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
+# Strip accidental whitespace from keys (copy-paste / Secrets Manager padding)
+ANTHROPIC_API_KEY="$(echo "${ANTHROPIC_API_KEY}" | tr -d ' \t\r\n')"
+GEMINI_API_KEY="$(echo "${GEMINI_API_KEY}" | tr -d ' \t\r\n')"
+OPENROUTER_API_KEY="$(echo "${OPENROUTER_API_KEY}" | tr -d ' \t\r\n')"
+
+# ── Provider fallback ─────────────────────────────────────────────────────────
+# If the primary provider's key is absent, auto-select an available one so the
+# container doesn't start in a permanently broken state.
+EFFECTIVE_AGENT_MODEL="${AGENT_MODEL}"
+EFFECTIVE_PROVIDER="${AGENT_PROVIDER}"
+
+if [ "${AGENT_PROVIDER}" = "anthropic" ] && [ -z "${ANTHROPIC_API_KEY}" ]; then
+  if [ -n "${OPENROUTER_API_KEY}" ]; then
+    EFFECTIVE_AGENT_MODEL="openrouter/${AGENT_MODEL}"
+    EFFECTIVE_PROVIDER="openrouter"
+    echo "WARNING: ANTHROPIC_API_KEY missing — falling back to OpenRouter: ${EFFECTIVE_AGENT_MODEL}"
+  elif [ -n "${GEMINI_API_KEY}" ]; then
+    EFFECTIVE_AGENT_MODEL="google/gemini-2.0-flash"
+    EFFECTIVE_PROVIDER="google"
+    echo "WARNING: ANTHROPIC_API_KEY missing — falling back to Google: ${EFFECTIVE_AGENT_MODEL}"
+  else
+    echo "WARNING: No valid API key found for any provider — container will likely fail"
+  fi
+elif [ "${AGENT_PROVIDER}" = "google" ] && [ -z "${GEMINI_API_KEY}" ]; then
+  if [ -n "${OPENROUTER_API_KEY}" ]; then
+    EFFECTIVE_AGENT_MODEL="openrouter/google/${MODEL_ID}"
+    EFFECTIVE_PROVIDER="openrouter"
+    echo "WARNING: GEMINI_API_KEY missing — falling back to OpenRouter: ${EFFECTIVE_AGENT_MODEL}"
+  elif [ -n "${ANTHROPIC_API_KEY}" ]; then
+    EFFECTIVE_AGENT_MODEL="anthropic/claude-haiku-4-5-20251001"
+    EFFECTIVE_PROVIDER="anthropic"
+    echo "WARNING: GEMINI_API_KEY missing — falling back to Anthropic: ${EFFECTIVE_AGENT_MODEL}"
+  fi
+fi
+
+echo "Effective model: ${EFFECTIVE_AGENT_MODEL} (provider: ${EFFECTIVE_PROVIDER})"
+
 cat > "${CONFIG_FILE}" << EOJSON
 {
   "models": {
@@ -133,18 +170,23 @@ cat > "${CONFIG_FILE}" << EOJSON
       "anthropic": {
         "apiKey": "${ANTHROPIC_API_KEY}",
         "baseUrl": "https://api.anthropic.com",
-        "models": $([ "${AGENT_PROVIDER}" = "anthropic" ] && echo '[{"id":"'"${MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]' || echo '[]')
+        "models": $([ -n "${ANTHROPIC_API_KEY}" ] && echo '[{"id":"'"${MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]' || echo '[]')
       },
       "google": {
         "apiKey": "${GEMINI_API_KEY}",
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
-        "models": $([ "${AGENT_PROVIDER}" = "google" ] && echo '[{"id":"'"${MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]' || echo '[]')
+        "models": $([ -n "${GEMINI_API_KEY}" ] && echo '[{"id":"gemini-2.0-flash","name":"Gemini Flash","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]' || echo '[]')
+      },
+      "openrouter": {
+        "apiKey": "${OPENROUTER_API_KEY}",
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "models": $([ -n "${OPENROUTER_API_KEY}" ] && echo '[{"id":"anthropic/claude-haiku-4-5-20251001","name":"Claude Haiku (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192},{"id":"google/gemini-flash-1.5","name":"Gemini Flash (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]' || echo '[]')
       }
     }
   },
   "agents": {
     "defaults": {
-      "model": { "primary": "${AGENT_MODEL}" },
+      "model": { "primary": "${EFFECTIVE_AGENT_MODEL}" },
       "workspace": "${WORKSPACE}",
       "skipBootstrap": true,
       "compaction": { "mode": "safeguard" }
@@ -172,68 +214,6 @@ cat > "${CONFIG_FILE}" << EOJSON
   }
 }
 EOJSON
-
-# ── Discord channel ───────────────────────────────────────────────────────────
-if [ -n "${DISCORD_BOT_TOKEN}" ]; then
-  echo "Adding Discord channel config..."
-  python3 - "${CONFIG_FILE}" "${DISCORD_BOT_TOKEN}" << 'PYEOF'
-import json, sys
-path = sys.argv[1]
-token = sys.argv[2]
-with open(path) as f:
-    cfg = json.load(f)
-cfg.setdefault("channels", {})["discord"] = {
-    "enabled": True,
-    "token": token,
-    "dmPolicy": "open",
-    "allowFrom": ["*"],
-    "execApprovals": {
-        "enabled": True
-    }
-}
-with open(path, "w") as f:
-    json.dump(cfg, f, indent=2)
-PYEOF
-  echo "Discord channel configured."
-fi
-
-# ── WhatsApp channel (Baileys / QR-based) ────────────────────────────────────
-# Credentials live on EFS (written by the whatsapp-linker task).
-# We only need to enable the channel in openclaw.json so the gateway picks them up.
-if [ -n "${WHATSAPP_ENABLED}" ]; then
-  echo "Adding WhatsApp channel config (Baileys)..."
-  python3 - "${CONFIG_FILE}" << 'PYEOF'
-import json, sys
-path = sys.argv[1]
-with open(path) as f:
-    cfg = json.load(f)
-cfg.setdefault("channels", {})["whatsapp"] = {
-    "enabled": True,
-    "dmPolicy": "open",
-    "allowFrom": ["*"]
-}
-with open(path, "w") as f:
-    json.dump(cfg, f, indent=2)
-PYEOF
-  echo "WhatsApp channel configured."
-fi
-
-# ── MCP servers ───────────────────────────────────────────────────────────────
-if [ -n "${MCP_CONFIG_B64}" ]; then
-  echo "Adding MCP server config..."
-  python3 - "${CONFIG_FILE}" "${MCP_CONFIG_B64}" << 'PYEOF'
-import json, sys, base64
-path = sys.argv[1]
-mcp_b64 = sys.argv[2]
-mcp_servers = json.loads(base64.b64decode(mcp_b64).decode())
-with open(path) as f:
-    cfg = json.load(f)
-cfg.setdefault("mcp", {})["servers"] = mcp_servers
-with open(path, "w") as f:
-    json.dump(cfg, f, indent=2)
-PYEOF
-  echo "MCP servers configured."
-fi
 
 echo "Config written | Agent: ${AGENT_ID} | Type: ${AGENT_TYPE} | Home: ${OPENCLAW_HOME}"
 
@@ -263,24 +243,11 @@ echo "=== END CONNECTIVITY TEST ==="
 
 export OPENCLAW_CONFIG_PATH="${CONFIG_FILE}"
 
-# ── Auth profiles ─────────────────────────────────────────────────────────────
-# OpenClaw reads API keys from auth-profiles.json, not from openclaw.json
+# ── Channels, MCP, and auth profiles ─────────────────────────────────────────
+# agent-config.py handles: Discord/WhatsApp/MCP patches to openclaw.json,
+# and validated auth-profiles.json writing.
 AUTH_DIR="${OPENCLAW_HOME}/.openclaw/agents/main/agent"
 mkdir -p "${AUTH_DIR}"
-python3 - "${AUTH_DIR}/auth-profiles.json" << PYEOF
-import json, sys, os
-path = sys.argv[1]
-profiles = {}
-if os.environ.get("ANTHROPIC_API_KEY"):
-    profiles["anthropic:default"] = {"type": "api_key", "provider": "anthropic", "key": os.environ["ANTHROPIC_API_KEY"]}
-if os.environ.get("GEMINI_API_KEY"):
-    profiles["google:default"] = {"type": "api_key", "provider": "google", "key": os.environ["GEMINI_API_KEY"]}
-if os.environ.get("OPENROUTER_API_KEY"):
-    profiles["openrouter:default"] = {"type": "api_key", "provider": "openrouter", "key": os.environ["OPENROUTER_API_KEY"]}
-data = {"version": 1, "profiles": profiles}
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-print(f"Auth profiles written: {list(profiles.keys())}")
-PYEOF
+python3 /home/node/agent-config.py "${CONFIG_FILE}" "${AUTH_DIR}/auth-profiles.json"
 
 exec openclaw gateway --bind lan --port 18789 --allow-unconfigured
