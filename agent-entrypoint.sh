@@ -1,27 +1,51 @@
 #!/bin/bash
-set -e
+set -Eeuo pipefail
+IFS=$'\n\t'
+trap 'echo "ERROR: entrypoint failed at line ${LINENO} — aborting" >&2' ERR
 
 export HOME="${HOME:-/home/node}"
 
-# ── WhatsApp linker mode ───────────────────────────────────────────────────────
-if [ "${OPENCLAW_MODE}" = "whatsapp_link" ]; then
-  exec /home/node/whatsapp-linker.sh
-fi
+# ── Mode check ────────────────────────────────────────────────────────────────
+case "${OPENCLAW_MODE:-agent}" in
+  whatsapp_link)
+    exec /home/node/whatsapp-linker.sh
+    ;;
+  agent) ;;   # normal path — continue
+  *)
+    echo "ERROR: Unknown OPENCLAW_MODE '${OPENCLAW_MODE:-}'" >&2
+    exit 1
+    ;;
+esac
+
+# ── Upfront input validation ──────────────────────────────────────────────────
+for _var in AGENT_ID AGENT_TYPE GATEWAY_TOKEN; do
+  if [ -z "${!_var:-}" ]; then
+    echo "ERROR: required env var ${_var} is not set" >&2
+    exit 1
+  fi
+done
+
+for _tool in python3 openclaw; do
+  if ! command -v "${_tool}" >/dev/null 2>&1; then
+    echo "ERROR: required tool '${_tool}' not found in PATH" >&2
+    exit 1
+  fi
+done
 
 OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
-DEFAULT_OC_DIR="/home/node/.openclaw"
-CONFIG_FILE="${DEFAULT_OC_DIR}/openclaw.json"
+CONFIG_FILE="${OPENCLAW_HOME}/openclaw.json"
 WORKSPACE="${OPENCLAW_HOME}/workspace"
+AUTH_DIR="${OPENCLAW_HOME}/agents/main/agent"
 
-echo "Starting OpenClaw agent: ${AGENT_ID} (${AGENT_TYPE})"
-echo "HOME=${HOME} CONFIG_FILE=${CONFIG_FILE} WORKSPACE=${WORKSPACE}"
-
-mkdir -p "${OPENCLAW_HOME}"
-mkdir -p "${DEFAULT_OC_DIR}"
-mkdir -p "${WORKSPACE}"
+mkdir -p "${OPENCLAW_HOME}" "${WORKSPACE}" "${AUTH_DIR}"
 
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful AI assistant.}"
 AGENT_MODEL="${AGENT_MODEL:-anthropic/claude-haiku-4-5-20251001}"
+
+# Optional API keys — default to empty to satisfy nounset
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+GEMINI_API_KEY="${GEMINI_API_KEY:-}"
+OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
 
 # Write SYSTEM.md always (system prompt can legitimately change per deployment)
 cat > "${WORKSPACE}/SYSTEM.md" << EOSYSTEM
@@ -33,7 +57,7 @@ EOSYSTEM
 if [ ! -f "${WORKSPACE}/SOUL.md" ]; then
   echo "First launch — writing role files for ${AGENT_TYPE}"
 
-  case "$AGENT_TYPE" in
+  case "${AGENT_TYPE}" in
     "finance")
       cat > "${WORKSPACE}/SOUL.md" << 'EOF'
 # Identity
@@ -101,6 +125,10 @@ emoji: ⚙️
 role: Operations Agent
 EOF
       ;;
+    *)
+      echo "ERROR: Unknown AGENT_TYPE '${AGENT_TYPE}' — no role files written" >&2
+      exit 1
+      ;;
   esac
 
   cat > "${WORKSPACE}/TOOLS.md" << 'EOF'
@@ -123,7 +151,7 @@ fi
 AGENT_PROVIDER=$(echo "${AGENT_MODEL}" | cut -d'/' -f1)
 MODEL_ID=$(echo "${AGENT_MODEL}" | cut -d'/' -f2-)
 MODEL_NAME=$(echo "${MODEL_ID##*/}" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
-OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '[\d.]+' | head -1 || echo "2026.3.13")
+OC_VERSION=$(openclaw --version 2>/dev/null | grep -Eo '[0-9.]+' | head -1 || echo "2026.3.13")
 OC_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
 # Strip accidental whitespace from keys (copy-paste / Secrets Manager padding)
@@ -161,9 +189,7 @@ elif [ "${AGENT_PROVIDER}" = "google" ] && [ -z "${GEMINI_API_KEY}" ]; then
   fi
 fi
 
-echo "Effective model: ${EFFECTIVE_AGENT_MODEL} (provider: ${EFFECTIVE_PROVIDER})"
-
-cat > "${CONFIG_FILE}" << EOJSON
+cat > "${CONFIG_FILE}.tmp" << EOJSON
 {
   "models": {
     "providers": {
@@ -214,40 +240,16 @@ cat > "${CONFIG_FILE}" << EOJSON
   }
 }
 EOJSON
+mv "${CONFIG_FILE}.tmp" "${CONFIG_FILE}"
+chmod 600 "${CONFIG_FILE}"
 
-echo "Config written | Agent: ${AGENT_ID} | Type: ${AGENT_TYPE} | Home: ${OPENCLAW_HOME}"
-
-# Verify config is readable
-echo "Config check: $(cat ${CONFIG_FILE} | head -c 50)..."
-ls -la "${CONFIG_FILE}"
-
-# ── Connectivity diagnostics ──────────────────────────────────────────────────
-echo "=== CONNECTIVITY TEST ==="
-echo "GEMINI_API_KEY set: ${GEMINI_API_KEY:+YES}"
-echo "GATEWAY_TOKEN set: ${GATEWAY_TOKEN:+YES}"
-echo "AGENT_MODEL: ${AGENT_MODEL}"
-
-# Test DNS resolution
-echo "DNS test (google):"
-nslookup generativelanguage.googleapis.com 2>&1 | head -5 || echo "nslookup not found, trying getent"
-getent hosts generativelanguage.googleapis.com 2>&1 | head -2 || echo "getent failed"
-
-# Test outbound HTTPS
-echo "Outbound HTTPS test (google):"
-curl -sS -m 5 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" https://generativelanguage.googleapis.com/ 2>&1 || echo "CURL FAILED - no internet access"
-
-echo "Outbound HTTPS test (anthropic):"
-curl -sS -m 5 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" https://api.anthropic.com/ 2>&1 || echo "CURL FAILED - no internet access"
-
-echo "=== END CONNECTIVITY TEST ==="
+echo "OpenClaw agent starting | id=${AGENT_ID} type=${AGENT_TYPE} provider=${EFFECTIVE_PROVIDER}"
 
 export OPENCLAW_CONFIG_PATH="${CONFIG_FILE}"
 
 # ── Channels, MCP, and auth profiles ─────────────────────────────────────────
 # agent-config.py handles: Discord/WhatsApp/MCP patches to openclaw.json,
 # and validated auth-profiles.json writing.
-AUTH_DIR="${OPENCLAW_HOME}/.openclaw/agents/main/agent"
-mkdir -p "${AUTH_DIR}"
 python3 /home/node/agent-config.py "${CONFIG_FILE}" "${AUTH_DIR}/auth-profiles.json"
 
 exec openclaw gateway --bind lan --port 18789 --allow-unconfigured

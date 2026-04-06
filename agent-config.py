@@ -11,6 +11,24 @@ import base64
 import json
 import os
 import sys
+import tempfile
+
+
+def _write_json_atomic(path: str, data: dict) -> None:
+    dir_ = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+        os.chmod(path, 0o600)
+    except Exception:
+        os.unlink(tmp)
+        raise
+
+
+def _is_truthy(val: str) -> bool:
+    return val.strip().lower() in ("1", "true", "yes")
 
 
 def patch_discord(cfg):
@@ -29,7 +47,7 @@ def patch_discord(cfg):
 
 
 def patch_whatsapp(cfg):
-    if not os.environ.get("WHATSAPP_ENABLED", ""):
+    if not _is_truthy(os.environ.get("WHATSAPP_ENABLED", "")):
         return
     print("Adding WhatsApp channel config (Baileys)...")
     cfg.setdefault("channels", {})["whatsapp"] = {
@@ -78,8 +96,7 @@ def write_auth_profiles(path):
             print(f"WARNING: {env_var} set but skipped ({reason})", flush=True)
 
     data = {"version": 1, "profiles": profiles}
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    _write_json_atomic(path, data)
     print(f"Auth profiles written: {list(profiles.keys())}")
 
 
@@ -98,8 +115,7 @@ def main():
     patch_whatsapp(cfg)
     patch_mcp(cfg)
 
-    with open(config_path, "w") as f:
-        json.dump(cfg, f, indent=2)
+    _write_json_atomic(config_path, cfg)
 
     write_auth_profiles(auth_path)
 

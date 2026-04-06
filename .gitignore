@@ -62,3 +62,4 @@ terraform.rc
 docker_build_push.sh
 *.pem
 *.txt
+deploy-commands.md
