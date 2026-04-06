@@ -179,8 +179,9 @@ resource "aws_ecs_task_definition" "agent" {
     ]
 
     secrets = [
-      { name = "GEMINI_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:GEMINI_API_KEY::" },
-      { name = "GATEWAY_TOKEN",  valueFrom = "${aws_secretsmanager_secret.app.arn}:GATEWAY_TOKEN::" },
+      { name = "GEMINI_API_KEY",    valueFrom = "${aws_secretsmanager_secret.app.arn}:GEMINI_API_KEY::" },
+      { name = "ANTHROPIC_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:ANTHROPIC_API_KEY::" },
+      { name = "GATEWAY_TOKEN",     valueFrom = "${aws_secretsmanager_secret.app.arn}:GATEWAY_TOKEN::" },
     ]
 
     logConfiguration = {

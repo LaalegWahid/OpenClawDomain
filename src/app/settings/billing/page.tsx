@@ -10,6 +10,7 @@ export default async function BillingPage() {
       userEmail={user?.email}
       userName={user?.name}
       pageTitle="Billing"
+      isAdmin={user?.role === "admin"}
     >
       <BillingContent />
     </DashboardShell>

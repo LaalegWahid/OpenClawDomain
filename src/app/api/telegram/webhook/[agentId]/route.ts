@@ -16,6 +16,7 @@ import {
   isUsableContent,
 } from "../../../../../shared/lib/agents/document";
 import { env } from "../../../../../shared/config/env";
+import { getServiceEnabled } from "../../../../../shared/lib/service/status";
 
 const MAX_HISTORY = 20;
 
@@ -29,6 +30,14 @@ export async function POST(
   }
 
   const { agentId } = await params;
+
+  // Global kill-switch: drop the message silently so no tokens are consumed
+  const serviceEnabled = await getServiceEnabled();
+  if (!serviceEnabled) {
+    logger.info({ agentId }, "Service blocked — message dropped");
+    return NextResponse.json({ ok: true });
+  }
+
   const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
   if (!found) return NextResponse.json({ ok: true });
 
