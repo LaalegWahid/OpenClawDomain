@@ -132,6 +132,7 @@ export async function launchContainer(
           { name: "AGENT_TYPE",    value: agentType },
           { name: "SYSTEM_PROMPT", value: fullSystemPrompt },
           { name: "OPENCLAW_HOME", value: `/home/node/.openclaw/${userId}/${agentId}` },
+          { name: "AGENT_MODEL",   value: process.env.AGENT_MODEL ?? "openrouter/qwen/qwen3.6-plus:free" },
           ...extraEnv,
         ],
       }],
