@@ -40,7 +40,8 @@ AUTH_DIR="${OPENCLAW_HOME}/agents/main/agent"
 mkdir -p "${OPENCLAW_HOME}" "${WORKSPACE}" "${AUTH_DIR}"
 
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful AI assistant.}"
-AGENT_MODEL="${AGENT_MODEL:-openrouter/qwen/qwen3.6-plus:free}"
+# Strip accidental surrounding quotes (e.g. ECS console saves `"openrouter/..."` literally)
+AGENT_MODEL="$(echo "${AGENT_MODEL:-openrouter/qwen/qwen3.6-plus:free}" | tr -d '"')"
 
 # Optional API keys — default to empty to satisfy nounset
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
