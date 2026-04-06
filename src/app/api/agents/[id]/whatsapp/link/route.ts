@@ -25,7 +25,7 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
-    if (agentRecord.status !== "active") {
+    if (agentRecord.status === "stopped" || agentRecord.status === "error") {
       return NextResponse.json(
         { error: "Agent must be running before you can link WhatsApp" },
         { status: 409 },
