@@ -139,6 +139,11 @@ cat > "${CONFIG_FILE}" << EOJSON
         "apiKey": "${GEMINI_API_KEY}",
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "models": $([ "${AGENT_PROVIDER}" = "google" ] && echo '[{"id":"'"${MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]' || echo '[]')
+      },
+      "openrouter": {
+        "apiKey": "${OPENROUTER_API_KEY}",
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "models": $([ -n "${OPENROUTER_API_KEY}" ] && echo '[{"id":"anthropic/claude-haiku-4-5-20251001","name":"Claude Haiku (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192},{"id":"google/gemini-flash-1.5","name":"Gemini Flash (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]' || echo '[]')
       }
     }
   },
