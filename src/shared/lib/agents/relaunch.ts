@@ -43,14 +43,24 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
   const username = agentRecord.botUsername ?? "";
   // Note: Discord is intentionally excluded — Next.js manages Discord via manager.ts.
   // The Discord agentChannel record stays in DB for initAllDiscordBots() on startup.
+  const waChannel = channels.find((ch) => ch.platform === "whatsapp");
+  const waCredentials = (waChannel?.credentials ?? {}) as { ownerJid?: string };
+
   if (username.startsWith("whatsapp_")) {
-    channelConfig.whatsapp = { enabled: true };
+    channelConfig.whatsapp = {
+      enabled: true,
+      ...(waCredentials.ownerJid ? { ownerJid: waCredentials.ownerJid } : {}),
+    };
   }
 
   // Additional channels added later (Discord excluded — managed by Next.js)
   for (const ch of channels) {
     if (ch.platform === "whatsapp" && !channelConfig.whatsapp) {
-      channelConfig.whatsapp = { enabled: true };
+      const creds = (ch.credentials ?? {}) as { ownerJid?: string };
+      channelConfig.whatsapp = {
+        enabled: true,
+        ...(creds.ownerJid ? { ownerJid: creds.ownerJid } : {}),
+      };
     }
   }
 

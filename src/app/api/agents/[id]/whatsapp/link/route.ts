@@ -50,6 +50,9 @@ export async function POST(req: Request, ctx: Ctx) {
       await stopContainer(existing[0].taskArn).catch(() => {});
     }
 
+    const body = await req.json().catch(() => ({})) as { ownerPhone?: string };
+    const ownerPhone = body.ownerPhone?.trim() || null;
+
     // Launch a short-lived ECS linker task
     const taskArn = await launchWhatsappLinker(
       agentRecord.userId,
@@ -59,7 +62,7 @@ export async function POST(req: Request, ctx: Ctx) {
 
     const [linkSession] = await db
       .insert(whatsappLinkSession)
-      .values({ agentId: id, taskArn, status: "pending" })
+      .values({ agentId: id, taskArn, status: "pending", ownerPhone })
       .returning();
 
     logger.info({ agentId: id, taskArn }, "WhatsApp link session started");
