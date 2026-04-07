@@ -5,7 +5,7 @@ import fs from "fs";
 import { logger } from "../logger";
 import type { ChannelConfig, LaunchResult, McpServerConfig } from "./docker";
 import type { AgentType } from "./config";
-import { DOMAIN_CONFIGS } from "./config";
+import { getDomainConfig } from "./config";
 
 const docker = new Dockerode();
 
@@ -43,8 +43,8 @@ export async function localLaunchContainer(
   channels?: ChannelConfig,
   mcpServers?: Record<string, McpServerConfig>,
 ): Promise<LaunchResult> {
-  const domainConfig = DOMAIN_CONFIGS[agentType];
-  const fullSystemPrompt = domainConfig.boundaryPreamble + systemPrompt;
+  const domainCfg = await getDomainConfig(agentType);
+  const fullSystemPrompt = domainCfg.boundaryPreamble + systemPrompt;
   const image = process.env.LOCAL_AGENT_IMAGE;
   if (!image) throw new Error("LOCAL_AGENT_IMAGE is not set");
 

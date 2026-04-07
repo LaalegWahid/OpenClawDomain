@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionOrThrow } from "../../../shared/lib/auth/getSessionOrThrow";
-import { AGENT_TYPES, AgentType } from "../../../shared/lib/agents/config";
+import { isValidAgentType, type AgentType } from "../../../shared/lib/agents/config";
 import { db } from "../../../shared/lib/drizzle";
 import { eq } from "drizzle-orm";
 import { deleteWebhook, setWebhook, validateBotToken } from "../../../shared/lib/telegram/bot";
@@ -9,8 +9,6 @@ import { launchContainer, stopContainer, waitForTaskRunning } from "../../../sha
 import { logger } from "../../../shared/lib/logger";
 import { isSubscriptionActive } from "../../../shared/lib/subscription/cache";
 import { env } from "../../../shared/config/env";
-
-const MAX_BOTS_PER_USER = 3;
 
 export async function POST(req: Request) {
   try {
@@ -31,9 +29,9 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!AGENT_TYPES.includes(type as AgentType)) {
+    if (!isValidAgentType(type)) {
       return NextResponse.json(
-        { error: `Invalid agent type. Must be one of: ${AGENT_TYPES.join(", ")}` },
+        { error: "Invalid agent type. Must be a non-empty alphanumeric slug (e.g. 'finance', 'education', 'cybersecurity')." },
         { status: 400 },
       );
     }
@@ -42,16 +40,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid platform" }, { status: 400 });
     }
 
-    // Check bot cap
+    // Check if user has any existing agents — first bot gets marked as primary
     const existingAgents = await db
-      .select()
+      .select({ id: agent.id })
       .from(agent)
       .where(eq(agent.userId, session.user.id))
-      .then((rows) => rows.filter((r) => r.status !== "stopped"));
+      .limit(1);
 
-    if (existingAgents.length >= MAX_BOTS_PER_USER) {
-      return NextResponse.json({ error: "Maximum 3 bots reached" }, { status: 403 });
-    }
+    const isFirstBot = existingAgents.length === 0;
 
     const tempAgentId = crypto.randomUUID();
 
@@ -121,7 +117,7 @@ export async function POST(req: Request) {
       try {
         const [newAgent] = await db
           .insert(agent)
-          .values({ id: tempAgentId, userId: session.user.id, name, botToken, botUsername: botInfo.username, systemPrompt, type: type as AgentType, status: "starting", containerId })
+          .values({ id: tempAgentId, userId: session.user.id, name, botToken, botUsername: botInfo.username, systemPrompt, type: type as AgentType, status: "starting", isPrimary: isFirstBot, containerId })
           .returning();
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Telegram` });
@@ -188,7 +184,7 @@ export async function POST(req: Request) {
       try {
         const [newAgent] = await db
           .insert(agent)
-          .values({ id: tempAgentId, userId: session.user.id, name, botToken: discordToken, botUsername: placeholderUsername, systemPrompt, type: type as AgentType, status: "starting", containerId })
+          .values({ id: tempAgentId, userId: session.user.id, name, botToken: discordToken, botUsername: placeholderUsername, systemPrompt, type: type as AgentType, status: "starting", isPrimary: isFirstBot, containerId })
           .returning();
 
         await db.insert(agentChannel).values({ agentId: newAgent.id, platform: "discord", credentials: { botToken: discordToken } });
@@ -235,7 +231,7 @@ export async function POST(req: Request) {
       try {
         const [newAgent] = await db
           .insert(agent)
-          .values({ id: tempAgentId, userId: session.user.id, name, botToken: placeholderToken, botUsername: placeholderUsername, systemPrompt, type: type as AgentType, status: "starting", containerId })
+          .values({ id: tempAgentId, userId: session.user.id, name, botToken: placeholderToken, botUsername: placeholderUsername, systemPrompt, type: type as AgentType, status: "starting", isPrimary: isFirstBot, containerId })
           .returning();
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched — link WhatsApp to activate` });

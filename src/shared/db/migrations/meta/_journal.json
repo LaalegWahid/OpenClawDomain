@@ -5,10 +5,22 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1775223614425,
-      "tag": "0000_whole_silver_surfer",
       "when": 1775221837531,
       "tag": "0000_sloppy_sebastian_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775550434631,
+      "tag": "0001_flowery_korath",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775550674718,
+      "tag": "0002_smart_spot",
       "breakpoints": true
     }
   ]

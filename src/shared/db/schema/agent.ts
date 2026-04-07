@@ -26,6 +26,7 @@ export const agent = pgTable(
     botUsername: text("bot_username").notNull(),
     systemPrompt: text("system_prompt").notNull(),
     type: text("type").notNull().default("finance"), // "finance" | "marketing" | "operations"
+    isPrimary: boolean("is_primary").default(false).notNull(),
     containerId: text("container_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
