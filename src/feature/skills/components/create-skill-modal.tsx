@@ -139,7 +139,7 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
         setError(data.error || "Failed to save skill");
         return;
       }
-      // 2. Upload the .py script to the skill's files if provided
+      // 2. Upload the script to the skill's files if provided
       if (scriptFile) {
         const fileForm = new FormData();
         fileForm.append("files", scriptFile);
@@ -425,7 +425,8 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                   Import a skill using the ClawHub format: a{" "}
                   <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>SKILL.md</code> file
                   with frontmatter metadata, and an optional{" "}
-                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>.py</code> script.
+                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>.py</code> or{" "}
+                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>.sh</code> script.
                 </p>
 
                 {/* SKILL.md upload */}
@@ -459,7 +460,7 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                 </label>
 
                 {/* Python script upload */}
-                <label style={labelStyle}>Python Script (optional)</label>
+                <label style={labelStyle}>Script (optional)</label>
                 <label
                   style={{
                     display: "flex",
@@ -475,11 +476,11 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                 >
                   <Upload size={18} style={{ color: scriptFile ? "#4CAF50" : "#555", flexShrink: 0 }} />
                   <span style={{ fontSize: 13, color: scriptFile ? "#F0EEE8" : "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {scriptFile ? scriptFile.name : "Click to select a .py file"}
+                    {scriptFile ? scriptFile.name : "Click to select a .py or .sh file"}
                   </span>
                   <input
                     type="file"
-                    accept=".py"
+                    accept=".py,.sh"
                     style={{ display: "none" }}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
