@@ -1,3 +1,4 @@
+// /docker.local.ts
 import Dockerode from "dockerode";
 import net from "net";
 import path from "path";
@@ -42,9 +43,14 @@ export async function localLaunchContainer(
   agentType: AgentType,
   channels?: ChannelConfig,
   mcpServers?: Record<string, McpServerConfig>,
+  skillInstructions?: string,
 ): Promise<LaunchResult> {
   const domainCfg = await getDomainConfig(agentType);
-  const fullSystemPrompt = domainCfg.boundaryPreamble + systemPrompt;
+  let fullSystemPrompt = domainCfg.boundaryPreamble + systemPrompt;
+  if (skillInstructions) {
+    fullSystemPrompt += `\n\n[USER SKILLS]\n${skillInstructions}\n[END USER SKILLS]`;
+  }
+
   const image = process.env.LOCAL_AGENT_IMAGE;
   if (!image) throw new Error("LOCAL_AGENT_IMAGE is not set");
 

@@ -1,3 +1,5 @@
+// /docker.ts
+
 import {
   ECSClient,
   RunTaskCommand,
@@ -95,7 +97,7 @@ export async function launchContainer(
 ): Promise<LaunchResult> {
   if (process.env.LOCAL_DEV === "true") {
     const { localLaunchContainer } = await import("./docker.local");
-    return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers);
+return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers, skillInstructions);
   }
   const domainCfg = await getDomainConfig(agentType);
   let fullSystemPrompt = domainCfg.boundaryPreamble + systemPrompt;
