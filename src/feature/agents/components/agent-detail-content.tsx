@@ -8,6 +8,7 @@ import { Separator } from "../../../shared/components/ui/separator";
 import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
 import Link from "next/link";
+import { ChatPanel } from "./chat-panel";
 
 const TYPE_BADGE_STYLES: Record<string, string> = {
   finance: "bg-green-500/15 text-green-400 border-green-500/30",
@@ -677,6 +678,11 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                 })}
               </div>
             </div>
+
+            <Separator className="bg-white/10" />
+
+            {/* Web Chat */}
+            <ChatPanel agentId={agentId} agentName={agent.name} agentStatus={agent.status} />
 
             <Separator className="bg-white/10" />
 
