@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../drizzle";
-import { domainConfig } from "../../db/schema/domain-config";
+import { domainConfig } from "../../../src/shared/db/schema/domain-config";
 import { logger } from "../logger";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
