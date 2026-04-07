@@ -17,7 +17,7 @@
  *   node whatsapp-linker.mjs <agentId> <baseUrl> <token> <openclawHome>
  */
 
-import { makeWASocket, useMultiFileAuthState, DisconnectReason }
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion }
   from '@whiskeysockets/baileys';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -102,6 +102,8 @@ const logger = {
 let lastQr = null;
 let linked = false;
 let timeoutHandle;
+let reconnectCount = 0;
+const MAX_RECONNECTS = 5;
 
 async function onFatal(err) {
   console.error(`Fatal error: ${err?.message ?? err}`);
@@ -111,10 +113,11 @@ async function onFatal(err) {
 }
 
 // ── Connection ────────────────────────────────────────────────────────────────
-async function startConnection() {
+async function startConnection(version) {
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
   const sock = makeWASocket({
+    version,
     auth: state,
     printQRInTerminal: false,   // We handle QR ourselves via the event
     logger,
@@ -159,8 +162,13 @@ async function startConnection() {
 
       // Transient disconnect during linking (connection reset, timeout, etc.)
       // Reconnect so Baileys generates a fresh QR for the user to scan.
-      console.log('Transient disconnect — reconnecting for fresh QR...');
-      startConnection().catch(onFatal);
+      reconnectCount++;
+      if (reconnectCount > MAX_RECONNECTS) {
+        await sendCallback({ status: 'failed', error: `Too many reconnects (last statusCode=${statusCode})` });
+        process.exit(1);
+      }
+      console.log(`Transient disconnect - reconnecting for fresh QR (attempt ${reconnectCount})...`);
+      startConnection(version).catch(onFatal);
     }
   });
 }
@@ -170,6 +178,9 @@ async function main() {
   await mkdir(authDir, { recursive: true });
   console.log(`WhatsApp linker starting | agentId=${agentId}`);
   console.log(`Auth state directory: ${authDir}`);
+
+  const { version } = await fetchLatestBaileysVersion();
+  console.log(`Baileys WA version: ${version.join('.')}`);
 
   // 5-minute global timeout — enough for multiple QR refreshes
   timeoutHandle = setTimeout(async () => {
@@ -184,7 +195,7 @@ async function main() {
   // Allow the process to exit even if the timer is still active
   timeoutHandle.unref();
 
-  await startConnection();
+  await startConnection(version);
 }
 
 main().catch(onFatal);

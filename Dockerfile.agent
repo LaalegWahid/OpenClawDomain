@@ -17,8 +17,10 @@ RUN sed -i 's/\r$//' /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \
 USER node
 WORKDIR /home/node
 
-# Pre-install WhatsApp channel plugin so the agent picks up linked credentials on restart
-RUN openclaw plugins install @openclaw/whatsapp
+# Pre-install WhatsApp channel plugin so the agent picks up linked credentials on restart.
+# `timeout 60` works around a known openclaw bug where the process hangs after a successful
+# install and never calls process.exit() — the plugin IS installed, the process just won't quit.
+RUN timeout 60 openclaw plugins install @openclaw/whatsapp || true
 
 # Install Baileys for the direct whatsapp linker script.
 # We use Baileys directly (bypassing `openclaw channels login`) because the OpenClaw

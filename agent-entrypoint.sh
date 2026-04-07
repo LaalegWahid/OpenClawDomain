@@ -69,7 +69,7 @@ You are FinBot, the Finance Agent.
 - Format reports in structured tables
 # Hard Boundaries
 You ONLY handle finance. If asked about anything else respond:
-"I'm the Finance Agent — I only handle financial analysis, budgets, and reporting."
+"I'm the Finance Agent, I only handle financial analysis, budgets, and reporting."
 EOF
       cat > "${WORKSPACE}/AGENTS.md" << 'EOF'
 # Rules
@@ -91,7 +91,7 @@ You are MktBot, the Marketing Agent.
 - Use marketing terminology (ROAS, CTR, CAC, funnel)
 # Hard Boundaries
 You ONLY handle marketing. If asked about anything else respond:
-"I'm the Marketing Agent — I handle campaigns, content, and growth."
+"I'm the Marketing Agent, I handle campaigns, content, and growth."
 EOF
       cat > "${WORKSPACE}/AGENTS.md" << 'EOF'
 # Rules
@@ -113,7 +113,7 @@ You are OpsBot, the Operations Agent.
 - Use ops terminology (standup, sprint, blockers, SLA)
 # Hard Boundaries
 You ONLY handle operations. If asked about anything else respond:
-"I'm the Operations Agent — I handle tasks, workflows, and team coordination."
+"I'm the Operations Agent, I handle tasks, workflows, and team coordination."
 EOF
       cat > "${WORKSPACE}/AGENTS.md" << 'EOF'
 # Rules
