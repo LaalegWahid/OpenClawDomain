@@ -223,7 +223,12 @@ export function OverviewContent({ userName }: OverviewContentProps) {
         setWaStep("qr");
 
         // Start link session
-        await fetch(`/api/agents/${agentId}/whatsapp/link`, { method: "POST" });
+        const linkRes = await fetch(`/api/agents/${agentId}/whatsapp/link`, { method: "POST" });
+        if (!linkRes.ok) {
+          const linkErr = await linkRes.json().catch(() => ({}));
+          setWaQrError(linkErr.error ?? "Failed to start WhatsApp linking. Try again from the agent page.");
+          return;
+        }
 
         // Poll for QR
         const poll = setInterval(async () => {
