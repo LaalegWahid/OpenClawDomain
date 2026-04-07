@@ -123,8 +123,7 @@ return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, 
   if (skillInstructions) {
     fullSystemPrompt += `\n\n[USER SKILLS]\n${skillInstructions}\n[END USER SKILLS]`;
   }
-  const domainConfig = DOMAIN_CONFIGS[agentType];
-  const fullSystemPrompt = sanitizeForEcs(domainConfig.boundaryPreamble + systemPrompt);
+  fullSystemPrompt = sanitizeForEcs(fullSystemPrompt);
 
   logger.info({ agentId, agentType }, "Launching ECS agent task");
 
