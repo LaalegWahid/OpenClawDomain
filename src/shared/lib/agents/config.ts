@@ -201,8 +201,8 @@ ${skillsBlock}
 }
 
 async function generateViaOpenRouter(domain: string): Promise<DomainConfig> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set — cannot generate config for dynamic agent type");
+  const apiKey = process.env.OPENROUTER_CONFIG_KEY;
+  if (!apiKey) throw new Error("OPENROUTER_CONFIG_KEY is not set — cannot generate config for dynamic agent type");
 
   const model = process.env.CONFIG_GENERATOR_MODEL ?? "qwen/qwen3.6-plus:free";
 

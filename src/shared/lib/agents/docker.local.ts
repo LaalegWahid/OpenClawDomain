@@ -62,6 +62,8 @@ export async function localLaunchContainer(
   if (process.env.ANTHROPIC_API_KEY) env.push(`ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`);
   if (process.env.GEMINI_API_KEY) env.push(`GEMINI_API_KEY=${process.env.GEMINI_API_KEY}`);
   if (process.env.OPENROUTER_API_KEY) env.push(`OPENROUTER_API_KEY=${process.env.OPENROUTER_API_KEY}`);
+  if (process.env.OPENROUTER_CONFIG_KEY) env.push(`OPENROUTER_CONFIG_KEY=${process.env.OPENROUTER_CONFIG_KEY}`);
+
   if (process.env.AGENT_MODEL) env.push(`AGENT_MODEL=${process.env.AGENT_MODEL}`);
   if (channels?.whatsapp?.enabled) env.push(`WHATSAPP_ENABLED=true`);
   if (mcpServers && Object.keys(mcpServers).length > 0) {

@@ -10,6 +10,7 @@ import {
   boolean,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
+import { agentSkill } from "./skill";
 
 export const agent = pgTable(
   "agent",
@@ -140,6 +141,7 @@ export const agentRelations = relations(agent, ({ one, many }) => ({
   chatSessions: many(chatSession),
   channels: many(agentChannel),
   mcpServers: many(agentMcp),
+  skills: many(agentSkill),
 }));
 
 export const agentActivityRelations = relations(agentActivity, ({ one }) => ({
