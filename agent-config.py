@@ -50,12 +50,20 @@ def patch_whatsapp(cfg):
     if not _is_truthy(os.environ.get("WHATSAPP_ENABLED", "")):
         return
     print("Adding WhatsApp channel config (Baileys)...")
+    openclaw_home = os.environ.get("OPENCLAW_HOME", "")
+    auth_dir = os.path.join(openclaw_home, "credentials", "whatsapp", "default")
+    print(f"WhatsApp authDir: {auth_dir}")
     cfg.setdefault("channels", {})["whatsapp"] = {
         "enabled": True,
         "dmPolicy": "open",
         "allowFrom": ["*"],
         "sendReadReceipts": True,
         "reactionLevel": "ack",
+        "accounts": {
+            "default": {
+                "authDir": auth_dir,
+            }
+        },
     }
     print("WhatsApp channel configured.")
 
