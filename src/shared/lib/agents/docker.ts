@@ -1,3 +1,5 @@
+// /docker.ts
+
 import {
   ECSClient,
   RunTaskCommand,
@@ -5,7 +7,7 @@ import {
   DescribeTasksCommand,
 } from "@aws-sdk/client-ecs";
 import { logger } from "../logger";
-import { DOMAIN_CONFIGS, type AgentType } from "./config";
+import { getDomainConfig, type AgentType } from "./config";
 
 const ecs = new ECSClient({ region: process.env.AWS_REGION || "us-west-1" });
 
@@ -110,10 +112,16 @@ export async function launchContainer(
   agentType: AgentType,
   channels?: ChannelConfig,
   mcpServers?: Record<string, McpServerConfig>,
+  skillInstructions?: string,
 ): Promise<LaunchResult> {
   if (process.env.LOCAL_DEV === "true") {
     const { localLaunchContainer } = await import("./docker.local");
-    return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers);
+return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers, skillInstructions);
+  }
+  const domainCfg = await getDomainConfig(agentType);
+  let fullSystemPrompt = domainCfg.boundaryPreamble + systemPrompt;
+  if (skillInstructions) {
+    fullSystemPrompt += `\n\n[USER SKILLS]\n${skillInstructions}\n[END USER SKILLS]`;
   }
   const domainConfig = DOMAIN_CONFIGS[agentType];
   const fullSystemPrompt = sanitizeForEcs(domainConfig.boundaryPreamble + systemPrompt);
@@ -392,11 +400,11 @@ export async function sendCommand(
     const items: InputItem[] = [];
 
     if (agentType) {
-      const domainConfig = DOMAIN_CONFIGS[agentType];
+      const domainCfg = await getDomainConfig(agentType);
       items.push({
         type: "message",
         role: "developer",
-        content: `[REMINDER: You are a ${domainConfig.label}. If the question is NOT about ${agentType}, refuse politely.]`,
+        content: `[REMINDER: You are a ${domainCfg.label}. If the question is NOT about ${agentType}, refuse politely.]`,
       });
     }
 

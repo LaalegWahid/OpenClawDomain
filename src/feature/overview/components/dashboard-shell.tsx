@@ -3,11 +3,12 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Settings, LogOut, Menu, ShieldAlert } from "lucide-react";
+import { LayoutDashboard, Settings, LogOut, Menu, ShieldAlert, Sparkles } from "lucide-react";
 import { authClient } from "../../../shared/lib/auth/client";
 
 const NAV = [
   { label: "Dashboard", href: "/overview", icon: LayoutDashboard },
+  { label: "Skills",    href: "/skills",   icon: Sparkles },
   { label: "Settings",  href: "/settings",  icon: Settings },
 ];
 

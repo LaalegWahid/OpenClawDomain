@@ -10,6 +10,7 @@ import {
   boolean,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
+import { agentSkill } from "./skill";
 
 export const agent = pgTable(
   "agent",
@@ -26,6 +27,7 @@ export const agent = pgTable(
     botUsername: text("bot_username").notNull(),
     systemPrompt: text("system_prompt").notNull(),
     type: text("type").notNull().default("finance"), // "finance" | "marketing" | "operations"
+    isPrimary: boolean("is_primary").default(false).notNull(),
     containerId: text("container_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
@@ -139,6 +141,7 @@ export const agentRelations = relations(agent, ({ one, many }) => ({
   chatSessions: many(chatSession),
   channels: many(agentChannel),
   mcpServers: many(agentMcp),
+  skills: many(agentSkill),
 }));
 
 export const agentActivityRelations = relations(agentActivity, ({ one }) => ({
