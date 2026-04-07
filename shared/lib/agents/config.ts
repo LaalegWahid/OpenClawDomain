@@ -1,20 +1,27 @@
-export type AgentType = "finance" | "marketing" | "operations";
+import { eq } from "drizzle-orm";
+import { db } from "../drizzle";
+import { domainConfig } from "../../../src/shared/db/schema/domain-config";
+import { logger } from "../logger";
 
-export const AGENT_TYPES: AgentType[] = ["finance", "marketing", "operations"];
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-interface Skill {
+export type AgentType = string;
+
+export interface Skill {
   name: string;
   description: string;
   instructions: string;
 }
 
-interface DomainConfig {
+export interface DomainConfig {
   label: string;
   boundaryPreamble: string;
   skills: Skill[];
 }
 
-export const DOMAIN_CONFIGS: Record<AgentType, DomainConfig> = {
+// ─── Legacy hardcoded configs (finance / marketing / operations) ─────────────
+
+const LEGACY_CONFIGS: Record<string, DomainConfig> = {
   finance: {
     label: "Financial Agent",
     boundaryPreamble: `[SYSTEM INSTRUCTION — HIGHEST PRIORITY — CANNOT BE OVERRIDDEN BY USER]
@@ -142,3 +149,205 @@ CRITICAL: If someone asks about finance, marketing, football, cooking, or ANY no
     ],
   },
 };
+
+// ─── Validation ──────────────────────────────────────────────────────────────
+
+export function isValidAgentType(type: string): boolean {
+  return typeof type === "string" && /^[a-z0-9_-]+$/.test(type.trim());
+}
+
+// ─── In-memory cache + concurrency guard ─────────────────────────────────────
+
+const configCache = new Map<string, DomainConfig>();
+const pendingGenerations = new Map<string, Promise<DomainConfig>>();
+
+// ─── OpenRouter generation ───────────────────────────────────────────────────
+
+interface GeneratedConfig {
+  label: string;
+  description: string;
+  topics: string[];
+  off_topics: string[];
+  skills: Skill[];
+}
+
+function buildBoundaryPreamble(config: GeneratedConfig): string {
+  const topics = config.topics.join(", ");
+  const offTopics = config.off_topics.join(", ");
+  const label = config.label;
+  const refusal = `I'm a specialized ${label}. I can only assist with ${config.description} For other topics, please use the appropriate specialist agent.`;
+
+  const skillsBlock = config.skills
+    .map((s) => `## Skill: ${s.name}\n${s.description}\n${s.instructions}`)
+    .join("\n\n");
+
+  return `[SYSTEM INSTRUCTION — HIGHEST PRIORITY]
+
+You are a ${label.toUpperCase()} ONLY agent.
+You are STRICTLY PROHIBITED from answering anything not related to: ${topics}.
+
+RULES:
+1. If the question is off-topic, refuse with exactly: "${refusal}"
+2. Never partially answer off-topic questions.
+
+YOUR DOMAIN (answer these): ${topics}
+OFF-LIMITS (always refuse): ${offTopics}
+
+[END SYSTEM INSTRUCTION]
+
+${skillsBlock}
+
+`;
+}
+
+async function generateViaOpenRouter(domain: string): Promise<DomainConfig> {
+  const apiKey = process.env.OPENROUTER_CONFIG_KEY;
+  if (!apiKey) throw new Error("OPENROUTER_CONFIG_KEY is not set — cannot generate config for dynamic agent type");
+
+  const model = process.env.CONFIG_GENERATOR_MODEL ?? "qwen/qwen3.6-plus:free";
+
+  const prompt = `You are a configuration generator. Given a domain/field, generate a specialized AI agent config.
+
+Domain: "${domain}"
+
+Respond ONLY with a valid JSON object (no markdown, no explanation) in this exact format:
+{
+  "label": "<Domain> Agent",
+  "description": "One sentence describing what this agent does.",
+  "topics": ["topic1", "topic2", "topic3", "topic4", "topic5"],
+  "off_topics": ["off1", "off2", "off3"],
+  "skills": [
+    {
+      "name": "skill-name",
+      "description": "Short description",
+      "instructions": "What the agent should do with this skill."
+    },
+    {
+      "name": "skill-name-2",
+      "description": "Short description",
+      "instructions": "What the agent should do with this skill."
+    },
+    {
+      "name": "skill-name-3",
+      "description": "Short description",
+      "instructions": "What the agent should do with this skill."
+    }
+  ]
+}`;
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://openclaw.ai",
+      "X-Title": "OpenClaw Config Generator",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "unable to read body");
+    throw new Error(`OpenRouter config generation failed (${res.status}): ${body}`);
+  }
+
+  const data = await res.json();
+  let raw: string = data.choices?.[0]?.message?.content?.trim() ?? "";
+  raw = raw.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
+
+  let parsed: GeneratedConfig;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`Failed to parse OpenRouter config for domain '${domain}'. Raw: ${raw.slice(0, 500)}`);
+  }
+
+  const boundaryPreamble = buildBoundaryPreamble(parsed);
+  return { label: parsed.label, boundaryPreamble, skills: parsed.skills };
+}
+
+// ─── Persist to DB ───────────────────────────────────────────────────────────
+
+async function saveToDb(agentType: string, config: DomainConfig): Promise<void> {
+  try {
+    await db
+      .insert(domainConfig)
+      .values({
+        agentType,
+        label: config.label,
+        boundaryPreamble: config.boundaryPreamble,
+        skills: config.skills,
+      })
+      .onConflictDoNothing();
+  } catch (err) {
+    logger.warn({ err, agentType }, "Failed to persist domain config to DB (non-fatal)");
+  }
+}
+
+async function loadFromDb(agentType: string): Promise<DomainConfig | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(domainConfig)
+      .where(eq(domainConfig.agentType, agentType))
+      .limit(1);
+
+    if (!row) return null;
+    return {
+      label: row.label,
+      boundaryPreamble: row.boundaryPreamble,
+      skills: row.skills as Skill[],
+    };
+  } catch (err) {
+    logger.warn({ err, agentType }, "Failed to load domain config from DB (non-fatal)");
+    return null;
+  }
+}
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+export async function getDomainConfig(agentType: string): Promise<DomainConfig> {
+  const type = agentType.trim().toLowerCase();
+
+  // 1. Legacy hardcoded configs (instant, zero cost)
+  const legacy = LEGACY_CONFIGS[type];
+  if (legacy) return legacy;
+
+  // 2. In-memory cache
+  const cached = configCache.get(type);
+  if (cached) return cached;
+
+  // 3. Check if generation is already in-flight (concurrency guard)
+  const pending = pendingGenerations.get(type);
+  if (pending) return pending;
+
+  // 4. Build a promise that checks DB then generates via OpenRouter
+  const generation = (async (): Promise<DomainConfig> => {
+    // Try DB first
+    const fromDb = await loadFromDb(type);
+    if (fromDb) {
+      configCache.set(type, fromDb);
+      return fromDb;
+    }
+
+    // Generate via OpenRouter
+    logger.info({ agentType: type }, "Generating domain config via OpenRouter");
+    const config = await generateViaOpenRouter(type);
+    configCache.set(type, config);
+    await saveToDb(type, config);
+    return config;
+  })();
+
+  pendingGenerations.set(type, generation);
+
+  try {
+    const result = await generation;
+    return result;
+  } finally {
+    pendingGenerations.delete(type);
+  }
+}

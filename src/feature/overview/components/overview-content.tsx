@@ -1,10 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Bot, Loader2, X } from "lucide-react";
+import { Bot, Loader2, X, Sparkles } from "lucide-react";
 import Link from "next/link";
 
-type AgentType = "finance" | "marketing" | "operations";
+interface UserSkill {
+  id: string;
+  name: string;
+  description: string;
+}
+
 type Platform = "telegram" | "discord" | "whatsapp";
 
 const skeleton: React.CSSProperties = {
@@ -14,23 +19,30 @@ const skeleton: React.CSSProperties = {
   borderRadius: 6,
 };
 
-const AGENT_TYPE_OPTIONS: { value: AgentType; label: string }[] = [
+const AGENT_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "finance", label: "Finance" },
   { value: "marketing", label: "Marketing" },
   { value: "operations", label: "Operations" },
+  { value: "__custom__", label: "Custom..." },
 ];
 
-const DEFAULT_PROMPTS: Record<AgentType, string> = {
+const DEFAULT_PROMPTS: Record<string, string> = {
   finance: "You help with financial analysis, budgeting, forecasting, and accounting compliance.",
   marketing: "You help with market research, campaign strategy, branding, and content creation.",
   operations: "You help with process optimization, supply chain logistics, and project management.",
 };
 
-const TYPE_COLORS: Record<AgentType, string> = {
+const TYPE_COLORS: Record<string, string> = {
   finance: "#4CAF50",
   marketing: "#2196F3",
   operations: "#FF9800",
 };
+
+const DEFAULT_CUSTOM_COLOR = "#9C27B0";
+
+function getTypeColor(type?: string): string {
+  return (type && TYPE_COLORS[type]) || DEFAULT_CUSTOM_COLOR;
+}
 
 const PLATFORM_OPTIONS: { value: Platform; label: string; description: string }[] = [
   { value: "telegram", label: "Telegram", description: "Connect via Telegram Bot API" },
@@ -67,7 +79,7 @@ interface AgentRecord {
   name: string;
   botUsername: string;
   status: string;
-  type?: AgentType;
+  type?: string;
 }
 
 interface OverviewContentProps {
@@ -124,7 +136,12 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   // Common fields
   const [botName, setBotName] = useState("");
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_PROMPTS["finance"]);
-  const [agentType, setAgentType] = useState<AgentType>("finance");
+  const [agentType, setAgentType] = useState("finance");
+  const [customType, setCustomType] = useState("");
+
+  // Skills selection
+  const [userSkills, setUserSkills] = useState<UserSkill[]>([]);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
 
   const fetchAgents = useCallback(async () => {
     setLoading(true);
@@ -151,10 +168,23 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     setPlatform("telegram");
     setBotToken(""); setBotUsername("");
     setDiscordToken("");
-    setBotName(""); setSystemPrompt(DEFAULT_PROMPTS["finance"]); setAgentType("finance");
+    setBotName(""); setSystemPrompt(DEFAULT_PROMPTS["finance"]); setAgentType("finance"); setCustomType("");
+    setSelectedSkillIds([]);
     setError(null);
     setWaStep("form"); setWaAgentId(null); setWaQrData(null); setWaQrError(null);
   };
+
+  const fetchUserSkills = useCallback(async () => {
+    try {
+      const res = await fetch("/api/skills");
+      if (res.ok) {
+        const data = await res.json();
+        setUserSkills(data.skills ?? []);
+      }
+    } catch {
+      // silent
+    }
+  }, []);
 
   const handleAddBot = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,12 +192,14 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     setSubmitting(true);
 
     try {
+      const effectiveType = agentType === "__custom__" ? customType.trim().toLowerCase() : agentType;
+      const base = { name: botName, systemPrompt, type: effectiveType, skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined };
       const body =
         platform === "telegram"
-          ? { platform, botToken, botUsername, name: botName, systemPrompt, type: agentType }
+          ? { platform, botToken, botUsername, ...base }
           : platform === "discord"
-          ? { platform, credentials: { botToken: discordToken }, name: botName, systemPrompt, type: agentType }
-          : { platform, name: botName, systemPrompt, type: agentType };
+          ? { platform, credentials: { botToken: discordToken }, ...base }
+          : { platform, ...base };
 
       const res = await fetch("/api/agents", {
         method: "POST",
@@ -259,7 +291,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       {/* Add Bot button */}
       <div style={{ marginBottom: "14px" }}>
         <button
-          onClick={() => { resetForm(); setShowModal(true); }}
+          onClick={() => { resetForm(); fetchUserSkills(); setShowModal(true); }}
           disabled={activeAgents.length >= MAX_BOTS || loading}
           style={{
             background: activeAgents.length >= MAX_BOTS ? "#2A2A2A" : "#FF4D00",
@@ -331,9 +363,9 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   <span style={{
                     display: "inline-block", marginTop: "6px", fontSize: "10px", fontWeight: 500,
                     letterSpacing: "0.05em", textTransform: "uppercase",
-                    color: TYPE_COLORS[ag.type] ?? "#555",
-                    background: `${TYPE_COLORS[ag.type] ?? "#555"}15`,
-                    border: `0.5px solid ${TYPE_COLORS[ag.type] ?? "#555"}30`,
+                    color: getTypeColor(ag.type),
+                    background: `${getTypeColor(ag.type)}15`,
+                    border: `0.5px solid ${getTypeColor(ag.type)}30`,
                     borderRadius: "4px", padding: "2px 8px",
                   }}>
                     {ag.type}
@@ -530,9 +562,14 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 <select
                   value={agentType}
                   onChange={(e) => {
-                    const newType = e.target.value as AgentType;
+                    const newType = e.target.value;
                     setAgentType(newType);
-                    setSystemPrompt(DEFAULT_PROMPTS[newType]);
+                    if (newType !== "__custom__") {
+                      setSystemPrompt(DEFAULT_PROMPTS[newType] ?? "You are a helpful specialist agent.");
+                      setCustomType("");
+                    } else {
+                      setSystemPrompt("You are a helpful specialist agent.");
+                    }
                   }}
                   style={{ ...inputStyle }}
                 >
@@ -540,6 +577,16 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
+                {agentType === "__custom__" && (
+                  <input
+                    type="text"
+                    value={customType}
+                    onChange={(e) => setCustomType(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
+                    placeholder="e.g. education, cybersecurity, agriculture"
+                    style={{ ...inputStyle, marginTop: "6px" }}
+                    required
+                  />
+                )}
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -553,6 +600,50 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   style={{ ...inputStyle, resize: "none", fontFamily: "inherit" }}
                 />
               </div>
+
+              {/* Skills Selection */}
+              {userSkills.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={labelStyle}>
+                    <Sparkles size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
+                    Attach Skills ({selectedSkillIds.length} selected)
+                  </label>
+                  <div style={{ maxHeight: "160px", overflowY: "auto", border: "0.5px solid #1E1E1E", borderRadius: "8px", background: "#0A0A0A" }}>
+                    {userSkills.map((s) => {
+                      const checked = selectedSkillIds.includes(s.id);
+                      return (
+                        <label
+                          key={s.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                            padding: "10px 12px",
+                            cursor: "pointer",
+                            borderBottom: "0.5px solid #1E1E1E",
+                            background: checked ? "rgba(255,77,0,0.05)" : "transparent",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setSelectedSkillIds((prev) =>
+                                checked ? prev.filter((id) => id !== s.id) : [...prev, s.id]
+                              );
+                            }}
+                            style={{ accentColor: "#FF4D00" }}
+                          />
+                          <div style={{ overflow: "hidden" }}>
+                            <p style={{ fontSize: "12px", fontWeight: 600, color: "#F0EEE8", margin: 0 }}>{s.name}</p>
+                            <p style={{ fontSize: "11px", color: "#555", margin: 0, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{s.description}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"

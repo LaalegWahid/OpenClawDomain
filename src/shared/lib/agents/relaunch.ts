@@ -1,5 +1,6 @@
 import { db } from "../drizzle";
 import { agent, agentChannel, agentMcp } from "../../db/schema/agent";
+import { skill, agentSkill } from "../../db/schema/skill";
 import { eq } from "drizzle-orm";
 import { launchContainer, stopContainer, waitForTaskRunning } from "./docker";
 import type { ChannelConfig, McpServerConfig } from "./docker";
@@ -62,6 +63,17 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
     };
   }
 
+  // ── 5b. Fetch linked skills ───────────────────────────────────────────────
+  const linkedSkills = await db
+    .select({ name: skill.name, instructions: skill.instructions })
+    .from(agentSkill)
+    .innerJoin(skill, eq(agentSkill.skillId, skill.id))
+    .where(eq(agentSkill.agentId, agentId));
+
+  const skillInstructions = linkedSkills.length > 0
+    ? linkedSkills.map((s) => `## ${s.name}\n${s.instructions}`).join("\n\n")
+    : undefined;
+
   // ── 6. Stop old container ─────────────────────────────────────────────────
   if (agentRecord.containerId) {
     await stopContainer(agentRecord.containerId);
@@ -75,6 +87,7 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
     agentRecord.type as AgentType,
     channelConfig,
     Object.keys(mcpConfig).length > 0 ? mcpConfig : undefined,
+    skillInstructions,
   );
 
   // ── 8. Update agent record ────────────────────────────────────────────────

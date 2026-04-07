@@ -9,20 +9,24 @@ import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
 import Link from "next/link";
 
-type AgentType = "finance" | "marketing" | "operations";
-
-const TYPE_BADGE_STYLES: Record<AgentType, string> = {
+const TYPE_BADGE_STYLES: Record<string, string> = {
   finance: "bg-green-500/15 text-green-400 border-green-500/30",
   marketing: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   operations: "bg-orange-500/15 text-orange-400 border-orange-500/30",
 };
+
+const FALLBACK_BADGE_STYLE = "bg-purple-500/15 text-purple-400 border-purple-500/30";
+
+function getBadgeStyle(type?: string): string {
+  return (type && TYPE_BADGE_STYLES[type]) || FALLBACK_BADGE_STYLE;
+}
 
 interface AgentRecord {
   id: string;
   name: string;
   botUsername: string;
   status: string;
-  type?: AgentType;
+  type?: string;
   containerId: string | null;
   createdAt: string;
 }
@@ -392,7 +396,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                       {new Date(agent.createdAt).toLocaleDateString()}
                     </p>
                     {agent.type && (
-                      <span className={`rounded-full px-3 py-0.5 text-xs font-medium border ${TYPE_BADGE_STYLES[agent.type] ?? "bg-white/10 text-white/50 border-white/20"}`}>
+                      <span className={`rounded-full px-3 py-0.5 text-xs font-medium border ${getBadgeStyle(agent.type)}`}>
                         {agent.type.charAt(0).toUpperCase() + agent.type.slice(1)}
                       </span>
                     )}
