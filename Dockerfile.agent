@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl python3 \
 
 COPY agent-entrypoint.sh /home/node/entrypoint.sh
 COPY whatsapp-linker.sh /home/node/whatsapp-linker.sh
+COPY whatsapp-linker.mjs /home/node/whatsapp-linker.mjs
 COPY agent-config.py /home/node/agent-config.py
 RUN sed -i 's/\r$//' /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \
     && chmod +x /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \
@@ -16,8 +17,15 @@ RUN sed -i 's/\r$//' /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \
 USER node
 WORKDIR /home/node
 
-# Pre-install WhatsApp channel plugin so the linker doesn't need to install it at runtime
+# Pre-install WhatsApp channel plugin so the agent picks up linked credentials on restart
 RUN openclaw plugins install @openclaw/whatsapp
+
+# Install Baileys for the direct whatsapp linker script.
+# We use Baileys directly (bypassing `openclaw channels login`) because the OpenClaw
+# CLI renders the QR as Unicode art and never emits the raw QR string to stdout.
+# Credentials are stored at ${OPENCLAW_HOME}/credentials/whatsapp/default/ — the same
+# path that OpenClaw's @openclaw/whatsapp plugin expects on the agent side.
+RUN npm install @whiskeysockets/baileys
 
 EXPOSE 18789
 
