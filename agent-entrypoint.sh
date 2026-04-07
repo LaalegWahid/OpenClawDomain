@@ -321,13 +321,16 @@ python3 /home/node/agent-config.py "${CONFIG_FILE}" "${AUTH_DIR}/auth-profiles.j
 # WhatsApp) are visible in CloudWatch — the log file is not stdout by default.
 mkdir -p /tmp/openclaw
 (
+  set +e  # errors inside this background subshell must not fire the parent ERR trap
   logfile="/tmp/openclaw/openclaw-$(date -u +%Y-%m-%d).log"
-  # Wait up to 15s for OpenClaw to create the log file, then follow it
-  for _i in $(seq 1 15); do
+  # Wait up to 30s for OpenClaw to create the log file, then follow it
+  for _i in $(seq 1 30); do
     [ -f "${logfile}" ] && break
     sleep 1
   done
-  tail -f "${logfile}" 2>/dev/null
+  if [ -f "${logfile}" ]; then
+    tail -f "${logfile}" 2>/dev/null || true
+  fi
 ) &
 
 exec openclaw gateway --bind lan --port 18789 --allow-unconfigured

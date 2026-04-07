@@ -9,6 +9,25 @@ import { DOMAIN_CONFIGS, type AgentType } from "./config";
 
 const ecs = new ECSClient({ region: process.env.AWS_REGION || "us-west-1" });
 
+/**
+ * Replaces common non-Latin1 unicode characters with ASCII equivalents,
+ * then strips any remaining characters > 255.
+ *
+ * Required because the AWS SDK uses the Web Fetch API's Headers constructor
+ * which throws `TypeError: Cannot convert argument to a ByteString` for any
+ * character value > 255 in a value that passes through the HTTP layer.
+ */
+function sanitizeForEcs(text: string): string {
+  return text
+    .replace(/\u2014/g, "--")        // em-dash —
+    .replace(/\u2013/g, "-")         // en-dash –
+    .replace(/\u2018|\u2019/g, "'")  // smart single quotes ‘ ’
+    .replace(/\u201C|\u201D/g, '"')  // smart double quotes “ ”
+    .replace(/\u2026/g, "...")       // ellipsis …
+    .replace(/\u00A0/g, " ")         // non-breaking space
+    .replace(/[^\x00-\xFF]/g, "?");  // strip any remaining non-Latin1 chars
+}
+
 function getCluster(): string {
   const v = process.env.ECS_CLUSTER_ARN;
   if (!v) throw new Error("ECS_CLUSTER_ARN is not set");
@@ -97,7 +116,7 @@ export async function launchContainer(
     return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers);
   }
   const domainConfig = DOMAIN_CONFIGS[agentType];
-  const fullSystemPrompt = domainConfig.boundaryPreamble + systemPrompt;
+  const fullSystemPrompt = sanitizeForEcs(domainConfig.boundaryPreamble + systemPrompt);
 
   logger.info({ agentId, agentType }, "Launching ECS agent task");
 

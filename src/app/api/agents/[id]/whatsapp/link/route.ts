@@ -25,7 +25,13 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
-    if (agentRecord.status === "stopped" || agentRecord.status === "error") {
+    // Block re-linking when the agent has previously been launched but is now
+    // stopped or errored. A brand-new WhatsApp-only agent (no containerId yet)
+    // is allowed through — the container is launched after linking completes.
+    if (
+      agentRecord.containerId &&
+      (agentRecord.status === "stopped" || agentRecord.status === "error")
+    ) {
       return NextResponse.json(
         { error: "Agent must be running before you can link WhatsApp" },
         { status: 409 },
