@@ -91,13 +91,17 @@ export async function launchContainer(
   agentType: AgentType,
   channels?: ChannelConfig,
   mcpServers?: Record<string, McpServerConfig>,
+  skillInstructions?: string,
 ): Promise<LaunchResult> {
   if (process.env.LOCAL_DEV === "true") {
     const { localLaunchContainer } = await import("./docker.local");
     return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers);
   }
   const domainCfg = await getDomainConfig(agentType);
-  const fullSystemPrompt = domainCfg.boundaryPreamble + systemPrompt;
+  let fullSystemPrompt = domainCfg.boundaryPreamble + systemPrompt;
+  if (skillInstructions) {
+    fullSystemPrompt += `\n\n[USER SKILLS]\n${skillInstructions}\n[END USER SKILLS]`;
+  }
 
   logger.info({ agentId, agentType }, "Launching ECS agent task");
 

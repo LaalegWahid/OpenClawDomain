@@ -5,10 +5,27 @@ import { db } from "../../../shared/lib/drizzle";
 import { eq } from "drizzle-orm";
 import { deleteWebhook, setWebhook, validateBotToken } from "../../../shared/lib/telegram/bot";
 import { agent, agentActivity, agentChannel } from "../../../shared/db/schema/agent";
+import { skill, agentSkill } from "../../../shared/db/schema/skill";
+import { and, inArray } from "drizzle-orm";
 import { launchContainer, stopContainer, waitForTaskRunning } from "../../../shared/lib/agents/docker";
 import { logger } from "../../../shared/lib/logger";
 import { isSubscriptionActive } from "../../../shared/lib/subscription/cache";
 import { env } from "../../../shared/config/env";
+
+async function linkSkillsToAgent(agentId: string, userId: string, skillIds?: string[]) {
+  if (!skillIds || skillIds.length === 0) return;
+  // Verify all skills belong to the user
+  const owned = await db
+    .select({ id: skill.id })
+    .from(skill)
+    .where(and(eq(skill.userId, userId), inArray(skill.id, skillIds)));
+  const ownedIds = owned.map((s) => s.id);
+  if (ownedIds.length > 0) {
+    await db.insert(agentSkill).values(
+      ownedIds.map((skillId) => ({ agentId, skillId })),
+    );
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -20,7 +37,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { platform = "telegram", name, systemPrompt, type } = body;
+    const { platform = "telegram", name, systemPrompt, type, skillIds } = body;
 
     if (!name || !systemPrompt || !type) {
       return NextResponse.json(
@@ -50,6 +67,18 @@ export async function POST(req: Request) {
     const isFirstBot = existingAgents.length === 0;
 
     const tempAgentId = crypto.randomUUID();
+
+    // ── Fetch skill instructions if any skills selected ──────────────────────
+    let skillInstructions: string | undefined;
+    if (Array.isArray(skillIds) && skillIds.length > 0) {
+      const owned = await db
+        .select({ name: skill.name, instructions: skill.instructions })
+        .from(skill)
+        .where(and(eq(skill.userId, session.user.id), inArray(skill.id, skillIds)));
+      if (owned.length > 0) {
+        skillInstructions = owned.map((s) => `## ${s.name}\n${s.instructions}`).join("\n\n");
+      }
+    }
 
     // ── TELEGRAM ─────────────────────────────────────────────────────────────
     if (platform === "telegram") {
@@ -91,7 +120,7 @@ export async function POST(req: Request) {
 
       let containerId: string;
       try {
-        const result = await launchContainer(session.user.id, tempAgentId, systemPrompt, type as AgentType);
+        const result = await launchContainer(session.user.id, tempAgentId, systemPrompt, type as AgentType, undefined, undefined, skillInstructions);
         containerId = result.containerId;
       } catch (err) {
         logger.error({ err }, "Failed to launch agent container");
@@ -121,6 +150,7 @@ export async function POST(req: Request) {
           .returning();
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Telegram` });
+        await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
 
         waitForTaskRunning(containerId)
           .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
@@ -171,6 +201,8 @@ export async function POST(req: Request) {
           systemPrompt,
           type as AgentType,
           { discord: { botToken: discordToken } },
+          undefined,
+          skillInstructions,
         );
         containerId = result.containerId;
       } catch (err) {
@@ -189,6 +221,7 @@ export async function POST(req: Request) {
 
         await db.insert(agentChannel).values({ agentId: newAgent.id, platform: "discord", credentials: { botToken: discordToken } });
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Discord` });
+        await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
 
         waitForTaskRunning(containerId)
           .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
@@ -220,7 +253,9 @@ export async function POST(req: Request) {
           tempAgentId,
           systemPrompt,
           type as AgentType,
-          // whatsapp channel will be enabled after QR linking via relaunchAgentWithChannels
+          undefined, // whatsapp channel will be enabled after QR linking via relaunchAgentWithChannels
+          undefined,
+          skillInstructions,
         );
         containerId = result.containerId;
       } catch (err) {
@@ -235,6 +270,7 @@ export async function POST(req: Request) {
           .returning();
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched — link WhatsApp to activate` });
+        await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
 
         waitForTaskRunning(containerId)
           .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
