@@ -99,7 +99,7 @@ export async function waitForTaskRunning(
 export interface ChannelConfig {
   discord?: { botToken: string };
   /** Baileys/QR-based WhatsApp — credentials live on EFS, we just enable the channel */
-  whatsapp?: { enabled: true };
+  whatsapp?: { enabled: true; ownerJid?: string };
 }
 
 export interface McpServerConfig {
@@ -135,6 +135,9 @@ return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, 
     // Credentials live on EFS (written by the WhatsApp linker task).
     // We only need to tell the entrypoint to enable the channel in openclaw.json.
     extraEnv.push({ name: "WHATSAPP_ENABLED", value: "true" });
+    if (channels.whatsapp.ownerJid) {
+      extraEnv.push({ name: "WHATSAPP_OWNER_JID", value: channels.whatsapp.ownerJid });
+    }
   }
   if (mcpServers && Object.keys(mcpServers).length > 0) {
     const mcpConfigB64 = Buffer.from(JSON.stringify(mcpServers)).toString("base64");

@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../../../../shared/lib/drizzle";
 import { agent } from "../../../../shared/db/schema";
-import { getContainerStatus, launchContainer } from "../../../../shared/lib/agents/docker";
+import { getContainerStatus } from "../../../../shared/lib/agents/docker";
+import { relaunchAgentWithChannels } from "../../../../shared/lib/agents/relaunch";
 import { logger } from "../../../../shared/lib/logger";
 import { env } from "../../../../shared/config/env";
-import { AgentType } from "../../../../shared/lib/agents/config";
-
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization");
@@ -15,7 +14,7 @@ export async function GET(req: Request) {
   }
 
   const activeAgents = await db
-    .select({ id: agent.id, containerId: agent.containerId, userId: agent.userId, systemPrompt: agent.systemPrompt, type: agent.type })
+    .select({ id: agent.id, containerId: agent.containerId })
     .from(agent)
     .where(inArray(agent.status, ["active", "starting"]));
 
@@ -26,16 +25,11 @@ export async function GET(req: Request) {
     if (!ag.containerId) continue;
     const status = await getContainerStatus(ag.containerId);
     if (status === "stopped" || status === "deprovisioning" || status === "not_found") {
-      // Attempt auto-restart
+      // Use relaunchAgentWithChannels so WhatsApp / MCP channel config is preserved.
+      // (bare launchContainer would restart the agent without WHATSAPP_ENABLED, etc.)
       try {
-        const result = await launchContainer(
-          ag.userId,
-          ag.id,
-          ag.systemPrompt ?? "",
-          (ag.type as AgentType) || "operations",
-        );
-        await db.update(agent).set({ status: "starting", containerId: result.containerId }).where(eq(agent.id, ag.id));
-        logger.info({ agentId: ag.id, newTaskArn: result.containerId }, "Agent auto-restarted");
+        await relaunchAgentWithChannels(ag.id);
+        logger.info({ agentId: ag.id }, "Agent auto-restarted by cron");
         restarted++;
       } catch (err) {
         await db.update(agent).set({ status: "error" }).where(eq(agent.id, ag.id));
