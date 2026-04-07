@@ -49,7 +49,9 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
 
   // Import tab state
   const [importDraft, setImportDraft] = useState<{ name: string; description: string; instructions: string } | null>(null);
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [skillMdFile, setSkillMdFile] = useState<File | null>(null);
+  const [scriptFile, setScriptFile] = useState<File | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
 
   const handleGenerate = async () => {
     setError(null);
@@ -95,11 +97,13 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
     }
   };
 
-  const handleImportFile = async (file: File) => {
-    setImportFile(file);
+  const handleImportFiles = async () => {
+    if (!skillMdFile) return;
     setError(null);
+    setImportLoading(true);
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("skillMd", skillMdFile);
+    if (scriptFile) formData.append("script", scriptFile);
     try {
       const res = await fetch("/api/skills/import", {
         method: "POST",
@@ -114,6 +118,50 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
       setImportDraft(data.skill);
     } catch {
       setError("Network error. Please try again.");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImportSave = async () => {
+    if (!importDraft) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      // 1. Create the skill record
+      const res = await fetch("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...importDraft, source: "import" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to save skill");
+        return;
+      }
+      // 2. Upload the .py script to the skill's files if provided
+      if (scriptFile) {
+        const fileForm = new FormData();
+        fileForm.append("files", scriptFile);
+        await fetch(`/api/skills/${data.skill.id}/files`, {
+          method: "POST",
+          body: fileForm,
+        });
+      }
+      // 3. Upload the SKILL.md to the skill's files
+      if (skillMdFile) {
+        const mdForm = new FormData();
+        mdForm.append("files", skillMdFile);
+        await fetch(`/api/skills/${data.skill.id}/files`, {
+          method: "POST",
+          body: mdForm,
+        });
+      }
+      onCreated();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -374,44 +422,99 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
             {!importDraft ? (
               <>
                 <p style={{ fontSize: 13, color: "#888", marginTop: 0, marginBottom: 16, lineHeight: 1.5 }}>
-                  Upload a <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>.json</code> file
-                  with <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>name</code>,{" "}
-                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>description</code>, and{" "}
-                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>instructions</code> fields.
+                  Import a skill using the ClawHub format: a{" "}
+                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>SKILL.md</code> file
+                  with frontmatter metadata, and an optional{" "}
+                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>.py</code> script.
                 </p>
+
+                {/* SKILL.md upload */}
+                <label style={labelStyle}>SKILL.md (required)</label>
                 <label
                   style={{
                     display: "flex",
-                    flexDirection: "column",
                     alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    padding: "2rem",
-                    border: "1.5px dashed #1E1E1E",
-                    borderRadius: 12,
+                    gap: 10,
+                    padding: "12px 14px",
+                    border: skillMdFile ? "1.5px solid rgba(255,77,0,0.4)" : "1.5px dashed #1E1E1E",
+                    borderRadius: 10,
                     cursor: "pointer",
-                    transition: "border-color 0.15s",
+                    marginBottom: 14,
+                    background: skillMdFile ? "rgba(255,77,0,0.04)" : "transparent",
                   }}
                 >
-                  <Upload size={24} style={{ color: "#555" }} />
-                  <span style={{ fontSize: 13, color: "#888" }}>
-                    {importFile ? importFile.name : "Click to select a .json file"}
+                  <FileText size={18} style={{ color: skillMdFile ? "#FF4D00" : "#555", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: skillMdFile ? "#F0EEE8" : "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {skillMdFile ? skillMdFile.name : "Click to select SKILL.md"}
                   </span>
                   <input
                     type="file"
-                    accept=".json,application/json"
+                    accept=".md"
                     style={{ display: "none" }}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
-                      if (f) handleImportFile(f);
+                      if (f) { setSkillMdFile(f); setImportDraft(null); setError(null); }
                     }}
                   />
                 </label>
+
+                {/* Python script upload */}
+                <label style={labelStyle}>Python Script (optional)</label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "12px 14px",
+                    border: scriptFile ? "1.5px solid rgba(76,175,80,0.4)" : "1.5px dashed #1E1E1E",
+                    borderRadius: 10,
+                    cursor: "pointer",
+                    marginBottom: 16,
+                    background: scriptFile ? "rgba(76,175,80,0.04)" : "transparent",
+                  }}
+                >
+                  <Upload size={18} style={{ color: scriptFile ? "#4CAF50" : "#555", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: scriptFile ? "#F0EEE8" : "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {scriptFile ? scriptFile.name : "Click to select a .py file"}
+                  </span>
+                  <input
+                    type="file"
+                    accept=".py"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setScriptFile(f);
+                    }}
+                  />
+                </label>
+
+                <button
+                  onClick={handleImportFiles}
+                  disabled={!skillMdFile || importLoading}
+                  style={{
+                    width: "100%",
+                    padding: "10px 0",
+                    background: !skillMdFile || importLoading ? "#333" : "#FF4D00",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 10,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: !skillMdFile || importLoading ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  {importLoading ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Upload size={16} />}
+                  {importLoading ? "Parsing..." : "Parse Skill"}
+                </button>
               </>
             ) : (
               <>
                 <p style={{ fontSize: 12, color: "#555", marginBottom: 12, marginTop: 0 }}>
-                  Review the imported skill, then save.
+                  Review the imported skill, then save.{scriptFile && <span style={{ color: "#4CAF50" }}> Script: {scriptFile.name}</span>}
                 </p>
                 <div style={{ marginBottom: 12 }}>
                   <label style={labelStyle}>Name</label>
@@ -440,7 +543,7 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
-                    onClick={() => { setImportDraft(null); setImportFile(null); }}
+                    onClick={() => { setImportDraft(null); setSkillMdFile(null); setScriptFile(null); }}
                     style={{
                       flex: 1,
                       padding: "10px 0",
@@ -456,7 +559,7 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                     Choose Another
                   </button>
                   <button
-                    onClick={() => handleSave(importDraft, "import")}
+                    onClick={handleImportSave}
                     disabled={submitting}
                     style={{
                       flex: 1,
