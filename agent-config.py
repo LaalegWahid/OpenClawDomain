@@ -51,7 +51,9 @@ def patch_whatsapp(cfg):
         return
     print("Adding WhatsApp channel config (Baileys)...")
     cfg.setdefault("channels", {})["whatsapp"] = {
+        "enabled": True,
         "dmPolicy": "open",
+        "allowFrom": ["*"],
         "sendReadReceipts": True,
         "reactionLevel": "ack",
     }

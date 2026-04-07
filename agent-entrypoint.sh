@@ -317,4 +317,17 @@ export OPENCLAW_CONFIG_PATH="${CONFIG_FILE}"
 # and validated auth-profiles.json writing.
 python3 /home/node/agent-config.py "${CONFIG_FILE}" "${AUTH_DIR}/auth-profiles.json"
 
+# Stream OpenClaw's internal log file to stdout so all channel logs (including
+# WhatsApp) are visible in CloudWatch — the log file is not stdout by default.
+mkdir -p /tmp/openclaw
+(
+  logfile="/tmp/openclaw/openclaw-$(date -u +%Y-%m-%d).log"
+  # Wait up to 15s for OpenClaw to create the log file, then follow it
+  for _i in $(seq 1 15); do
+    [ -f "${logfile}" ] && break
+    sleep 1
+  done
+  tail -f "${logfile}" 2>/dev/null
+) &
+
 exec openclaw gateway --bind lan --port 18789 --allow-unconfigured
