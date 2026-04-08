@@ -528,11 +528,13 @@ export default function ClawScrollSection() {
                 textTransform: 'uppercase',
               }}
             >
-              Finance
+              Legal
               <span style={{ color: '#FF4D00', margin: '0 12px' }}>·</span>
-              Marketing
+              HR
               <span style={{ color: '#FF4D00', margin: '0 12px' }}>·</span>
-              Operations
+              Real Estate
+              <span style={{ color: '#FF4D00', margin: '0 12px' }}>·</span>
+              Any Field
             </span>
           </div>
 
