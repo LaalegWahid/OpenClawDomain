@@ -146,7 +146,9 @@ export async function POST(
     await sendMessage(
       found.botToken,
       chatId,
-      isTimeout ? "Processing took too long, please try again." : "Failed to reach the agent. It may be starting up — try again shortly."
+      isTimeout
+        ? "⏳ Your request is taking longer than expected. Please try again in a moment."
+        : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!"
     ).catch(() => {});
   }
 
