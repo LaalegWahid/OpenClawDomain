@@ -127,8 +127,28 @@ role: Operations Agent
 EOF
       ;;
     *)
-      echo "ERROR: Unknown AGENT_TYPE '${AGENT_TYPE}' — no role files written" >&2
-      exit 1
+      # Custom/dynamic agent type — derive generic role files from AGENT_TYPE
+      # The full domain config is already in SYSTEM_PROMPT (generated server-side)
+      PRETTY_TYPE="$(echo "${AGENT_TYPE}" | sed 's/[-_]/ /g' | sed 's/\b\(.\)/\u\1/g')"
+      cat > "${WORKSPACE}/SOUL.md" << EOF
+# Identity
+You are a specialized ${PRETTY_TYPE} Agent.
+# Personality
+- Professional, knowledgeable, focused on ${AGENT_TYPE}
+# Hard Boundaries
+You ONLY handle ${AGENT_TYPE}-related topics. If asked about anything else respond:
+"I'm the ${PRETTY_TYPE} Agent, I only handle ${AGENT_TYPE}-related tasks."
+EOF
+      cat > "${WORKSPACE}/AGENTS.md" << EOF
+# Rules
+- ONLY respond to topics related to: ${AGENT_TYPE}
+- Stay within your domain of expertise
+EOF
+      cat > "${WORKSPACE}/IDENTITY.md" << EOF
+name: ${PRETTY_TYPE}Bot
+emoji: 🤖
+role: ${PRETTY_TYPE} Agent
+EOF
       ;;
   esac
 
