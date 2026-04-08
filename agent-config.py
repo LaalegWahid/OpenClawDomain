@@ -53,8 +53,6 @@ def patch_whatsapp(cfg):
     openclaw_home = os.environ.get("OPENCLAW_HOME", "")
     auth_dir = os.path.join(openclaw_home, "credentials", "whatsapp", "default")
     print(f"WhatsApp authDir: {auth_dir}")
-    # owner_jid = os.environ.get("WHATSAPP_OWNER_JID", "").strip()
-    # allow_from = [owner_jid] if owner_jid else ["*"]
     cfg.setdefault("channels", {})["whatsapp"] = {
         "enabled": True,
         "dmPolicy": "open",
