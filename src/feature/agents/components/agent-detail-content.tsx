@@ -8,6 +8,7 @@ import { Separator } from "../../../shared/components/ui/separator";
 import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
 import Link from "next/link";
+import { ChatPanel } from "./chat-panel";
 
 const TYPE_BADGE_STYLES: Record<string, string> = {
   finance: "bg-green-500/15 text-green-400 border-green-500/30",
@@ -134,6 +135,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [mcpArgs, setMcpArgs] = useState("");
   const [addingMcp, setAddingMcp] = useState(false);
 
+  // Skills
+  const [agentSkills, setAgentSkills] = useState<{id: string; name: string; description: string; linkId: string}[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<{id: string; name: string; description: string}[]>([]);
+  const [showAddSkill, setShowAddSkill] = useState(false);
+  const [addingSkill, setAddingSkill] = useState(false);
+
   const fetchAgent = useCallback(async () => {
     try {
       const res = await fetch(`/api/agents/${agentId}`);
@@ -176,12 +183,34 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     } catch { /* non-critical */ }
   }, [agentId]);
 
+  const fetchAgentSkills = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/skills`);
+      if (res.ok) {
+        const data = await res.json();
+        setAgentSkills(data.skills ?? []);
+      }
+    } catch { /* non-critical */ }
+  }, [agentId]);
+
+  const fetchAvailableSkills = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/skills`);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableSkills(data.skills ?? []);
+      }
+    } catch { /* non-critical */ }
+  }, []);
+
   useEffect(() => {
     fetchAgent();
     fetchMemory();
     fetchChannels();
     fetchMcp();
-  }, [fetchAgent, fetchMemory, fetchChannels, fetchMcp]);
+    fetchAgentSkills();
+    fetchAvailableSkills();
+  }, [fetchAgent, fetchMemory, fetchChannels, fetchMcp, fetchAgentSkills, fetchAvailableSkills]);
 
   const handleStop = async () => {
     setStopping(true);
@@ -361,6 +390,38 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
       await fetchMcp();
     } catch {
       setError("Failed to update MCP server");
+    }
+  };
+
+  const handleAddSkill = async (skillId: string) => {
+    setAddingSkill(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/skills`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skillId }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Failed to add skill");
+        return;
+      }
+      setShowAddSkill(false);
+      await fetchAgentSkills();
+    } catch {
+      setError("Failed to add skill");
+    } finally {
+      setAddingSkill(false);
+    }
+  };
+
+  const handleRemoveSkill = async (skillId: string) => {
+    try {
+      await fetch(`/api/agents/${agentId}/skills/${skillId}`, { method: "DELETE" });
+      await fetchAgentSkills();
+    } catch {
+      setError("Failed to remove skill");
     }
   };
 
@@ -681,6 +742,93 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            <Separator className="bg-white/10" />
+
+            {/* Web Chat */}
+            <ChatPanel agentId={agentId} agentName={agent.name} agentStatus={agent.status} />
+
+            <Separator className="bg-white/10" />
+
+            {/* Skills */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Brain className="size-5 text-white/60" />
+                  <h2 className="text-lg font-semibold text-white">Skills</h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAddSkill(!showAddSkill)}
+                  className="text-white/60 hover:text-white"
+                >
+                  <Plus className="size-4 mr-1" />
+                  Add Skill
+                </Button>
+              </div>
+
+              {showAddSkill && (
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 mb-4 space-y-2">
+                  <p className="text-xs text-white/40 mb-2">Select a skill to attach</p>
+                  {availableSkills
+                    .filter((s) => !agentSkills.some((as_) => as_.id === s.id))
+                    .map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => handleAddSkill(s.id)}
+                        disabled={addingSkill}
+                        className="w-full flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3 hover:bg-white/[0.06] transition-colors text-left"
+                      >
+                        <div>
+                          <p className="text-sm text-white font-medium">{s.name}</p>
+                          {s.description && (
+                            <p className="text-xs text-white/40 mt-0.5">{s.description}</p>
+                          )}
+                        </div>
+                        <Plus className="size-4 text-white/40" />
+                      </button>
+                    ))}
+                  {availableSkills.filter((s) => !agentSkills.some((as_) => as_.id === s.id)).length === 0 && (
+                    <p className="text-sm text-white/30 py-2">No available skills to add.</p>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowAddSkill(false)}
+                    className="text-white/50 hover:text-white mt-2"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {agentSkills.map((s) => (
+                  <div key={s.linkId} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Brain className="size-4 text-white/40" />
+                      <div>
+                        <p className="text-sm text-white font-medium">{s.name}</p>
+                        {s.description && (
+                          <p className="text-xs text-white/40">{s.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveSkill(s.id)}
+                      className="text-white/30 hover:text-red-400 transition-colors"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                ))}
+
+                {agentSkills.length === 0 && (
+                  <p className="text-sm text-white/30 py-2">No skills attached.</p>
+                )}
               </div>
             </div>
 

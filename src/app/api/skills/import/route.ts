@@ -98,9 +98,9 @@ export async function POST(req: Request) {
     let scriptSize = 0;
     if (scriptFile && scriptFile instanceof Blob) {
       const f = scriptFile as File;
-      if (!f.name.endsWith(".py")) {
+      if (!f.name.endsWith(".py") && !f.name.endsWith(".sh")) {
         return NextResponse.json(
-          { error: "Script file must be a .py Python file" },
+          { error: "Script file must be a .py or .sh file" },
           { status: 400 },
         );
       }
