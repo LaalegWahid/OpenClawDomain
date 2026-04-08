@@ -124,7 +124,6 @@ export const whatsappLinkSession = pgTable(
     taskArn: text("task_arn"),
     status: text("status").notNull().default("pending"), // pending | qr_ready | linked | failed | expired
     qrData: text("qr_data"),
-    ownerPhone: text("owner_phone"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().$onUpdate(() => new Date()).notNull(),
   },
