@@ -21,28 +21,11 @@
 
 import { mkdir, writeFile, mkdtemp } from 'fs/promises';
 import { join } from 'path';
-import { tmpdir, networkInterfaces } from 'os';
+import { tmpdir } from 'os';
 import { spawn } from 'child_process';
 import { request as httpsRequest } from 'https';
 import { request as httpRequest } from 'http';
 import { URL } from 'url';
-
-/**
- * Returns the container's primary non-loopback IPv4 address.
- * The openclaw gateway binds to `lan` (the LAN interface), NOT loopback,
- * so we must probe the private IP — not localhost.
- */
-function getContainerIp() {
-  const nets = networkInterfaces();
-  for (const ifaces of Object.values(nets)) {
-    for (const iface of ifaces) {
-      if (!iface.internal && iface.family === 'IPv4') {
-        return iface.address;
-      }
-    }
-  }
-  return '127.0.0.1'; // fallback (local dev)
-}
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 const [,, agentId, baseUrl, token, openclawHome] = process.argv;
@@ -162,7 +145,7 @@ async function writeGatewayConfig(configPath) {
   const config = {
     gateway: {
       mode: 'local',
-      bind: 'lan',
+      bind: 'loopback',
       port: GATEWAY_PORT,
       auth: { token: GATEWAY_TOKEN },
     },
@@ -186,7 +169,7 @@ async function writeGatewayConfig(configPath) {
 // ── Spawn openclaw gateway ────────────────────────────────────────────────────
 function spawnGateway(configPath) {
   console.log(`Spawning openclaw gateway on port ${GATEWAY_PORT}...`);
-  const gw = spawn('openclaw', ['gateway', '--bind', 'lan', '--port', String(GATEWAY_PORT), '--allow-unconfigured'], {
+  const gw = spawn('openclaw', ['gateway', '--bind', 'loopback', '--port', String(GATEWAY_PORT), '--allow-unconfigured'], {
     env: { ...process.env, OPENCLAW_CONFIG_PATH: configPath },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -204,8 +187,7 @@ function spawnGateway(configPath) {
 
 // ── Probe for the QR API endpoint ─────────────────────────────────────────────
 async function discoverQrEndpoint() {
-  const gatewayHost = getContainerIp();
-  const base = `http://${gatewayHost}:${GATEWAY_PORT}`;
+  const base = `http://localhost:${GATEWAY_PORT}`;
   for (const path of API_PROBE_PATHS) {
     const url = base + path;
     try {
@@ -255,7 +237,6 @@ async function main() {
 
   // Spawn the gateway
   const gw = spawnGateway(configPath);
-  console.log(`Gateway probe address: ${getContainerIp()}:${GATEWAY_PORT}`);
 
   // 5-minute global timeout
   const timeoutHandle = setTimeout(async () => {
