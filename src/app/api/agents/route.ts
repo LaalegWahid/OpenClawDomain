@@ -183,6 +183,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
       }
 
+      // Also check agentChannel.credentials — tokens registered via the channels route
+      // live there, not in agent.botToken, so the check above would miss them.
+      const existingChannels = await db.select().from(agentChannel).where(eq(agentChannel.platform, "discord"));
+      const tokenConflict = existingChannels.some(
+        (ch) => (ch.credentials as Record<string, string>)?.botToken === discordToken,
+      );
+      if (tokenConflict) {
+        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
+      }
+
       let containerId: string;
       try {
         const result = await launchContainer(

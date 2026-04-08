@@ -22,6 +22,7 @@ const MAX_HISTORY = 20;
 // ─── Active client registry ───────────────────────────────────────────────────
 
 const clients = new Map<string, Client>();
+const tokenToAgentId = new Map<string, string>(); // token → agentId (reverse lookup)
 
 // ─── Single bot lifecycle ─────────────────────────────────────────────────────
 
@@ -30,9 +31,17 @@ export async function startDiscordBot(
   token: string,
   agentType: AgentType,
 ): Promise<void> {
+  // If this exact agentId is already running, skip
   if (clients.has(agentId)) {
     logger.warn({ agentId }, "Discord bot already running for agent, skipping");
     return;
+  }
+
+  // If a DIFFERENT agent is running with the same token, stop it first
+  const existingAgentId = tokenToAgentId.get(token);
+  if (existingAgentId && existingAgentId !== agentId) {
+    logger.warn({ existingAgentId, newAgentId: agentId }, "Same Discord token already in use by another agent — stopping old client");
+    await stopDiscordBot(existingAgentId);
   }
 
   const client = new Client({
@@ -165,6 +174,7 @@ export async function startDiscordBot(
 
   await client.login(token);
   clients.set(agentId, client);
+  tokenToAgentId.set(token, agentId);
 
   // Evict any container still holding this Discord token.
   // Fires on both startup (via initAllDiscordBots) and live connect (via channels/route.ts).
@@ -189,6 +199,9 @@ export async function stopDiscordBot(agentId: string): Promise<void> {
     logger.warn({ agentId, err }, "Error destroying Discord client");
   } finally {
     clients.delete(agentId);
+    for (const [tok, id] of tokenToAgentId) {
+      if (id === agentId) { tokenToAgentId.delete(tok); break; }
+    }
   }
 }
 
