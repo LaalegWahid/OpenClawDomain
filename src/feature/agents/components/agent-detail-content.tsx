@@ -123,7 +123,6 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [waLinkStatus, setWaLinkStatus] = useState<"idle" | "starting" | "qr_ready" | "linked" | "failed">("idle");
   const [waQrData, setWaQrData] = useState<string | null>(null);
   const [waError, setWaError] = useState<string | null>(null);
-  // const [waOwnerPhone, setWaOwnerPhone] = useState("");
 
   // MCP
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
@@ -323,11 +322,6 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     setWaError(null);
     setShowWaModal(true);
     const res = await fetch(`/api/agents/${agentId}/whatsapp/link`, { method: "POST" });
-    // const res = await fetch(`/api/agents/${agentId}/whatsapp/link`, {
-    //   method: "POST",
-    //   headers: { "Content-Type": "application/json" },
-    //   body: JSON.stringify({ ownerPhone: waOwnerPhone.trim() || null }),
-    // });
     if (!res.ok) {
       const data = await res.json();
       setWaError(data.error ?? "Failed to start linking");
@@ -368,7 +362,6 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     setWaLinkStatus("idle");
     setWaQrData(null);
     setWaError(null);
-    // setWaOwnerPhone("");
   };
 
   const handleDeleteMcp = async (serverId: string) => {
@@ -636,7 +629,6 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                         onClick={() => {
                           if (!isConnected) {
                             if (isWhatsApp) { setShowWaModal(true); startWhatsappLink(); }
-                            // if (isWhatsApp) { setShowWaModal(true); }
                             else setExpandedPlatform(isExpanded ? null : platform);
                           }
                         }}
@@ -1047,30 +1039,6 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
               <PlatformIcon platform="whatsapp" />
               <h2 className="text-lg font-semibold text-white">Link WhatsApp</h2>
             </div>
-
-            {/* {waLinkStatus === "idle" && (
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-white/60">Your WhatsApp number <span className="text-white/30">(optional)</span></label>
-                  <input
-                    type="tel"
-                    placeholder="+1 (415) 555-1234"
-                    value={waOwnerPhone}
-                    onChange={(e) => setWaOwnerPhone(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-[#25D366]/50 focus:outline-none"
-                  />
-                  <p className="text-xs text-white/30">
-                    Only messages from this number will reach your agent. Leave blank to allow all contacts.
-                  </p>
-                </div>
-                <Button
-                  onClick={startWhatsappLink}
-                  className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white"
-                >
-                  Start Linking
-                </Button>
-              </div>
-            )} */}
 
             {waLinkStatus === "starting" && (
               <div className="flex flex-col items-center gap-4 py-8">
