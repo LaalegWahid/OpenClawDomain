@@ -147,11 +147,8 @@ export function RegisterForm() {
           <line x1="33" y1="40" x2="41" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
         </svg>
         <div>
-          <div style={{ fontSize: '14px', fontWeight: 500, letterSpacing: '-0.025em', lineHeight: 1, color: '#F0EEE8' }}>
-            Open<span style={{ color: '#FF4D00' }}>Claw</span>
-          </div>
-          <div style={{ fontSize: '8px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#444444', marginTop: '3px' }}>
-            Manager
+          <div style={{ fontSize: '14px', fontWeight: 500, letterSpacing: '-0.025em', color: '#F0EEE8' }}>
+            <span style={{ color: '#FF4D00' }}>01.</span>OpenClaw
           </div>
         </div>
       </Link>

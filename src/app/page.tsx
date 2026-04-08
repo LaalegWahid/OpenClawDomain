@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, RefObject, useState } from 'react'
 import ClawScrollSection from '../../components/ClawScrollSection'
+import Navbar from '../../components/Navbar'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface StepCard { num: string; title: string; desc: string }
@@ -13,32 +14,32 @@ interface FAQItem { q: string; a: string }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const steps: StepCard[] = [
-  { num: '01', title: 'Sign Up Free', desc: 'Create your account in under a minute. No credit card required to get started.' },
-  { num: '02', title: 'Launch an Agent', desc: 'Choose Finance, Marketing, or Ops. Connect Telegram, Discord, or WhatsApp and your agent is live instantly.' },
-  { num: '03', title: 'Command Anywhere', desc: 'Send commands, receive reports, and get proactive alerts on the platform you already use every day.' },
+  { num: '01', title: 'Sign Up Free', desc: 'Create your account in under a minute. No credit card, no engineers, no infrastructure to manage.' },
+  { num: '02', title: 'Build Your Agent', desc: 'Pick any domain your business operates in. Configure its skills — or let them auto-generate — then connect your messaging app of choice and go live.' },
+  { num: '03', title: 'It Works. You Win.', desc: "Your agent doesn't wait to be asked. It proactively alerts you, generates reports, executes tasks, and answers questions — around the clock." },
 ]
 
 const agents: AgentDetail[] = [
   {
-    tag: 'Finance',
+    tag: 'Legal Tech',
     tagColor: '#FF8C42',
-    name: 'Finance Agent',
-    desc: 'Tracks expenses, flags anomalies, generates cash flow summaries, and delivers invoice alerts on demand.',
-    commands: ['/report', '/status', '/alert', '/summary'],
+    name: 'Legal Research Agent',
+    desc: 'Searches case law, drafts memos, reviews contracts for red flags, and answers legal queries on demand — so your lawyers spend time on strategy, not research.',
+    commands: ['/research', '/draft', '/review', '/flag'],
   },
   {
-    tag: 'Marketing',
+    tag: 'Talent & HR',
     tagColor: '#E8652B',
-    name: 'Marketing Agent',
-    desc: 'Drafts social posts, schedules content calendars, analyzes campaign metrics, and writes copy on demand.',
-    commands: ['/draft', '/schedule', '/metrics', '/idea'],
+    name: 'Recruitment Agent',
+    desc: 'Screens resumes, ranks candidates, schedules interviews, and keeps applicants updated automatically. Your recruiters only touch the humans that actually matter.',
+    commands: ['/screen', '/shortlist', '/schedule', '/update'],
   },
   {
-    tag: 'Operations',
+    tag: 'Real Estate',
     tagColor: '#FF4D00',
-    name: 'Ops Agent',
-    desc: 'Manages tasks, assigns work to team members, delivers daily standup summaries, and tracks blockers.',
-    commands: ['/tasks', '/assign', '/standup', '/blockers'],
+    name: 'Property Agent',
+    desc: 'Answers listing inquiries 24/7, qualifies buyers, books viewings, and delivers daily pipeline summaries — so your agents close deals instead of playing phone tag.',
+    commands: ['/inquire', '/qualify', '/book', '/pipeline'],
   },
 ]
 
@@ -50,91 +51,136 @@ const telegramFeatures = [
 ]
 
 const activityRows = [
-  { agent: 'Finance Agent', action: 'Generated monthly cash flow report', time: '2 min ago' },
-  { agent: 'Ops Agent', action: 'Assigned 3 tasks to Team Member', time: '8 min ago' },
-  { agent: 'Finance Agent', action: 'Flagged anomaly — utilities +340%', time: '15 min ago' },
-  { agent: 'Marketing Agent', action: 'Drafted 3 social posts for review', time: '1 hr ago' },
-  { agent: 'Ops Agent', action: 'Sent daily standup summary', time: '2 hr ago' },
+  { agent: 'Legal Agent', action: 'Researched 3 precedents for contract review', time: '2 min ago' },
+  { agent: 'HR Agent', action: 'Shortlisted 5 candidates from 40 applications', time: '8 min ago' },
+  { agent: 'Property Agent', action: 'Booked 2 viewings and qualified 3 leads', time: '15 min ago' },
+  { agent: 'Custom Agent', action: 'Generated weekly performance summary', time: '1 hr ago' },
+  { agent: 'Support Agent', action: 'Resolved 12 customer tickets overnight', time: '2 hr ago' },
 ]
 
 const stats: Stat[] = [
-  { value: 3, suffix: '', label: 'Specialized agent types', prefix: '' },
-  { value: 2, suffix: ' min', label: 'Average setup time', prefix: '<' },
+  { value: 2, suffix: ' min', label: 'Deploy your first agent', prefix: '<' },
   { value: 24, suffix: '/7', label: 'Always on, always watching', prefix: '' },
+  { value: 100, suffix: '+', label: 'Industries building on OpenClaw', prefix: '' },
   { value: 99, suffix: '.9%', label: 'Platform uptime SLA', prefix: '' },
 ]
 
 const testimonials: Testimonial[] = [
   {
-    quote: 'We replaced three separate tools with OpenClaw. Our Finance agent catches billing anomalies before we even notice them. It paid for itself in the first week.',
+    quote: 'We built a custom compliance agent for our regulatory work. It reviews contracts, flags risk areas, and tracks deadlines without us lifting a finger. It paid for itself in the first week.',
     name: 'Sara Benali',
     role: 'Co-Founder & CEO',
     company: 'Flux Startup',
     initials: 'SB',
   },
   {
-    quote: 'The Marketing agent writes our weekly content briefs and schedules posts. I get the /metrics report every Monday in Telegram. It has become part of our ritual.',
+    quote: 'Our recruitment agent screens applications every night, ranks candidates, and sends us a shortlist every morning in Telegram. We hired faster than ever and our team finally has real bandwidth.',
     name: 'Mehdi Ouhali',
-    role: 'Head of Growth',
+    role: 'Head of People',
     company: 'Velia Commerce',
     initials: 'MO',
   },
   {
-    quote: 'The Ops agent sends our team standup every morning without me lifting a finger. Docker isolation means I never worry about data leaking between clients.',
+    quote: 'I built an agent for our property inquiry workflow. It responds to leads 24/7, books viewings, and delivers a daily pipeline report. We closed 40% more deals without adding headcount.',
     name: 'Imane Charkaoui',
-    role: 'Operations Director',
-    company: 'Atlas Logistics',
+    role: 'Director of Sales',
+    company: 'Atlas Properties',
     initials: 'IC',
   },
 ]
 
 const pricing: PricingTier[] = [
   {
-    name: 'Starter',
-    price: 'Free',
-    period: 'forever',
-    desc: 'Perfect for exploring OpenClaw with one agent.',
+    name: 'Tier A',
+    price: '$20',
+    period: 'agent / mo',
+    desc: 'Up to 5 agents. Pay only for what you deploy.',
     features: [
-      '1 active agent',
-      '200 commands / month',
+      'Up to 5 agents',
+      'Bring Your Own Key (BYOK)',
       'Telegram, Discord & WhatsApp',
-      'Activity log (7 days)',
-      'Community support',
+      'Unlimited commands',
+      'PDF report delivery',
+      'Activity log (30 days)',
     ],
-    cta: 'Start for free',
+    cta: 'Start free trial',
     highlighted: false,
   },
   {
-    name: 'Pro',
-    price: '$29',
-    period: 'per month',
-    desc: 'For teams ready to run their business on autopilot.',
+    name: 'Tier B',
+    price: '$18',
+    period: 'agent / mo',
+    desc: 'Up to 10 agents. More agents, better rate.',
     features: [
-      '3 active agents',
+      'Up to 10 agents',
+      'Bring Your Own Key (BYOK)',
+      'Telegram, Discord & WhatsApp',
       'Unlimited commands',
       'PDF report delivery',
       'Activity log (90 days)',
-      'Priority email support',
-      'Custom system prompts',
+      'Priority support',
     ],
-    cta: 'Start Pro trial',
+    cta: 'Start free trial',
     highlighted: true,
   },
   {
-    name: 'Team',
-    price: '$79',
-    period: 'per month',
-    desc: 'For growing companies that need full coverage.',
+    name: 'Tier C',
+    price: '$15',
+    period: 'agent / mo',
+    desc: 'Up to 15 agents. Best rate for scaling teams.',
     features: [
-      'Unlimited agents',
+      'Up to 15 agents',
+      'Bring Your Own Key (BYOK)',
+      'Telegram, Discord & WhatsApp',
       'Unlimited commands',
-      'All Pro features',
-      'Dedicated Slack support',
-      'API access',
+      'PDF report delivery',
+      'Activity log (unlimited)',
+      'Dedicated support',
       '99.9% uptime SLA',
     ],
-    cta: 'Contact sales',
+    cta: 'Start free trial',
     highlighted: false,
+  },
+]
+
+interface SkillFeature { icon: React.ReactNode; title: string; desc: string }
+
+const skillFeatures: SkillFeature[] = [
+  {
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+      </svg>
+    ),
+    title: 'Auto-Generated Skills',
+    desc: 'Every new agent arrives with a curated skill set for its domain. A Legal agent ships with case search, contract review, and memo drafting out of the box — no setup needed.',
+  },
+  {
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+    ),
+    title: 'Import Pre-Built Skills',
+    desc: 'Browse the skills library and import ready-made capabilities into any agent instantly — web search, PDF generation, data analysis, external API calls, and more.',
+  },
+  {
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+      </svg>
+    ),
+    title: 'Custom Skill Builder',
+    desc: 'Define any skill for any business field. Write natural language instructions and your agent learns exactly how to handle that task — legal research, HR queries, logistics planning, anything.',
+  },
+  {
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF4D00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+    ),
+    title: 'Domain-Locked Execution',
+    desc: 'Skills stay scoped to their agent\'s domain. Every execution is boundary-checked so responses stay accurate, focused, and never drift outside the agent\'s designated field.',
   },
 ]
 
@@ -149,7 +195,7 @@ const faqItems: FAQItem[] = [
   },
   {
     q: 'What AI model powers the agents?',
-    a: 'Agents are powered by Google Gemini 2.5 Flash — optimized for fast, real-time responses. Each agent is strictly domain-locked, so your Finance agent will only ever answer finance questions.',
+    a: 'Agents are powered by Google Gemini 2.5 Flash — optimized for fast, real-time responses. Each agent is strictly domain-locked, so a Legal agent will only ever answer legal questions, and a Property agent stays focused on real estate.',
   },
   {
     q: 'Can I customize what my agent does?',
@@ -161,7 +207,7 @@ const faqItems: FAQItem[] = [
   },
   {
     q: 'Can my agent send PDF reports?',
-    a: 'Yes. Any agent can generate a formatted PDF on demand. Ask your Finance agent for a "monthly summary as PDF" and it delivers a professionally formatted document directly in your chat — Telegram, Discord, or WhatsApp.',
+    a: 'Yes. Any agent can generate a formatted PDF on demand. Ask your agent for a "weekly summary as PDF" and it delivers a professionally formatted document directly in your chat — Telegram, Discord, or WhatsApp.',
   },
   {
     q: 'What happens if my agent goes offline?',
@@ -190,7 +236,7 @@ function SectionLabel({ text }: { text: string }) {
       fontSize: '11px',
       letterSpacing: '0.12em',
       textTransform: 'uppercase',
-      color: '#555555',
+      color: '#999999',
       marginBottom: '1rem',
       fontWeight: 500,
     }}>
@@ -200,7 +246,7 @@ function SectionLabel({ text }: { text: string }) {
 }
 
 function Check() {
-  return <span style={{ color: '#555555', marginRight: '8px', fontSize: '12px', flexShrink: 0 }}>✓</span>
+  return <span style={{ color: '#FF4D00', marginRight: '8px', fontSize: '12px', flexShrink: 0 }}>✓</span>
 }
 
 // ─── StatCard — animated counter ─────────────────────────────────────────────
@@ -250,7 +296,7 @@ function StatCard({ value, suffix, label, prefix = '' }: Stat) {
       }}>
         {prefix}{count}{suffix}
       </div>
-      <div style={{ fontSize: '13px', color: '#555555', marginTop: '0.6rem', lineHeight: 1.5 }}>
+      <div style={{ fontSize: '13px', color: '#999999', marginTop: '0.6rem', lineHeight: 1.5 }}>
         {label}
       </div>
     </div>
@@ -301,7 +347,7 @@ function FAQAccordion({ items }: { items: FAQItem[] }) {
             </span>
           </button>
           {open === i && (
-            <div style={{ padding: '0 1.25rem 1.1rem', fontSize: '13px', color: '#666666', lineHeight: 1.8 }}>
+            <div style={{ padding: '0 1.25rem 1.1rem', fontSize: '13px', color: '#999999', lineHeight: 1.8 }}>
               {item.a}
             </div>
           )}
@@ -615,6 +661,7 @@ export default function LandingPage() {
   const navLinks = [
     { label: 'How it works', id: 'how-it-works' },
     { label: 'Agents', id: 'agents' },
+    { label: 'Skills', id: 'skills' },
     { label: 'Integrations', id: 'telegram' },
     { label: 'Pricing', id: 'pricing' },
     { label: 'FAQ', id: 'faq' },
@@ -652,6 +699,7 @@ export default function LandingPage() {
         .oc-grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
         .oc-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:3rem; align-items:center; }
         .oc-grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:20px; }
+        .oc-grid-skills { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
         .oc-grid-pricing { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
         .oc-grid-footer { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:2rem; }
         .oc-testimonials { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
@@ -674,6 +722,7 @@ export default function LandingPage() {
         }
         @media(max-width:640px){
           .oc-grid-3{grid-template-columns:1fr;}
+          .oc-grid-skills{grid-template-columns:1fr;}
           .oc-grid-2{grid-template-columns:1fr;gap:2.5rem;}
           .oc-grid-4{grid-template-columns:1fr 1fr;}
           .oc-testimonials{grid-template-columns:1fr;}
@@ -696,136 +745,15 @@ export default function LandingPage() {
 
 
         {/* ── NAVBAR ──────────────────────────────────────────────────────── */}
-        <nav style={{
-          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-          background: 'rgba(10,10,10,0.9)', backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)', borderBottom: '0.5px solid #1E1E1E',
-        }}>
-          {/* Main bar */}
-          <div style={{
-            height: '60px', padding: '0 1.75rem',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          }}>
-            {/* Logo */}
-            <div
-              style={{ display: 'flex', alignItems: 'center', gap: '9px', cursor: 'pointer' }}
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            >
-              <svg width="32" height="32" viewBox="0 0 56 56" fill="none">
-                <rect width="56" height="56" rx="13" fill="#FF4D00" />
-                <line x1="15" y1="40" x2="23" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square" />
-                <line x1="24" y1="40" x2="32" y2="12" stroke="white" strokeWidth="4.5" strokeLinecap="square" />
-                <line x1="33" y1="40" x2="41" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square" />
-              </svg>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 500, letterSpacing: '-0.025em', lineHeight: 1, color: '#F0EEE8' }}>
-                  Open<span style={{ color: '#FF4D00' }}>Claw</span>
-                </div>
-                <div style={{ fontSize: '8px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#444444', marginTop: '3px' }}>
-                  Manager
-                </div>
-              </div>
-            </div>
-
-            {/* Desktop nav links */}
-            {!isMobile && (
-              <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-                {navLinks.map(link => (
-                  <button
-                    key={link.id}
-                    onClick={() => scrollTo(link.id)}
-                    style={{
-                      fontSize: '13px', color: '#555555', background: 'none',
-                      border: 'none', cursor: 'pointer', padding: 0, transition: 'color 0.2s',
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#F0EEE8' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#555555' }}
-                  >
-                    {link.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Right side */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {!isMobile && (
-                <button
-                  style={{
-                    background: '#FF4D00', color: '#FFFFFF', border: 'none',
-                    padding: '8px 18px', borderRadius: '8px', fontSize: '13px',
-                    fontWeight: 500, cursor: 'pointer',
-                  }}
-                  onClick={() => window.location.href = '/register'}
-                >
-                  Get Started
-                </button>
-              )}
-              {isMobile && (
-                <button
-                  onClick={() => setNavOpen(o => !o)}
-                  aria-label="Toggle menu"
-                  style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#F0EEE8', width: '36px', height: '36px',
-                  }}
-                >
-                  {navOpen ? (
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                      <line x1="4" y1="4" x2="16" y2="16" stroke="#F0EEE8" strokeWidth="2" strokeLinecap="round" />
-                      <line x1="16" y1="4" x2="4" y2="16" stroke="#F0EEE8" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                      <line x1="2" y1="5" x2="18" y2="5" stroke="#F0EEE8" strokeWidth="2" strokeLinecap="round" />
-                      <line x1="2" y1="10" x2="18" y2="10" stroke="#F0EEE8" strokeWidth="2" strokeLinecap="round" />
-                      <line x1="2" y1="15" x2="18" y2="15" stroke="#F0EEE8" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-        </nav>
-
-        {/* Mobile full-screen menu overlay */}
-        {isMobile && navOpen && (
-          <div style={{
-            position: 'fixed', top: '60px', left: 0, right: 0, bottom: 0,
-            zIndex: 99, background: 'rgba(10,10,10,0.97)', backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', gap: '1.5rem',
-            overflowY: 'auto', touchAction: 'none',
-          }}
-            onClick={(e) => { if (e.target === e.currentTarget) setNavOpen(false) }}
-          >
-            {navLinks.map(link => (
-              <button
-                key={link.id}
-                onClick={() => { scrollTo(link.id); setNavOpen(false) }}
-                style={{
-                  fontSize: '1.4rem', color: '#F0EEE8', background: 'none', border: 'none',
-                  cursor: 'pointer', fontWeight: 400, letterSpacing: '-0.02em',
-                  padding: '8px 0', transition: 'color 0.2s',
-                }}
-              >
-                {link.label}
-              </button>
-            ))}
-            <button
-              style={{
-                marginTop: '1rem', background: '#FF4D00', color: '#FFFFFF',
-                border: 'none', padding: '14px 32px', borderRadius: '10px',
-                fontSize: '15px', fontWeight: 500, cursor: 'pointer',
-              }}
-              onClick={() => { setNavOpen(false); window.location.href = '/register' }}
-            >
-              Get Started
-            </button>
-          </div>
-        )}
+        <Navbar links={[
+          { label: 'How it works', scrollId: 'how-it-works' },
+          { label: 'Agents',       scrollId: 'agents' },
+          { label: 'Skills',       scrollId: 'skills' },
+          { label: 'Integrations', scrollId: 'telegram' },
+          { label: 'Pricing',      scrollId: 'pricing' },
+          { label: 'FAQ',          scrollId: 'faq' },
+          { label: 'Docs',         href: '/docs' },
+        ]} />
 
         {/* ── HERO ────────────────────────────────────────────────────────── */}
         <section style={{
@@ -902,9 +830,9 @@ export default function LandingPage() {
             margin: '0 auto 2rem',
             position: 'relative', zIndex: 1,
           }}>
-            Your AI team for<br />
-            Finance, <span className="oc-shimmer" style={{ color: '#FF4D00' }}>Marketing</span><br />
-            &amp; Operations.
+            Build AI agents for<br />
+            <span className="oc-shimmer" style={{ color: '#FF4D00' }}>any business field</span><br />
+            you operate in.
           </h1>
 
           {/* Subtext */}
@@ -913,13 +841,19 @@ export default function LandingPage() {
             color: '#888888',
             maxWidth: '520px',
             lineHeight: 2,
-            margin: '0 auto 3.5rem',
+            margin: '0 auto 0.25rem',
             fontWeight: 400,
             position: 'relative', zIndex: 1,
           }}>
-            Deploy domain-locked AI agents that work 24/7.<br />
-            Command them from Telegram, Discord, or WhatsApp.<br />
-            Monitor everything from one dashboard.
+            Any domain. Any workflow. Your agent is live in under 2 minutes.
+          </p>
+
+          <p style={{
+            fontSize: '1.1rem', color: '#888888', maxWidth: '520px',
+            lineHeight: 2, margin: '0 auto 3.5rem', fontWeight: 400,
+            position: 'relative', zIndex: 1,
+          }}>
+            Legal · HR · Real Estate · Healthcare · and any other field
           </p>
 
           {/* CTAs */}
@@ -932,7 +866,7 @@ export default function LandingPage() {
               }}
               onClick={() => window.location.href = '/register'}
             >
-              Launch Your First Agent
+              Deploy Your First Agent
             </button>
             <button
               style={{
@@ -963,10 +897,10 @@ export default function LandingPage() {
           <div style={{ maxWidth: '860px', margin: '0 auto' }}>
             <SectionLabel text="How It Works" />
             <h2 className="oc-section-heading" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 500, letterSpacing: '-0.03em', marginBottom: '0.75rem' }}>
-              From zero to running in three steps.
+              Up and running before lunch.
             </h2>
-            <p style={{ color: '#555555', fontSize: '1rem', marginBottom: '2.5rem' }}>
-              No technical setup required. No infrastructure to manage. Just pick an agent and go.
+            <p style={{ color: '#999999', fontSize: '1rem', marginBottom: '2.5rem' }}>
+              No engineers. No setup calls. No new apps. Your first agent is live in under 2 minutes.
             </p>
             <div className="oc-grid-3">
               {steps.map((step, i) => (
@@ -979,12 +913,37 @@ export default function LandingPage() {
                     position: 'relative', overflow: 'hidden',
                   }}
                 >
-                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1px', background: '#2A2A2A' }} />
-                  <div style={{ fontSize: '4rem', fontWeight: 500, lineHeight: 1, color: '#222222', marginBottom: '1.25rem' }}>
+                  {/* Top edge highlight */}
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(255,77,0,0.25) 50%, transparent)' }} />
+
+                  {/* Soft corner glow */}
+                  <div style={{
+                    position: 'absolute', bottom: 0, right: 0,
+                    width: '160px', height: '160px',
+                    background: 'radial-gradient(circle at bottom right, rgba(255,77,0,0.13) 0%, transparent 70%)',
+                    pointerEvents: 'none',
+                  }} />
+                  {/* Dot grid */}
+                  <div style={{
+                    position: 'absolute', bottom: '16px', right: '16px',
+                    width: '80px', height: '64px',
+                    backgroundImage: 'radial-gradient(circle, rgba(255,77,0,0.45) 1px, transparent 1px)',
+                    backgroundSize: '14px 14px',
+                    pointerEvents: 'none',
+                    maskImage: 'radial-gradient(ellipse at bottom right, black 30%, transparent 80%)',
+                    WebkitMaskImage: 'radial-gradient(ellipse at bottom right, black 30%, transparent 80%)',
+                  }} />
+
+                  {/* Step number */}
+                  <div style={{
+                    fontSize: '4rem', fontWeight: 500, lineHeight: 1,
+                    color: 'rgba(255,77,0,0.22)', marginBottom: '1.25rem',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>
                     {step.num}
                   </div>
-                  <div style={{ fontSize: '15px', fontWeight: 500, marginBottom: '8px' }}>{step.title}</div>
-                  <div style={{ fontSize: '13px', color: '#555555', lineHeight: 1.7 }}>{step.desc}</div>
+                  <div style={{ fontSize: '15px', fontWeight: 500, marginBottom: '8px', color: '#F0EEE8' }}>{step.title}</div>
+                  <div style={{ fontSize: '13px', color: '#999999', lineHeight: 1.7 }}>{step.desc}</div>
                 </div>
               ))}
             </div>
@@ -996,7 +955,7 @@ export default function LandingPage() {
         {/* ── MEET THE AGENTS ─────────────────────────────────────────────── */}
         <section id="agents" style={{ padding: '6rem 1.75rem' }}>
           <div style={{ maxWidth: '860px', margin: '0 auto' }}>
-            <SectionLabel text="Meet the Agents" />
+            <SectionLabel text="Built For Any Industry" />
             <div className="oc-guardian-header" style={{ display: 'flex', alignItems: 'center', gap: '2rem', marginBottom: '2.5rem' }}>
                 <img src="/images/lobster-guardian.png" alt="OpenClaw Guardian" className="oc-guardian-img" loading="lazy" style={{
                 width: 'clamp(120px, 18vw, 200px)',
@@ -1005,13 +964,87 @@ export default function LandingPage() {
               }} />
               <div>
                 <h2 className="oc-section-heading" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 500, letterSpacing: '-0.03em', marginBottom: '0.75rem' }}>
-                  Three agents. Every side of your business.
+                  Built for your industry. Whatever that is.
                 </h2>
-                <p style={{ color: '#555555', fontSize: '1rem' }}>
-                  Each agent is strictly domain-locked — your Finance agent will never stray into marketing territory.
+                <p style={{ color: '#999999', fontSize: '1rem' }}>
+                  Any domain your business operates in — Legal, HR, Real Estate, Healthcare, Logistics, and beyond. Give it the right skills, and your agent is ready to work.
                 </p>
               </div>
             </div>
+            {/* Custom Agent — the real differentiator */}
+            <div style={{
+              marginBottom: '16px',
+              background: '#111111',
+              border: '1px solid rgba(255,77,0,0.3)',
+              borderRadius: '16px',
+              padding: '2rem',
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 0 50px rgba(255,77,0,0.06)',
+            }}>
+              {/* Badge */}
+              <div style={{
+                position: 'absolute', top: '1.5rem', right: '1.5rem',
+                background: '#FF4D00', color: '#fff',
+                fontSize: '10px', fontWeight: 600, letterSpacing: '0.08em',
+                textTransform: 'uppercase', padding: '4px 12px',
+                borderRadius: '100px',
+              }}>
+                Most Powerful
+              </div>
+
+              <div style={{ display: 'flex', gap: '3rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Left */}
+                <div style={{ flex: '1 1 280px', minWidth: 0 }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '0.9rem' }}>
+                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FF4D00', flexShrink: 0 }} />
+                    <span style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#FF4D00', fontWeight: 600 }}>
+                      Any Field
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 500, color: '#F0EEE8', marginBottom: '10px' }}>Custom Agent</div>
+                  <div style={{ fontSize: '13px', color: '#888888', lineHeight: 1.8, marginBottom: '1.25rem', maxWidth: '420px' }}>
+                    Build a fully custom agent for any domain your business operates in. Define its expertise, give it tailored skills, and deploy it in your chat. If you can describe the work, your agent can handle it.
+                  </div>
+                  <button
+                    onClick={() => window.location.href = '/register'}
+                    style={{
+                      background: '#FF4D00', color: '#fff', border: 'none',
+                      padding: '10px 22px', borderRadius: '8px', fontSize: '13px',
+                      fontWeight: 500, cursor: 'pointer', letterSpacing: '-0.01em',
+                    }}
+                  >
+                    Build your agent
+                  </button>
+                </div>
+
+                {/* Right — field examples */}
+                <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                  <div style={{ fontSize: '11px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#777', marginBottom: '14px', fontWeight: 500 }}>
+                    Used across industries like
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {['Legal Research', 'HR & Recruitment', 'Real Estate', 'Supply Chain', 'Healthcare', 'Customer Support', 'IT Helpdesk', 'Financial Audit', 'Education', 'E-commerce'].map(field => (
+                      <span key={field} style={{
+                        fontSize: '12px', padding: '5px 12px', borderRadius: '100px',
+                        background: 'rgba(255,77,0,0.06)', border: '0.5px solid rgba(255,77,0,0.15)',
+                        color: '#888888',
+                      }}>
+                        {field}
+                      </span>
+                    ))}
+                    <span style={{
+                      fontSize: '12px', padding: '5px 12px', borderRadius: '100px',
+                      background: 'transparent', border: '0.5px solid #2A2A2A',
+                      color: '#777',
+                    }}>
+                      + anything else
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="oc-grid-3">
               {agents.map((agent, i) => (
                 <div
@@ -1033,7 +1066,7 @@ export default function LandingPage() {
                     </span>
                   </div>
                   <div style={{ fontSize: '16px', fontWeight: 500, marginBottom: '8px' }}>{agent.name}</div>
-                  <div style={{ fontSize: '13px', color: '#555555', lineHeight: 1.7, marginBottom: '1.25rem' }}>
+                  <div style={{ fontSize: '13px', color: '#999999', lineHeight: 1.7, marginBottom: '1.25rem' }}>
                     {agent.desc}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -1041,12 +1074,57 @@ export default function LandingPage() {
                       <span key={cmd} style={{
                         fontFamily: 'monospace', fontSize: '11px', padding: '5px 10px',
                         borderRadius: '5px', background: '#0D0D0D',
-                        border: '0.5px solid #222222', color: '#666666',
+                        border: '0.5px solid #2A2A2A', color: '#888888',
                       }}>
                         {cmd}
                       </span>
                     ))}
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <Divider />
+
+        {/* ── SKILLS ──────────────────────────────────────────────────────── */}
+        <section id="skills" style={{ padding: '6rem 1.75rem' }}>
+          <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+            <SectionLabel text="Agent Skills" />
+
+            {/* Two-col intro */}
+            <div className="oc-grid-2" style={{ marginBottom: '3rem', alignItems: 'start' }}>
+              <h2 className="oc-section-heading" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 500, letterSpacing: '-0.03em', margin: 0 }}>
+                The more you teach them,<br />the more they handle.
+              </h2>
+              <p style={{ color: '#888888', fontSize: '1rem', lineHeight: 1.9, margin: 0 }}>
+                Your agents don't just chat — they execute. Every agent arrives with domain skills built in. Expand them from the library, or define custom skills for your exact workflows. There's no ceiling on what they can do.
+              </p>
+            </div>
+
+            {/* 2×2 feature cards */}
+            <div className="oc-grid-skills">
+              {skillFeatures.map(f => (
+                <div key={f.title} style={{
+                  background: '#111111',
+                  border: '0.5px solid #1E1E1E',
+                  borderRadius: '16px',
+                  padding: '1.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}>
+                  <div style={{
+                    width: '36px', height: '36px', borderRadius: '10px',
+                    background: 'rgba(255,77,0,0.08)', border: '0.5px solid rgba(255,77,0,0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {f.icon}
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: 500, color: '#F0EEE8' }}>{f.title}</div>
+                  <div style={{ fontSize: '13px', color: '#999999', lineHeight: 1.75 }}>{f.desc}</div>
                 </div>
               ))}
             </div>
@@ -1064,8 +1142,8 @@ export default function LandingPage() {
               <h2 className="oc-section-heading" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 500, letterSpacing: '-0.03em', marginBottom: '0.75rem' }}>
                 Your agents, where you already are.
               </h2>
-              <p style={{ color: '#555555', fontSize: '0.95rem', lineHeight: 1.7, marginBottom: '1.75rem' }}>
-                Connect via Telegram, Discord, or WhatsApp — no new apps to learn. Your agents reach you on the platform your team already uses every day.
+              <p style={{ color: '#888888', fontSize: '0.95rem', lineHeight: 1.7, marginBottom: '1.75rem' }}>
+                No new apps. No portals to check. Connect Telegram, Discord, or WhatsApp and your agents show up exactly where your team already lives — messaging you first, waiting for nothing.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {telegramFeatures.map(f => (
@@ -1080,7 +1158,7 @@ export default function LandingPage() {
                     </div>
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: 500, color: '#F0EEE8' }}>{f.title}</div>
-                      <div style={{ fontSize: '12px', color: '#555555', lineHeight: 1.6, marginTop: '2px' }}>{f.desc}</div>
+                      <div style={{ fontSize: '12px', color: '#999999', lineHeight: 1.6, marginTop: '2px' }}>{f.desc}</div>
                     </div>
                   </div>
                 ))}
@@ -1140,7 +1218,7 @@ export default function LandingPage() {
                       fontSize: '13px', fontWeight: 600, color: '#fff',
                     }}>🤖</div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#E4ECF2' }}>Finance Agent</div>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#E4ECF2' }}>Your Agent</div>
                       <div style={{ fontSize: '10px', color: '#6AB3F3' }}>bot</div>
                     </div>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6AB3F3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1161,7 +1239,7 @@ export default function LandingPage() {
                         background: '#2B5278', color: '#E4ECF2', borderRadius: '12px 12px 4px 12px',
                         padding: '6px 10px', fontSize: '12px', lineHeight: 1.4,
                       }}>
-                        <span style={{ color: '#7EB8E2', fontFamily: 'monospace' }}>/report</span>
+                        <span style={{ color: '#7EB8E2', fontFamily: 'monospace' }}>/summary</span>
                         <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', textAlign: 'right', marginTop: '2px' }}>09:41 ✓✓</div>
                       </div>
                     </div>
@@ -1172,13 +1250,13 @@ export default function LandingPage() {
                         background: '#182533', color: '#D5DEE7', borderRadius: '12px 12px 12px 4px',
                         padding: '8px 10px', fontSize: '11px', lineHeight: 1.6,
                       }}>
-                        <div style={{ fontSize: '11px', marginBottom: '5px' }}>📊 <span style={{ fontWeight: 600, color: '#E4ECF2' }}>Cash Flow Report — March</span></div>
+                        <div style={{ fontSize: '11px', marginBottom: '5px' }}>📊 <span style={{ fontWeight: 600, color: '#E4ECF2' }}>Weekly Summary Report</span></div>
                         <div style={{ fontSize: '10px', color: '#8899A6', borderLeft: '2px solid #2B5278', paddingLeft: '8px', margin: '4px 0' }}>
-                          Revenue: <span style={{ color: '#5DC576' }}>$48,200</span><br />
-                          Expenses: <span style={{ color: '#E06C75' }}>$31,450</span><br />
-                          Net: <span style={{ color: '#5DC576', fontWeight: 600 }}>+$16,750</span>
+                          Tasks completed: <span style={{ color: '#5DC576' }}>24</span><br />
+                          Open items: <span style={{ color: '#E06C75' }}>3</span><br />
+                          Team efficiency: <span style={{ color: '#5DC576', fontWeight: 600 }}>↑ 18%</span>
                         </div>
-                        <div style={{ fontSize: '9px', color: '#6D8295', marginTop: '3px' }}>Margin: 34.7% <span style={{ color: '#5DC576' }}>↑ 2.1%</span></div>
+                        <div style={{ fontSize: '9px', color: '#6D8295', marginTop: '3px' }}>vs last week <span style={{ color: '#5DC576' }}>↑ on track</span></div>
                         <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.3)', textAlign: 'right', marginTop: '3px' }}>09:41</div>
                       </div>
                     </div>
@@ -1202,8 +1280,8 @@ export default function LandingPage() {
                       }}>
                         <div style={{ fontSize: '11px', marginBottom: '5px' }}>🔔 <span style={{ fontWeight: 600, color: '#E4ECF2' }}>2 Active Alerts</span></div>
                         <div style={{ fontSize: '10px', color: '#8899A6' }}>
-                          <span style={{ color: '#E06C75' }}>●</span> Invoice #1042 overdue <span style={{ color: '#6D8295' }}>(3 days)</span><br />
-                          <span style={{ color: '#E5C07B' }}>●</span> Expense spike detected <span style={{ color: '#6D8295' }}>(+18%)</span>
+                          <span style={{ color: '#E06C75' }}>●</span> Deadline in 2 days <span style={{ color: '#6D8295' }}>(contract review)</span><br />
+                          <span style={{ color: '#E5C07B' }}>●</span> 3 pending items need attention <span style={{ color: '#6D8295' }}>(overdue)</span>
                         </div>
                         <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.3)', textAlign: 'right', marginTop: '3px' }}>09:42</div>
                       </div>
@@ -1242,13 +1320,215 @@ export default function LandingPage() {
 
         <Divider />
 
+        {/* ── PLATFORMS ───────────────────────────────────────────────────── */}
+        <section style={{ padding: '6rem 1.75rem' }}>
+          <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+            <SectionLabel text="Where Your Agents Live" />
+            <h2 className="oc-section-heading" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 500, letterSpacing: '-0.03em', marginBottom: '0.75rem' }}>
+              No new app. They come to you.
+            </h2>
+            <p style={{ color: '#999999', fontSize: '1rem', marginBottom: '3rem', maxWidth: '520px' }}>
+              Your agents show up where your team already is. Connect once, command forever.
+            </p>
+            <div className="oc-grid-3">
+              {[
+                { img: '/images/whatsapp.png', name: 'WhatsApp', desc: 'QR-link your number. Your agent runs as a contact.', color: '#25D366' },
+                { img: '/images/telegram.png', name: 'Telegram', desc: 'Token-based bot. Webhook delivery. Live in under a minute.', color: '#2AABEE' },
+                { img: '/images/discord.png',  name: 'Discord',  desc: 'Bot gateway integration. Works across servers and channels.', color: '#5865F2' },
+              ].map(p => (
+                <div key={p.name} style={{
+                  background: '#111111', border: '0.5px solid #1E1E1E',
+                  borderRadius: '16px', padding: '2rem 1.5rem',
+                  display: 'flex', flexDirection: 'column', gap: '1rem',
+                  transition: 'border-color 0.25s',
+                }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = `${p.color}40` }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#1E1E1E' }}
+                >
+                  <img src={p.img} alt={p.name} style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 500, color: '#F0EEE8', marginBottom: '6px' }}>{p.name}</div>
+                    <div style={{ fontSize: '13px', color: '#888888', lineHeight: 1.7 }}>{p.desc}</div>
+                  </div>
+                  <div style={{ marginTop: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: p.color }} />
+                    <span style={{ fontSize: '11px', color: p.color, fontWeight: 500 }}>Supported</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <Divider />
+
+        {/* ── CLAWHUB ─────────────────────────────────────────────────────── */}
+        <section style={{ padding: '6rem 1.75rem' }}>
+          <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+            <div style={{
+              background: '#111111',
+              border: '1px solid rgba(255,77,0,0.2)',
+              borderRadius: '20px',
+              padding: 'clamp(2rem, 4vw, 3rem)',
+              position: 'relative',
+              overflow: 'hidden',
+            }}>
+              {/* Background glow */}
+              <div style={{
+                position: 'absolute', top: '-40px', right: '-40px',
+                width: '300px', height: '300px',
+                background: 'radial-gradient(circle, rgba(255,77,0,0.07) 0%, transparent 70%)',
+                pointerEvents: 'none',
+              }} />
+
+              <div style={{ display: 'flex', gap: '3rem', alignItems: 'center', flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
+                {/* Left */}
+                <div style={{ flex: '1 1 300px', minWidth: 0 }}>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em',
+                      textTransform: 'uppercase', color: '#FF4D00',
+                      background: 'rgba(255,77,0,0.1)', border: '0.5px solid rgba(255,77,0,0.25)',
+                      padding: '4px 12px', borderRadius: '100px',
+                    }}>
+                      Bring Your Own Key
+                    </span>
+                  </div>
+                  <h2 style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.4rem)', fontWeight: 500, letterSpacing: '-0.03em', color: '#F0EEE8', marginBottom: '1rem', lineHeight: 1.2 }}>
+                    Your key. Your model.<br />Your costs — direct.
+                  </h2>
+                  <p style={{ color: '#999999', fontSize: '0.95rem', lineHeight: 1.85, marginBottom: '1.75rem' }}>
+                    OpenClaw doesn't proxy your AI usage. Connect your own Google AI, OpenAI, or Anthropic API key and your agents call your provider directly. No markup. No token limits from us. You own the relationship with your AI provider.
+                  </p>
+                  <button
+                    onClick={() => window.location.href = '/register'}
+                    style={{
+                      background: '#FF4D00', color: '#fff', border: 'none',
+                      padding: '11px 24px', borderRadius: '9px', fontSize: '13px',
+                      fontWeight: 500, cursor: 'pointer',
+                    }}
+                  >
+                    Start with your own key
+                  </button>
+                </div>
+
+                {/* Right — key visual */}
+                <div style={{ flex: '0 1 260px', minWidth: 0 }}>
+                  {[
+                    { label: 'Your API Key', value: 'sk-••••••••••••••••4a2f', color: '#FF4D00' },
+                    { label: 'Provider', value: 'Google Gemini 2.5 Flash', color: '#AAAAAA' },
+                    { label: 'Billed to', value: 'Your Google account', color: '#AAAAAA' },
+                    { label: 'Markup', value: 'None', color: '#5DC576' },
+                  ].map(row => (
+                    <div key={row.label} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px 0', borderBottom: '0.5px solid #1E1E1E',
+                    }}>
+                      <span style={{ fontSize: '12px', color: '#555555' }}>{row.label}</span>
+                      <span style={{ fontSize: '12px', color: row.color, fontFamily: row.label === 'Your API Key' ? 'monospace' : 'inherit', fontWeight: 500 }}>{row.value}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5DC576" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span style={{ fontSize: '12px', color: '#5DC576' }}>Your key is never logged or stored in plaintext</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <Divider />
+
+        {/* ── BYOK ────────────────────────────────────────────────────────── */}
+        <section style={{ padding: '6rem 1.75rem' }}>
+          <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+            <div style={{
+              background: '#111111',
+              border: '1px solid rgba(255,77,0,0.2)',
+              borderRadius: '20px',
+              padding: 'clamp(2rem, 4vw, 3rem)',
+              position: 'relative',
+              overflow: 'hidden',
+            }}>
+              {/* Background glow */}
+              <div style={{
+                position: 'absolute', top: '-40px', right: '-40px',
+                width: '300px', height: '300px',
+                background: 'radial-gradient(circle, rgba(255,77,0,0.07) 0%, transparent 70%)',
+                pointerEvents: 'none',
+              }} />
+
+              <div style={{ display: 'flex', gap: '3rem', alignItems: 'center', flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
+                {/* Left */}
+                <div style={{ flex: '1 1 300px', minWidth: 0 }}>
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em',
+                      textTransform: 'uppercase', color: '#FF4D00',
+                      background: 'rgba(255,77,0,0.1)', border: '0.5px solid rgba(255,77,0,0.25)',
+                      padding: '4px 12px', borderRadius: '100px',
+                    }}>
+                      Bring Your Own Key
+                    </span>
+                  </div>
+                  <h2 style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.4rem)', fontWeight: 500, letterSpacing: '-0.03em', color: '#F0EEE8', marginBottom: '1rem', lineHeight: 1.2 }}>
+                    Your key. Your model.<br />Your costs — direct.
+                  </h2>
+                  <p style={{ color: '#999999', fontSize: '0.95rem', lineHeight: 1.85, marginBottom: '1.75rem' }}>
+                    OpenClaw doesn't proxy your AI usage. Connect your own Google AI, OpenAI, or Anthropic API key and your agents call your provider directly. No markup. No token limits from us. You own the relationship with your AI provider.
+                  </p>
+                  <button
+                    onClick={() => window.location.href = '/register'}
+                    style={{
+                      background: '#FF4D00', color: '#fff', border: 'none',
+                      padding: '11px 24px', borderRadius: '9px', fontSize: '13px',
+                      fontWeight: 500, cursor: 'pointer',
+                    }}
+                  >
+                    Start with your own key
+                  </button>
+                </div>
+
+                {/* Right — key visual */}
+                <div style={{ flex: '0 1 260px', minWidth: 0 }}>
+                  {[
+                    { label: 'Your API Key', value: 'sk-••••••••••••••••4a2f', color: '#FF4D00' },
+                    { label: 'Provider', value: 'Google Gemini 2.5 Flash', color: '#AAAAAA' },
+                    { label: 'Billed to', value: 'Your Google account', color: '#AAAAAA' },
+                    { label: 'Markup', value: 'None', color: '#5DC576' },
+                  ].map(row => (
+                    <div key={row.label} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px 0', borderBottom: '0.5px solid #1E1E1E',
+                    }}>
+                      <span style={{ fontSize: '12px', color: '#555555' }}>{row.label}</span>
+                      <span style={{ fontSize: '12px', color: row.color, fontFamily: row.label === 'Your API Key' ? 'monospace' : 'inherit', fontWeight: 500 }}>{row.value}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5DC576" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span style={{ fontSize: '12px', color: '#5DC576' }}>Your key is never logged or stored in plaintext</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <Divider />
+
         {/* ── STATS / NUMBERS ─────────────────────────────────────────────── */}
         <section ref={statsSecRef} style={{ padding: '6rem 1.75rem', position: 'relative', overflow: 'hidden' }}>
 <div style={{ maxWidth: '860px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
             <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
               <SectionLabel text="By the numbers" />
               <h2 className="oc-section-heading" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 500, letterSpacing: '-0.03em' }}>
-                Built for reliability.
+                Always on. Always earning its keep.
               </h2>
             </div>
             <div className="oc-grid-4">
@@ -1280,7 +1560,7 @@ export default function LandingPage() {
                       <span key={s} style={{ color: '#FF4D00', fontSize: '12px' }}>★</span>
                     ))}
                   </div>
-                  <p style={{ fontSize: '13px', color: '#777777', lineHeight: 1.8, flex: 1 }}>
+                  <p style={{ fontSize: '13px', color: '#AAAAAA', lineHeight: 1.8, flex: 1 }}>
                     &ldquo;{t.quote}&rdquo;
                   </p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1294,7 +1574,7 @@ export default function LandingPage() {
                     </div>
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: 500, color: '#F0EEE8' }}>{t.name}</div>
-                      <div style={{ fontSize: '11px', color: '#444444', marginTop: '2px' }}>{t.role} · {t.company}</div>
+                      <div style={{ fontSize: '11px', color: '#777777', marginTop: '2px' }}>{t.role} · {t.company}</div>
                     </div>
                   </div>
                 </div>
@@ -1313,10 +1593,26 @@ export default function LandingPage() {
               <h2 className="oc-section-heading" style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 500, letterSpacing: '-0.03em' }}>
                 Simple, transparent pricing.
               </h2>
-              <p style={{ color: '#555555', fontSize: '1rem', marginTop: '0.5rem' }}>
-                Start free. Upgrade when you are ready.
+              <p style={{ color: '#999999', fontSize: '1rem', marginTop: '0.5rem' }}>
+                Per agent. No flat fees. Scale up or down anytime.
               </p>
             </div>
+
+            {/* Free trial banner */}
+            <div style={{
+              marginBottom: '2rem',
+              padding: '1rem 1.5rem',
+              borderRadius: '12px',
+              background: 'rgba(255,77,0,0.05)',
+              border: '0.5px solid rgba(255,77,0,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+            }}>
+              <span style={{ color: '#FF4D00', fontSize: '14px' }}>◆</span>
+              <span style={{ fontSize: '13px', color: '#C8C6C0' }}>
+                Every plan includes a <strong style={{ color: '#F0EEE8' }}>15-day free trial</strong> on your first agent — no credit card required.
+              </span>
+            </div>
+
             <div className="oc-grid-pricing">
               {pricing.map(tier => (
                 <div key={tier.name} className="oc-pricing-card" style={{
@@ -1333,22 +1629,20 @@ export default function LandingPage() {
                       padding: '4px 12px', borderRadius: '100px', letterSpacing: '0.08em',
                       textTransform: 'uppercase', whiteSpace: 'nowrap',
                     }}>
-                      Most Popular
+                      Best Value
                     </div>
                   )}
                   <div style={{ marginBottom: '1.5rem' }}>
-                    <div style={{ fontSize: '13px', color: tier.highlighted ? '#FF4D00' : '#555555', fontWeight: 500, marginBottom: '0.5rem' }}>
+                    <div style={{ fontSize: '13px', color: tier.highlighted ? '#FF4D00' : '#888888', fontWeight: 500, marginBottom: '0.5rem' }}>
                       {tier.name}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                       <span style={{ fontSize: '2.4rem', fontWeight: 500, letterSpacing: '-0.04em', color: '#F0EEE8' }}>
                         {tier.price}
                       </span>
-                      {tier.price !== 'Free' && (
-                        <span style={{ fontSize: '13px', color: '#444444' }}>/{tier.period.replace('per ', '')}</span>
-                      )}
+                      <span style={{ fontSize: '12px', color: '#777777', lineHeight: 1.4 }}>/ {tier.period}</span>
                     </div>
-                    <p style={{ fontSize: '12px', color: '#555555', marginTop: '0.5rem', lineHeight: 1.5 }}>{tier.desc}</p>
+                    <p style={{ fontSize: '12px', color: '#999999', marginTop: '0.5rem', lineHeight: 1.5 }}>{tier.desc}</p>
                   </div>
                   <div style={{ flex: 1, marginBottom: '1.75rem' }}>
                     {tier.features.map(f => (
@@ -1427,10 +1721,10 @@ export default function LandingPage() {
             fontSize: 'clamp(2.2rem, 5vw, 3.8rem)', fontWeight: 500,
             letterSpacing: '-0.04em', lineHeight: 1.12, marginBottom: '1rem', position: 'relative',
           }}>
-            Your AI team is<br />ready to <span style={{ color: '#FF4D00' }}>deploy.</span>
+            Whatever your business does,<br />there&apos;s an agent <span style={{ color: '#FF4D00' }}>for that.</span>
           </h2>
           <p style={{ color: '#C0BAB0', fontSize: '1rem', lineHeight: 1.8, marginBottom: '2.5rem', position: 'relative' }}>
-            Sign up in seconds. Launch your first agent.<br />Command it on Telegram, Discord, or WhatsApp before end of day.
+            Start with a ready-made agent or build one from scratch for any domain.<br />Your first agent is live in under 2 minutes — working around the clock from day one.
           </p>
           <button
             className="oc-cta-btn"
@@ -1441,7 +1735,7 @@ export default function LandingPage() {
             }}
             onClick={() => window.location.href = '/register'}
           >
-            Launch OpenClaw Manager
+            Deploy Your First Agent
           </button>
           </div>
         </section>
@@ -1463,11 +1757,13 @@ export default function LandingPage() {
                     <div style={{ fontSize: '14px', fontWeight: 500, letterSpacing: '-0.025em', color: '#F0EEE8' }}>
                       Open<span style={{ color: '#FF4D00' }}>Claw</span>
                     </div>
-                    <div style={{ fontSize: '8px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#777777', marginTop: '2px' }}>Manager</div>
+                    <div style={{ fontSize: '8px', letterSpacing: '0.08em', color: '#444444', marginTop: '2px' }}>
+                      <span style={{ color: '#FF4D00' }}>01</span>.openclaw
+                    </div>
                   </div>
                 </div>
                 <p style={{ fontSize: '12px', color: '#888888', lineHeight: 1.8, maxWidth: '220px' }}>
-                  Deploy domain-locked AI agents for Finance, Marketing, and Operations. Command via Telegram, Discord, or WhatsApp.
+                  Build AI agents for any business field — ready-made or fully custom — and deploy them where your team already is.
                 </p>
               </div>
 
@@ -1479,6 +1775,7 @@ export default function LandingPage() {
                 {[
                   { label: 'How it works', id: 'how-it-works' },
                   { label: 'Agents', id: 'agents' },
+                  { label: 'Skills', id: 'skills' },
                   { label: 'Integrations', id: 'telegram' },
                   { label: 'Pricing', id: 'pricing' },
                 ].map(link => (
@@ -1496,6 +1793,17 @@ export default function LandingPage() {
                     {link.label}
                   </button>
                 ))}
+                <a
+                  href="/docs"
+                  style={{
+                    display: 'block', fontSize: '13px', color: '#888888',
+                    textDecoration: 'none', padding: '4px 0', transition: 'color 0.2s',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#F0EEE8' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = '#888888' }}
+                >
+                  Documentation ↗
+                </a>
               </div>
 
               {/* Company */}
@@ -1533,7 +1841,7 @@ export default function LandingPage() {
             <div style={{ borderTop: '0.5px solid #333333', paddingTop: '1.5rem' }}>
               <div className="oc-footer-bottom">
                 <span style={{ fontSize: '12px', color: '#777777' }}>
-                  © {new Date().getFullYear()} OpenClaw Manager · SLTVerse. All rights reserved.
+                  © {new Date().getFullYear()} OpenClaw · SLTVerse. All rights reserved.
                 </span>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   {[
