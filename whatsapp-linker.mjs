@@ -247,15 +247,15 @@ async function main() {
   }, 5 * 60 * 1000);
   timeoutHandle.unref();
 
-  // Wait for the gateway to be up
+  // Wait for the gateway to be up — it typically takes ~38s to be ready
   console.log('Waiting for gateway to start...');
-  await sleep(4_000);
+  await sleep(10_000);
 
   // Discover the working QR endpoint
   let qrUrl = null;
-  for (let attempt = 0; attempt < 5 && !qrUrl; attempt++) {
+  for (let attempt = 0; attempt < 20 && !qrUrl; attempt++) {
     if (attempt > 0) {
-      console.log(`Gateway not ready yet, retrying probe in 3s (attempt ${attempt + 1}/5)...`);
+      console.log(`Gateway not ready yet, retrying probe in 3s (attempt ${attempt + 1}/20)...`);
       await sleep(3_000);
     }
     const result = await discoverQrEndpoint();
@@ -268,7 +268,7 @@ async function main() {
   if (!qrUrl) {
     gw.kill();
     await fatal(new Error(
-      `Could not read QR from gateway API. Probed paths: ${API_PROBE_PATHS.join(', ')}`
+      `Gateway did not become ready after 67s. Probed paths: ${API_PROBE_PATHS.join(', ')}`
     ));
     return;
   }
