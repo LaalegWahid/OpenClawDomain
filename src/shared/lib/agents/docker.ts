@@ -121,11 +121,10 @@ export async function launchContainer(
 return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers, skillInstructions);
   }
   const domainCfg = await getDomainConfig(agentType);
-  let fullSystemPrompt = domainCfg.boundaryPreamble + systemPrompt;
+  let fullSystemPrompt = sanitizeForEcs(domainCfg.boundaryPreamble + systemPrompt);
   if (skillInstructions) {
     fullSystemPrompt += `\n\n[USER SKILLS]\n${skillInstructions}\n[END USER SKILLS]`;
   }
-  fullSystemPrompt = sanitizeForEcs(fullSystemPrompt);
 
   logger.info({ agentId, agentType }, "Launching ECS agent task");
 

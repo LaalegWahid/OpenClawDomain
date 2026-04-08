@@ -162,7 +162,7 @@ async function writeGatewayConfig(configPath) {
   const config = {
     gateway: {
       mode: 'local',
-      bind: 'lan',
+      bind: 'loopback',
       port: GATEWAY_PORT,
       auth: { token: GATEWAY_TOKEN },
     },
@@ -186,7 +186,7 @@ async function writeGatewayConfig(configPath) {
 // ── Spawn openclaw gateway ────────────────────────────────────────────────────
 function spawnGateway(configPath) {
   console.log(`Spawning openclaw gateway on port ${GATEWAY_PORT}...`);
-  const gw = spawn('openclaw', ['gateway', '--bind', 'lan', '--port', String(GATEWAY_PORT), '--allow-unconfigured'], {
+  const gw = spawn('openclaw', ['gateway', '--bind', 'loopback', '--port', String(GATEWAY_PORT), '--allow-unconfigured'], {
     env: { ...process.env, OPENCLAW_CONFIG_PATH: configPath },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
