@@ -9,13 +9,11 @@
  *   2. Spawns `openclaw gateway` as a child process using that config
  *   3. Waits for the gateway HTTP to be reachable (GET /v1/models)
  *   4. Connects to the gateway via WebSocket (ws://localhost:<port>)
- *   5. Sends web.login.start → OpenClaw initiates QR flow
- *   6. Receives QR from WebSocket response/event, forwards to Next.js callback
- *   7. Sends web.login.wait → blocks until QR is scanned
- *   8. Sends { status: "linked" } on success, kills gateway, exits
- *
- * This approach lets OpenClaw own the entire credential lifecycle — it writes
- * credentials in its own format, so the agent reads them back without mismatch.
+ *   5. Receives connect.challenge → responds with `connect` RPC + Ed25519 device auth
+ *   6. Sends web.login.start → OpenClaw initiates QR flow
+ *   7. Receives QR from WebSocket response/event, forwards to Next.js callback
+ *   8. Sends web.login.wait → blocks until QR is scanned
+ *   9. Sends { status: "linked" } on success, kills gateway, exits
  *
  * Usage:
  *   node whatsapp-linker.mjs <agentId> <baseUrl> <token> <openclawHome>
@@ -28,6 +26,7 @@ import { spawn } from 'child_process';
 import { request as httpsRequest } from 'https';
 import { request as httpRequest } from 'http';
 import { URL } from 'url';
+import { createHash, generateKeyPairSync, sign as cryptoSign } from 'crypto';
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 const [,, agentId, baseUrl, token, openclawHome] = process.argv;
@@ -40,6 +39,13 @@ if (!agentId || !baseUrl || !token || !openclawHome) {
 const GATEWAY_PORT = 18789;
 const GATEWAY_TOKEN = token;
 const authDir = join(openclawHome, 'credentials', 'whatsapp', 'default');
+
+// ── Ephemeral Ed25519 device keypair ──────────────────────────────────────────
+// Generated fresh each run — no need to persist for a short-lived linker task.
+const { privateKey: DEVICE_PRIV, publicKey: DEVICE_PUB } = generateKeyPairSync('ed25519');
+const DEVICE_PUB_DER = DEVICE_PUB.export({ type: 'spki', format: 'der' });
+const DEVICE_PUB_B64 = DEVICE_PUB_DER.toString('base64');
+const DEVICE_ID = createHash('sha256').update(DEVICE_PUB_DER).digest('hex').slice(0, 16);
 
 // ── Callback helper ───────────────────────────────────────────────────────────
 async function sendCallback(payload) {
@@ -128,7 +134,6 @@ function spawnGateway(configPath) {
 }
 
 // ── Wait for gateway HTTP to be reachable ─────────────────────────────────────
-// Probes GET /v1/models (a known endpoint) until it responds with any non-5xx.
 function waitForGatewayHttp(timeoutMs = 120_000) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
@@ -169,8 +174,56 @@ function waitForGatewayHttp(timeoutMs = 120_000) {
   });
 }
 
+// ── Build the connect RPC message (responds to connect.challenge) ─────────────
+// OpenClaw gateway protocol v3:
+//   Client sends method="connect" with device auth (Ed25519 signature over v2 payload).
+//   The v2 signing payload covers: deviceId, clientId, role, scopes, token, nonce, signedAt.
+function buildConnectMsg(nonce, id) {
+  const signedAt = Date.now();
+  const sigPayload = JSON.stringify({
+    deviceId: DEVICE_ID,
+    clientId: 'openclaw-linker',
+    role: 'operator',
+    scopes: ['operator.read', 'operator.write'],
+    token: GATEWAY_TOKEN,
+    nonce,
+    signedAt,
+  });
+  const signature = cryptoSign(null, Buffer.from(sigPayload, 'utf8'), DEVICE_PRIV).toString('base64');
+
+  return {
+    type: 'req',
+    id: String(id),
+    method: 'connect',
+    params: {
+      minProtocol: 3,
+      maxProtocol: 3,
+      client: {
+        id: 'openclaw-linker',
+        version: '1.0.0',
+        platform: 'linux',
+        mode: 'operator',
+      },
+      role: 'operator',
+      scopes: ['operator.read', 'operator.write'],
+      caps: [],
+      commands: [],
+      permissions: {},
+      auth: { token: GATEWAY_TOKEN },
+      locale: 'en-US',
+      userAgent: 'openclaw-linker/1.0.0',
+      device: {
+        id: DEVICE_ID,
+        publicKey: DEVICE_PUB_B64,
+        signature,
+        signedAt,
+        nonce,
+      },
+    },
+  };
+}
+
 // ── Extract QR / connection status from any WebSocket message ─────────────────
-// OpenClaw's WebSocket payload schema is undocumented — try every likely path.
 function extractFromMsg(msg) {
   const qr =
     msg?.result?.qr          ?? msg?.result?.qrCode        ?? msg?.result?.qr_code    ??
@@ -198,6 +251,7 @@ let linked = false;
 async function main() {
   await mkdir(authDir, { recursive: true });
   console.log(`WhatsApp linker starting | agentId=${agentId}`);
+  console.log(`Device ID: ${DEVICE_ID}`);
 
   const tmpDir = await mkdtemp(join(tmpdir(), 'openclaw-linker-'));
   const configPath = join(tmpDir, 'openclaw.json');
@@ -214,17 +268,13 @@ async function main() {
   }, 5 * 60 * 1000);
   timeoutHandle.unref();
 
-  // Wait for the gateway HTTP server to be ready before opening WebSocket
   console.log('Waiting for gateway to be ready...');
   await waitForGatewayHttp(120_000);
 
   // ── WebSocket login flow ───────────────────────────────────────────────────
-  // Node.js 22+ has a built-in global WebSocket (WHATWG spec).
-  // WHATWG WebSocket does not support custom request headers, so we pass the
-  // bearer token via query param — a common pattern for gateway WebSockets.
   await new Promise((resolve, reject) => {
     const wsUrl = `ws://localhost:${GATEWAY_PORT}/?token=${GATEWAY_TOKEN}`;
-    console.log(`Opening WebSocket: ${wsUrl}`);
+    console.log(`Opening WebSocket: ws://localhost:${GATEWAY_PORT}/`);
 
     const ws = new WebSocket(wsUrl);
     let seq = 0;
@@ -234,15 +284,14 @@ async function main() {
     let lastQr = null;
 
     function sendMsg(method, params = {}) {
-      const msg = { type: 'req', method, params, seq: ++seq };
+      const msg = { type: 'req', id: String(++seq), method, params };
       console.log(`WS → ${JSON.stringify(msg)}`);
       ws.send(JSON.stringify(msg));
     }
 
     ws.addEventListener('open', () => {
-      // Do NOT send anything yet — the gateway sends connect.challenge first.
-      // Sending any other message before completing the handshake causes 1008.
-      console.log('WebSocket connected — waiting for auth challenge...');
+      // Wait for connect.challenge — do NOT send anything before it
+      console.log('WebSocket connected — waiting for connect.challenge...');
     });
 
     ws.addEventListener('message', async ({ data }) => {
@@ -254,21 +303,24 @@ async function main() {
         return;
       }
 
-      // Log everything — essential while the schema is undocumented
       console.log(`WS ← ${JSON.stringify(msg).slice(0, 800)}`);
 
-      // ── Step 1: respond to the auth challenge ──────────────────────────────
+      // ── Step 1: respond to connect.challenge with full device auth ──────────
       if (msg.type === 'event' && msg.event === 'connect.challenge') {
         const nonce = msg.payload?.nonce;
-        console.log(`Auth challenge received (nonce=${nonce}) — responding with token...`);
-        sendMsg('connect.challenge', { nonce, token: GATEWAY_TOKEN });
+        console.log(`connect.challenge received (nonce=${nonce}) — sending connect RPC with Ed25519 device auth...`);
+        const connectMsg = buildConnectMsg(nonce, ++seq);
+        console.log(`WS → ${JSON.stringify(connectMsg).slice(0, 400)}`);
+        ws.send(JSON.stringify(connectMsg));
         return;
       }
 
-      // ── Step 2: auth confirmed — now start the WhatsApp login flow ─────────
+      // ── Step 2: auth confirmed (res to our connect request) ─────────────────
       if (!authenticated && msg.type === 'res') {
-        if (msg.error) {
-          reject(new Error(`Auth failed: ${JSON.stringify(msg.error)}`));
+        if (msg.error || msg.ok === false) {
+          const errDetail = JSON.stringify(msg.error ?? msg);
+          console.error(`Auth failed: ${errDetail}`);
+          reject(new Error(`Auth failed: ${errDetail}`));
           return;
         }
         authenticated = true;
@@ -283,10 +335,9 @@ async function main() {
 
       if (qr && qr !== lastQr) {
         lastQr = qr;
-        console.log('QR received via WebSocket — forwarding to callback...');
+        console.log('QR received — forwarding to callback...');
         await sendCallback({ status: 'qr_ready', qrData: qr });
 
-        // Send web.login.wait once QR is in hand — this blocks until scanned
         if (!loginWaitSent) {
           loginWaitSent = true;
           sendMsg('web.login.wait', { channel: 'whatsapp', account: 'default' });
@@ -312,7 +363,7 @@ async function main() {
 
     ws.addEventListener('close', ({ code, reason }) => {
       console.log(`WebSocket closed (code=${code}, reason=${reason})`);
-      if (!linked) reject(new Error(`WebSocket closed before linking completed (code=${code})`));
+      if (!linked) reject(new Error(`WebSocket closed before linking (code=${code}, reason=${reason})`));
     });
   });
 }
