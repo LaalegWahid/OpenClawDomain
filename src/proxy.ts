@@ -8,6 +8,7 @@ const PUBLIC_ROUTES = [
   "/login",
   "/register",
   "/subscribe",
+  "/docs",
   "/about",
   "/pricing",
   "/contact",
