@@ -228,8 +228,10 @@ async function main() {
 
     const ws = new WebSocket(wsUrl);
     let seq = 0;
-    let lastQr = null;
+    let authenticated = false;
+    let loginStartSent = false;
     let loginWaitSent = false;
+    let lastQr = null;
 
     function sendMsg(method, params = {}) {
       const msg = { type: 'req', method, params, seq: ++seq };
@@ -238,8 +240,9 @@ async function main() {
     }
 
     ws.addEventListener('open', () => {
-      console.log('WebSocket connected — sending web.login.start');
-      sendMsg('web.login.start', { channel: 'whatsapp', account: 'default' });
+      // Do NOT send anything yet — the gateway sends connect.challenge first.
+      // Sending any other message before completing the handshake causes 1008.
+      console.log('WebSocket connected — waiting for auth challenge...');
     });
 
     ws.addEventListener('message', async ({ data }) => {
@@ -254,6 +257,28 @@ async function main() {
       // Log everything — essential while the schema is undocumented
       console.log(`WS ← ${JSON.stringify(msg).slice(0, 800)}`);
 
+      // ── Step 1: respond to the auth challenge ──────────────────────────────
+      if (msg.type === 'event' && msg.event === 'connect.challenge') {
+        const nonce = msg.payload?.nonce;
+        console.log(`Auth challenge received (nonce=${nonce}) — responding with token...`);
+        sendMsg('connect.challenge', { nonce, token: GATEWAY_TOKEN });
+        return;
+      }
+
+      // ── Step 2: auth confirmed — now start the WhatsApp login flow ─────────
+      if (!authenticated && msg.type === 'res') {
+        if (msg.error) {
+          reject(new Error(`Auth failed: ${JSON.stringify(msg.error)}`));
+          return;
+        }
+        authenticated = true;
+        console.log('Auth confirmed — sending web.login.start');
+        loginStartSent = true;
+        sendMsg('web.login.start', { channel: 'whatsapp', account: 'default' });
+        return;
+      }
+
+      // ── Step 3+: handle QR and connection status ───────────────────────────
       const { qr, status } = extractFromMsg(msg);
 
       if (qr && qr !== lastQr) {
