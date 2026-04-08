@@ -123,7 +123,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [waLinkStatus, setWaLinkStatus] = useState<"idle" | "starting" | "qr_ready" | "linked" | "failed">("idle");
   const [waQrData, setWaQrData] = useState<string | null>(null);
   const [waError, setWaError] = useState<string | null>(null);
-  const [waOwnerPhone, setWaOwnerPhone] = useState("");
+  // const [waOwnerPhone, setWaOwnerPhone] = useState("");
 
   // MCP
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
@@ -322,12 +322,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     setWaQrData(null);
     setWaError(null);
     setShowWaModal(true);
-
-    const res = await fetch(`/api/agents/${agentId}/whatsapp/link`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ownerPhone: waOwnerPhone.trim() || null }),
-    });
+    const res = await fetch(`/api/agents/${agentId}/whatsapp/link`, { method: "POST" });
+    // const res = await fetch(`/api/agents/${agentId}/whatsapp/link`, {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application/json" },
+    //   body: JSON.stringify({ ownerPhone: waOwnerPhone.trim() || null }),
+    // });
     if (!res.ok) {
       const data = await res.json();
       setWaError(data.error ?? "Failed to start linking");
@@ -368,7 +368,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     setWaLinkStatus("idle");
     setWaQrData(null);
     setWaError(null);
-    setWaOwnerPhone("");
+    // setWaOwnerPhone("");
   };
 
   const handleDeleteMcp = async (serverId: string) => {
@@ -635,7 +635,8 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                         className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${colors.ring} ${colors.bg} ${!isConnected ? "cursor-pointer hover:border-white/10 hover:bg-white/5" : ""}`}
                         onClick={() => {
                           if (!isConnected) {
-                            if (isWhatsApp) { setShowWaModal(true); }
+                            if (isWhatsApp) { setShowWaModal(true); startWhatsappLink(); }
+                            // if (isWhatsApp) { setShowWaModal(true); }
                             else setExpandedPlatform(isExpanded ? null : platform);
                           }
                         }}
@@ -1047,7 +1048,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
               <h2 className="text-lg font-semibold text-white">Link WhatsApp</h2>
             </div>
 
-            {waLinkStatus === "idle" && (
+            {/* {waLinkStatus === "idle" && (
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs text-white/60">Your WhatsApp number <span className="text-white/30">(optional)</span></label>
@@ -1069,7 +1070,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                   Start Linking
                 </Button>
               </div>
-            )}
+            )} */}
 
             {waLinkStatus === "starting" && (
               <div className="flex flex-col items-center gap-4 py-8">

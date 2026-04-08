@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../../../shared/lib/drizzle";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { agent, agentChannel, agentActivity, whatsappLinkSession } from "../../../../../../shared/db/schema/agent";
 import { logger } from "../../../../../../shared/lib/logger";
 import { env } from "../../../../../../shared/config/env";
@@ -65,23 +65,25 @@ export async function POST(req: Request, ctx: Ctx) {
         .where(eq(agentChannel.agentId, id))
         .then((rows: { platform: string }[]) => rows.find((r) => r.platform === "whatsapp"));
 
-      const ownerJid = linkSession.ownerPhone
-        ? `${linkSession.ownerPhone.replace(/^\+/, "")}@s.whatsapp.net`
-        : null;
+      // const ownerJid = linkSession.ownerPhone
+      //   ? `${linkSession.ownerPhone.replace(/^\+/, "")}@s.whatsapp.net`
+      //   : null;
 
       if (!existingChannel) {
         await db.insert(agentChannel).values({
           agentId: id,
           platform: "whatsapp",
-          credentials: ownerJid ? { ownerJid } : {},
+          credentials: {},
+          // credentials: ownerJid ? { ownerJid } : {},
           enabled: true,
         });
-      } else if (ownerJid) {
-        await db
-          .update(agentChannel)
-          .set({ credentials: { ownerJid } })
-          .where(and(eq(agentChannel.agentId, id), eq(agentChannel.platform, "whatsapp")));
       }
+      //  else if (ownerJid) {
+      //   await db
+      //     .update(agentChannel)
+      //     .set({ credentials: { ownerJid } })
+      //     .where(and(eq(agentChannel.agentId, id), eq(agentChannel.platform, "whatsapp")));
+      // }
 
       await db.insert(agentActivity).values({
         agentId: id,
