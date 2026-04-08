@@ -7,6 +7,7 @@ import { deleteWebhook, setWebhook, validateBotToken } from "../../../shared/lib
 import { agent, agentActivity, agentChannel } from "../../../shared/db/schema/agent";
 import { skill, agentSkill } from "../../../shared/db/schema/skill";
 import { and, inArray } from "drizzle-orm";
+
 import { launchContainer, stopContainer, waitForTaskRunning } from "../../../shared/lib/agents/docker";
 import { logger } from "../../../shared/lib/logger";
 import { isSubscriptionActive } from "../../../shared/lib/subscription/cache";
@@ -68,18 +69,6 @@ export async function POST(req: Request) {
 
     const tempAgentId = crypto.randomUUID();
 
-    // ── Fetch skill instructions if any skills selected ──────────────────────
-    let skillInstructions: string | undefined;
-    if (Array.isArray(skillIds) && skillIds.length > 0) {
-      const owned = await db
-        .select({ name: skill.name, instructions: skill.instructions })
-        .from(skill)
-        .where(and(eq(skill.userId, session.user.id), inArray(skill.id, skillIds)));
-      if (owned.length > 0) {
-        skillInstructions = owned.map((s) => `## ${s.name}\n${s.instructions}`).join("\n\n");
-      }
-    }
-
     // ── TELEGRAM ─────────────────────────────────────────────────────────────
     if (platform === "telegram") {
       const { botToken, botUsername } = body;
@@ -120,7 +109,7 @@ export async function POST(req: Request) {
 
       let containerId: string;
       try {
-        const result = await launchContainer(session.user.id, tempAgentId, systemPrompt, type as AgentType, undefined, undefined, skillInstructions);
+        const result = await launchContainer(session.user.id, tempAgentId, type as AgentType);
         containerId = result.containerId;
       } catch (err) {
         logger.error({ err }, "Failed to launch agent container");
@@ -198,11 +187,8 @@ export async function POST(req: Request) {
         const result = await launchContainer(
           session.user.id,
           tempAgentId,
-          systemPrompt,
           type as AgentType,
           { discord: { botToken: discordToken } },
-          undefined,
-          skillInstructions,
         );
         containerId = result.containerId;
       } catch (err) {
@@ -251,11 +237,8 @@ export async function POST(req: Request) {
         const result = await launchContainer(
           session.user.id,
           tempAgentId,
-          systemPrompt,
           type as AgentType,
           undefined, // whatsapp channel will be enabled after QR linking via relaunchAgentWithChannels
-          undefined,
-          skillInstructions,
         );
         containerId = result.containerId;
       } catch (err) {

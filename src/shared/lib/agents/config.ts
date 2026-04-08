@@ -19,7 +19,8 @@ export interface DomainConfig {
   skills: Skill[];
 }
 
-// ─── Legacy hardcoded configs (finance / marketing / operations) ─────────────
+// @deprecated — kept for backward compatibility with existing agents.
+// No new agents of these types are created (UI only allows custom types now).
 
 const LEGACY_CONFIGS: Record<string, DomainConfig> = {
   finance: {

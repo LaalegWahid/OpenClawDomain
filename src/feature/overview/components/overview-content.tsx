@@ -19,19 +19,6 @@ const skeleton: React.CSSProperties = {
   borderRadius: 6,
 };
 
-const AGENT_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "finance", label: "Finance" },
-  { value: "marketing", label: "Marketing" },
-  { value: "operations", label: "Operations" },
-  { value: "__custom__", label: "Custom..." },
-];
-
-const DEFAULT_PROMPTS: Record<string, string> = {
-  finance: "You help with financial analysis, budgeting, forecasting, and accounting compliance.",
-  marketing: "You help with market research, campaign strategy, branding, and content creation.",
-  operations: "You help with process optimization, supply chain logistics, and project management.",
-};
-
 const TYPE_COLORS: Record<string, string> = {
   finance: "#4CAF50",
   marketing: "#2196F3",
@@ -135,8 +122,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 
   // Common fields
   const [botName, setBotName] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_PROMPTS["finance"]);
-  const [agentType, setAgentType] = useState("finance");
+  const [systemPrompt, setSystemPrompt] = useState("You are a helpful specialist agent.");
   const [customType, setCustomType] = useState("");
 
   // Skills selection
@@ -168,7 +154,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     setPlatform("telegram");
     setBotToken(""); setBotUsername("");
     setDiscordToken("");
-    setBotName(""); setSystemPrompt(DEFAULT_PROMPTS["finance"]); setAgentType("finance"); setCustomType("");
+    setBotName(""); setSystemPrompt("You are a helpful specialist agent."); setCustomType("");
     setSelectedSkillIds([]);
     setError(null);
     setWaStep("form"); setWaAgentId(null); setWaQrData(null); setWaQrError(null);
@@ -192,7 +178,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     setSubmitting(true);
 
     try {
-      const effectiveType = agentType === "__custom__" ? customType.trim().toLowerCase() : agentType;
+      const effectiveType = customType.trim().toLowerCase();
       const base = { name: botName, systemPrompt, type: effectiveType, skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined };
       const body =
         platform === "telegram"
@@ -564,34 +550,14 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <label style={labelStyle}>Agent Type</label>
-                <select
-                  value={agentType}
-                  onChange={(e) => {
-                    const newType = e.target.value;
-                    setAgentType(newType);
-                    if (newType !== "__custom__") {
-                      setSystemPrompt(DEFAULT_PROMPTS[newType] ?? "You are a helpful specialist agent.");
-                      setCustomType("");
-                    } else {
-                      setSystemPrompt("You are a helpful specialist agent.");
-                    }
-                  }}
-                  style={{ ...inputStyle }}
-                >
-                  {AGENT_TYPE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-                {agentType === "__custom__" && (
-                  <input
-                    type="text"
-                    value={customType}
-                    onChange={(e) => setCustomType(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-                    placeholder="e.g. education, cybersecurity, agriculture"
-                    style={{ ...inputStyle, marginTop: "6px" }}
-                    required
-                  />
-                )}
+                <input
+                  type="text"
+                  value={customType}
+                  onChange={(e) => setCustomType(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
+                  placeholder="e.g. education, cybersecurity, agriculture"
+                  style={inputStyle}
+                  required
+                />
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>

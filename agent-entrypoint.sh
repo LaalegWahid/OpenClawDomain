@@ -40,6 +40,25 @@ AUTH_DIR="${OPENCLAW_HOME}/agents/main/agent"
 mkdir -p "${OPENCLAW_HOME}" "${WORKSPACE}" "${AUTH_DIR}"
 
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful AI assistant.}"
+
+# ── Fetch full system prompt from domain API (avoids ECS 8192-byte env var limit) ──
+if [ -n "${WEBHOOK_BASE_URL:-}" ]; then
+  FETCHED_PROMPT=""
+  for _attempt in 1 2 3 4 5; do
+    FETCHED_PROMPT=$(curl -sf -H "Authorization: Bearer ${GATEWAY_TOKEN}" \
+      "${WEBHOOK_BASE_URL}/api/internal/agents/${AGENT_ID}/config" \
+      | python3 -c "import sys,json; print(json.load(sys.stdin)['systemPrompt'])" 2>/dev/null) && break
+    echo "Attempt ${_attempt}: waiting for domain API..." >&2
+    sleep 3
+  done
+  if [ -n "${FETCHED_PROMPT}" ]; then
+    SYSTEM_PROMPT="${FETCHED_PROMPT}"
+    echo "DEBUG [config] Fetched system prompt from domain API (${#SYSTEM_PROMPT} bytes)"
+  else
+    echo "WARNING: Could not fetch config from domain API — using env SYSTEM_PROMPT fallback" >&2
+  fi
+fi
+
 # Strip accidental surrounding quotes (e.g. ECS console saves `"openrouter/..."` literally)
 AGENT_MODEL="$(echo "${AGENT_MODEL:-openrouter/qwen/qwen3.6-plus:free}" | tr -d '"')"
 
