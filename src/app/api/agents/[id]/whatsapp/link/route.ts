@@ -54,7 +54,6 @@ export async function POST(req: Request, ctx: Ctx) {
     const taskArn = await launchWhatsappLinker(
       agentRecord.userId,
       agentRecord.id,
-      agentRecord.type as import("../../../../../../shared/lib/agents/config").AgentType,
     );
 
     const [linkSession] = await db
