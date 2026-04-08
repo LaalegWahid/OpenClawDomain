@@ -17,7 +17,7 @@
  *   node whatsapp-linker.mjs <agentId> <baseUrl> <token> <openclawHome>
  */
 
-import { makeWASocket, useMultiFileAuthState, DisconnectReason }
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers }
   from '@whiskeysockets/baileys';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -113,8 +113,11 @@ async function onFatal(err) {
 // ── Connection ────────────────────────────────────────────────────────────────
 async function startConnection() {
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
+  const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
+    version,
+    browser: Browsers.ubuntu('Chrome'),
     auth: state,
     printQRInTerminal: false,   // We handle QR ourselves via the event
     logger,
