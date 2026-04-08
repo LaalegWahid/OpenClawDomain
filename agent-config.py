@@ -76,10 +76,7 @@ def patch_mcp(cfg):
         return
     print("Adding MCP server config...")
     mcp_servers = json.loads(base64.b64decode(mcp_b64).decode())
-    cfg.setdefault("mcp", {})["servers"] = {
-        name: srv.get("config", {})
-        for name, srv in mcp_servers.items()
-    }
+    cfg.setdefault("mcp", {})["servers"] = mcp_servers
     print("MCP servers configured.")
 
 
