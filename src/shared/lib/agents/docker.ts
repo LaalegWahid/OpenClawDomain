@@ -11,8 +11,6 @@ import { getDomainConfig, type AgentType } from "./config";
 
 const ecs = new ECSClient({ region: process.env.AWS_REGION || "us-west-1" });
 
-const TASK_DEFINITION = process.env.ECS_TASK_DEFINITION ?? "openclawmanager-agent";
-
 /**
  * Replaces common non-Latin1 unicode characters with ASCII equivalents,
  * then strips any remaining characters > 255.
@@ -125,7 +123,8 @@ return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, 
   if (skillInstructions) {
     fullSystemPrompt += `\n\n[USER SKILLS]\n${skillInstructions}\n[END USER SKILLS]`;
   }
-  fullSystemPrompt = sanitizeForEcs(fullSystemPrompt);
+  const domainConfig = DOMAIN_CONFIGS[agentType];
+  const fullSystemPrompt = sanitizeForEcs(domainConfig.boundaryPreamble + systemPrompt);
 
   logger.info({ agentId, agentType }, "Launching ECS agent task");
 
@@ -143,7 +142,7 @@ return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, 
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
-    taskDefinition: TASK_DEFINITION,
+    taskDefinition: `openclawmanager-agent-${agentType}`,
     launchType: "FARGATE",
     networkConfiguration: {
       awsvpcConfiguration: {
@@ -179,6 +178,7 @@ return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, 
 export async function launchWhatsappLinker(
   userId: string,
   agentId: string,
+  agentType: AgentType,
 ): Promise<string> {
   if (process.env.LOCAL_DEV === "true") {
     const { localLaunchWhatsappLinker } = await import("./docker.local");
@@ -189,7 +189,7 @@ export async function launchWhatsappLinker(
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
-    taskDefinition: TASK_DEFINITION,
+    taskDefinition: `openclawmanager-agent-${agentType}`,
     launchType: "FARGATE",
     networkConfiguration: {
       awsvpcConfiguration: {

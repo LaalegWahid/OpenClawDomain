@@ -4,7 +4,6 @@ import { db } from "../../../../../../shared/lib/drizzle";
 import { agent, agentMcp } from "../../../../../../shared/db/schema/agent";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../../../../../../shared/lib/logger";
-import { relaunchAgentWithChannels } from "../../../../../../shared/lib/agents/relaunch";
 
 export async function PATCH(
   req: Request,
@@ -31,9 +30,6 @@ export async function PATCH(
       .set({ enabled: body.enabled })
       .where(and(eq(agentMcp.id, serverId), eq(agentMcp.agentId, id)));
 
-    void relaunchAgentWithChannels(id).catch((err) =>
-      logger.error({ err, agentId: id }, "Failed to relaunch agent after MCP update"),
-    );
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof Response) return err;
@@ -61,9 +57,6 @@ export async function DELETE(
       .delete(agentMcp)
       .where(and(eq(agentMcp.id, serverId), eq(agentMcp.agentId, id)));
 
-    void relaunchAgentWithChannels(id).catch((err) =>
-      logger.error({ err, agentId: id }, "Failed to relaunch agent after MCP delete"),
-    );
     logger.info({ agentId: id, serverId }, "MCP server deleted");
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -7,7 +7,7 @@ import { uploadSkillFile, getSkillFileUrl } from "../../../../../shared/lib/s3/s
 import { logger } from "../../../../../shared/lib/logger";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_FILES = 20;
+const MAX_FILES = 5;
 
 interface SkillFile {
   key: string;
@@ -76,25 +76,9 @@ export async function POST(
       );
     }
 
-    // Optional paths array to preserve folder hierarchy from archives
-    const pathsRaw = formData.get("paths");
-    let pathList: string[] | null = null;
-    if (pathsRaw && typeof pathsRaw === "string") {
-      try {
-        pathList = JSON.parse(pathsRaw);
-      } catch {
-        return NextResponse.json({ error: "Invalid paths format" }, { status: 400 });
-      }
-      // Validate: no path traversal
-      if (pathList && pathList.some((p) => p.includes("..") || p.startsWith("/"))) {
-        return NextResponse.json({ error: "Invalid file path detected" }, { status: 400 });
-      }
-    }
-
     const newFiles: SkillFile[] = [];
 
-    for (let i = 0; i < uploadedFiles.length; i++) {
-      const file = uploadedFiles[i];
+    for (const file of uploadedFiles) {
       if (!(file instanceof Blob)) continue;
 
       const f = file as File;
@@ -105,19 +89,18 @@ export async function POST(
         );
       }
 
-      const filename = pathList && pathList[i] ? pathList[i] : f.name;
       const buffer = Buffer.from(await f.arrayBuffer());
       const key = await uploadSkillFile(
         session.user.id,
         found.id,
-        filename,
+        f.name,
         buffer,
         f.type || "application/octet-stream",
       );
 
       newFiles.push({
         key,
-        filename,
+        filename: f.name,
         size: f.size,
         contentType: f.type || "application/octet-stream",
       });

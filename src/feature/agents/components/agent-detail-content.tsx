@@ -292,6 +292,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     setWaQrData(null);
     setWaError(null);
     setShowWaModal(true);
+
     const res = await fetch(`/api/agents/${agentId}/whatsapp/link`, { method: "POST" });
     if (!res.ok) {
       const data = await res.json();

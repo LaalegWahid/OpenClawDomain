@@ -1,1 +1,0 @@
-ALTER TABLE "whatsapp_link_session" ADD COLUMN "owner_phone" text;

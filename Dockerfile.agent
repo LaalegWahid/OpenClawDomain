@@ -22,13 +22,6 @@ WORKDIR /home/node
 # install and never calls process.exit() — the plugin IS installed, the process just won't quit.
 RUN timeout -k 5 60 openclaw plugins install @openclaw/whatsapp || true
 
-# Install Baileys for the direct WhatsApp linker script.
-# We use Baileys directly (bypassing `openclaw channels login`) because the OpenClaw
-# CLI renders the QR as Unicode art and never emits the raw QR string to stdout.
-# Credentials are stored at ${OPENCLAW_HOME}/credentials/whatsapp/default/ — the same
-# path that OpenClaw's @openclaw/whatsapp plugin expects on the agent side.
-RUN npm install @whiskeysockets/baileys
-
 EXPOSE 18789
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \

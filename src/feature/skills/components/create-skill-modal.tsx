@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Sparkles, FileText, Upload, Loader2, Archive, Folder, File as FileIcon } from "lucide-react";
+import { X, Sparkles, FileText, Upload, Loader2 } from "lucide-react";
 
 type Tab = "ai" | "manual" | "import";
 
@@ -49,8 +49,8 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
 
   // Import tab state
   const [importDraft, setImportDraft] = useState<{ name: string; description: string; instructions: string } | null>(null);
-  const [archiveFile, setArchiveFile] = useState<File | null>(null);
-  const [extractedFiles, setExtractedFiles] = useState<Array<{ path: string; blob: Blob; size: number }>>([]);
+  const [skillMdFile, setSkillMdFile] = useState<File | null>(null);
+  const [scriptFile, setScriptFile] = useState<File | null>(null);
   const [importLoading, setImportLoading] = useState(false);
 
   const handleGenerate = async () => {
@@ -98,76 +98,13 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
   };
 
   const handleImportFiles = async () => {
-    if (!archiveFile) return;
+    if (!skillMdFile) return;
     setError(null);
     setImportLoading(true);
+    const formData = new FormData();
+    formData.append("skillMd", skillMdFile);
+    if (scriptFile) formData.append("script", scriptFile);
     try {
-      if (archiveFile.size > 20 * 1024 * 1024) {
-        setError("Archive must be smaller than 20MB");
-        return;
-      }
-
-      const JSZip = (await import("jszip")).default;
-      const zip = await JSZip.loadAsync(archiveFile);
-
-      // Find SKILL.md at root (handle possible top-level folder wrapper)
-      let skillMdEntry = zip.file("SKILL.md");
-      let prefix = "";
-      if (!skillMdEntry) {
-        // Check if zip has a single root folder containing SKILL.md
-        const topDirs = Object.keys(zip.files).filter(
-          (n) => n.endsWith("/") && !n.slice(0, -1).includes("/"),
-        );
-        if (topDirs.length === 1) {
-          skillMdEntry = zip.file(topDirs[0] + "SKILL.md");
-          if (skillMdEntry) prefix = topDirs[0];
-        }
-      }
-      if (!skillMdEntry) {
-        setError("Archive must contain a SKILL.md file at the root");
-        return;
-      }
-
-      // Extract all files, filtering junk
-      const entries = Object.values(zip.files).filter(
-        (f) =>
-          !f.dir &&
-          !f.name.startsWith("__MACOSX") &&
-          !f.name.endsWith(".DS_Store") &&
-          !f.name.includes("..") &&
-          !f.name.startsWith("/"),
-      );
-
-      if (entries.length > 20) {
-        setError("Archive contains too many files (maximum 20)");
-        return;
-      }
-
-      const files: Array<{ path: string; blob: Blob; size: number }> = [];
-      let totalSize = 0;
-      for (const entry of entries) {
-        const blob = await entry.async("blob");
-        if (blob.size > 5 * 1024 * 1024) {
-          setError(`File "${entry.name}" exceeds 5MB limit`);
-          return;
-        }
-        totalSize += blob.size;
-        if (totalSize > 25 * 1024 * 1024) {
-          setError("Total extracted size exceeds 25MB");
-          return;
-        }
-        // Strip the top-level folder prefix if present
-        const path = prefix ? entry.name.slice(prefix.length) : entry.name;
-        files.push({ path, blob, size: blob.size });
-      }
-
-      setExtractedFiles(files);
-
-      // Send SKILL.md to existing parse endpoint
-      const skillMdBlob = files.find((f) => f.path === "SKILL.md")!.blob;
-      const formData = new FormData();
-      formData.append("skillMd", skillMdBlob, "SKILL.md");
-
       const res = await fetch("/api/skills/import", {
         method: "POST",
         body: formData,
@@ -180,14 +117,14 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
       }
       setImportDraft(data.skill);
     } catch {
-      setError("Failed to read archive. Ensure it is a valid .zip file.");
+      setError("Network error. Please try again.");
     } finally {
       setImportLoading(false);
     }
   };
 
   const handleImportSave = async () => {
-    if (!importDraft || extractedFiles.length === 0) return;
+    if (!importDraft) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -202,22 +139,23 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
         setError(data.error || "Failed to save skill");
         return;
       }
-      // 2. Upload all extracted files in a single batch
-      const fileForm = new FormData();
-      const paths: string[] = [];
-      for (const f of extractedFiles) {
-        fileForm.append("files", f.blob, f.path.split("/").pop()!);
-        paths.push(f.path);
+      // 2. Upload the .py script to the skill's files if provided
+      if (scriptFile) {
+        const fileForm = new FormData();
+        fileForm.append("files", scriptFile);
+        await fetch(`/api/skills/${data.skill.id}/files`, {
+          method: "POST",
+          body: fileForm,
+        });
       }
-      fileForm.append("paths", JSON.stringify(paths));
-      const uploadRes = await fetch(`/api/skills/${data.skill.id}/files`, {
-        method: "POST",
-        body: fileForm,
-      });
-      if (!uploadRes.ok) {
-        const uploadData = await uploadRes.json();
-        setError(uploadData.error || "File upload failed");
-        return;
+      // 3. Upload the SKILL.md to the skill's files
+      if (skillMdFile) {
+        const mdForm = new FormData();
+        mdForm.append("files", skillMdFile);
+        await fetch(`/api/skills/${data.skill.id}/files`, {
+          method: "POST",
+          body: mdForm,
+        });
       }
       onCreated();
     } catch {
@@ -484,77 +422,99 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
             {!importDraft ? (
               <>
                 <p style={{ fontSize: 13, color: "#888", marginTop: 0, marginBottom: 16, lineHeight: 1.5 }}>
-                  Import a skill from a{" "}
-                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>.zip</code> archive
-                  containing a{" "}
-                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>SKILL.md</code> file,
-                  scripts, and any additional files the skill needs.
+                  Import a skill using the ClawHub format: a{" "}
+                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>SKILL.md</code> file
+                  with frontmatter metadata, and an optional{" "}
+                  <code style={{ background: "#1E1E1E", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>.py</code> script.
                 </p>
 
-                {/* Archive upload */}
-                <label style={labelStyle}>Skill Archive (.zip)</label>
+                {/* SKILL.md upload */}
+                <label style={labelStyle}>SKILL.md (required)</label>
                 <label
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
-                    padding: "16px 14px",
-                    border: archiveFile ? "1.5px solid rgba(255,77,0,0.4)" : "1.5px dashed #1E1E1E",
+                    padding: "12px 14px",
+                    border: skillMdFile ? "1.5px solid rgba(255,77,0,0.4)" : "1.5px dashed #1E1E1E",
                     borderRadius: 10,
                     cursor: "pointer",
-                    marginBottom: 16,
-                    background: archiveFile ? "rgba(255,77,0,0.04)" : "transparent",
+                    marginBottom: 14,
+                    background: skillMdFile ? "rgba(255,77,0,0.04)" : "transparent",
                   }}
                 >
-                  <Archive size={20} style={{ color: archiveFile ? "#FF4D00" : "#555", flexShrink: 0 }} />
-                  <div style={{ overflow: "hidden" }}>
-                    <span style={{ fontSize: 13, color: archiveFile ? "#F0EEE8" : "#888", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {archiveFile ? archiveFile.name : "Click to select a .zip archive"}
-                    </span>
-                    {archiveFile && (
-                      <span style={{ fontSize: 11, color: "#555", marginTop: 2, display: "block" }}>
-                        {(archiveFile.size / 1024).toFixed(1)} KB
-                      </span>
-                    )}
-                  </div>
+                  <FileText size={18} style={{ color: skillMdFile ? "#FF4D00" : "#555", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: skillMdFile ? "#F0EEE8" : "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {skillMdFile ? skillMdFile.name : "Click to select SKILL.md"}
+                  </span>
                   <input
                     type="file"
-                    accept=".zip"
+                    accept=".md"
                     style={{ display: "none" }}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
-                      if (f) { setArchiveFile(f); setImportDraft(null); setExtractedFiles([]); setError(null); }
+                      if (f) { setSkillMdFile(f); setImportDraft(null); setError(null); }
+                    }}
+                  />
+                </label>
+
+                {/* Python script upload */}
+                <label style={labelStyle}>Python Script (optional)</label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "12px 14px",
+                    border: scriptFile ? "1.5px solid rgba(76,175,80,0.4)" : "1.5px dashed #1E1E1E",
+                    borderRadius: 10,
+                    cursor: "pointer",
+                    marginBottom: 16,
+                    background: scriptFile ? "rgba(76,175,80,0.04)" : "transparent",
+                  }}
+                >
+                  <Upload size={18} style={{ color: scriptFile ? "#4CAF50" : "#555", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: scriptFile ? "#F0EEE8" : "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {scriptFile ? scriptFile.name : "Click to select a .py file"}
+                  </span>
+                  <input
+                    type="file"
+                    accept=".py"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setScriptFile(f);
                     }}
                   />
                 </label>
 
                 <button
                   onClick={handleImportFiles}
-                  disabled={!archiveFile || importLoading}
+                  disabled={!skillMdFile || importLoading}
                   style={{
                     width: "100%",
                     padding: "10px 0",
-                    background: !archiveFile || importLoading ? "#333" : "#FF4D00",
+                    background: !skillMdFile || importLoading ? "#333" : "#FF4D00",
                     color: "#fff",
                     border: "none",
                     borderRadius: 10,
                     fontSize: 14,
                     fontWeight: 600,
-                    cursor: !archiveFile || importLoading ? "not-allowed" : "pointer",
+                    cursor: !skillMdFile || importLoading ? "not-allowed" : "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 8,
                   }}
                 >
-                  {importLoading ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Archive size={16} />}
-                  {importLoading ? "Extracting..." : "Extract & Parse"}
+                  {importLoading ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Upload size={16} />}
+                  {importLoading ? "Parsing..." : "Parse Skill"}
                 </button>
               </>
             ) : (
               <>
                 <p style={{ fontSize: 12, color: "#555", marginBottom: 12, marginTop: 0 }}>
-                  Review the imported skill, then save.
+                  Review the imported skill, then save.{scriptFile && <span style={{ color: "#4CAF50" }}> Script: {scriptFile.name}</span>}
                 </p>
                 <div style={{ marginBottom: 12 }}>
                   <label style={labelStyle}>Name</label>
@@ -572,7 +532,7 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                     style={inputStyle}
                   />
                 </div>
-                <div style={{ marginBottom: 12 }}>
+                <div style={{ marginBottom: 16 }}>
                   <label style={labelStyle}>Instructions</label>
                   <textarea
                     value={importDraft.instructions}
@@ -581,41 +541,9 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                     style={{ ...inputStyle, resize: "vertical" }}
                   />
                 </div>
-
-                {/* File tree */}
-                <div style={{ marginBottom: 16 }}>
-                  <label style={labelStyle}>Files ({extractedFiles.length})</label>
-                  <div style={{ background: "#0A0A0A", border: "0.5px solid #1E1E1E", borderRadius: 8, padding: "8px 0", maxHeight: 160, overflowY: "auto" }}>
-                    {extractedFiles.map((f, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "5px 12px",
-                          fontSize: 12,
-                        }}
-                      >
-                        {f.path.includes("/") ? (
-                          <Folder size={13} style={{ color: "#FF4D00", flexShrink: 0 }} />
-                        ) : (
-                          <FileIcon size={13} style={{ color: "#555", flexShrink: 0 }} />
-                        )}
-                        <span style={{ color: "#F0EEE8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                          {f.path}
-                        </span>
-                        <span style={{ color: "#555", flexShrink: 0 }}>
-                          {f.size < 1024 ? `${f.size} B` : `${(f.size / 1024).toFixed(1)} KB`}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
-                    onClick={() => { setImportDraft(null); setArchiveFile(null); setExtractedFiles([]); }}
+                    onClick={() => { setImportDraft(null); setSkillMdFile(null); setScriptFile(null); }}
                     style={{
                       flex: 1,
                       padding: "10px 0",
