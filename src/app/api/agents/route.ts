@@ -9,6 +9,7 @@ import { skill, agentSkill } from "../../../shared/db/schema/skill";
 import { and, inArray } from "drizzle-orm";
 
 import { launchContainer, stopContainer, waitForTaskRunning } from "../../../shared/lib/agents/docker";
+import { startDiscordBot } from "../../../shared/lib/discord/manager";
 import { logger } from "../../../shared/lib/logger";
 import { isSubscriptionActive } from "../../../shared/lib/subscription/cache";
 import { env } from "../../../shared/config/env";
@@ -182,6 +183,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
       }
 
+      // Also check agentChannel.credentials — tokens registered via the channels route
+      // live there, not in agent.botToken, so the check above would miss them.
+      const existingChannels = await db.select().from(agentChannel).where(eq(agentChannel.platform, "discord"));
+      const tokenConflict = existingChannels.some(
+        (ch) => (ch.credentials as Record<string, string>)?.botToken === discordToken,
+      );
+      if (tokenConflict) {
+        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
+      }
+
       let containerId: string;
       try {
         const result = await launchContainer(
@@ -208,6 +219,11 @@ export async function POST(req: Request) {
         await db.insert(agentChannel).values({ agentId: newAgent.id, platform: "discord", credentials: { botToken: discordToken } });
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Discord` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
+
+        // Start the Discord bot in-process immediately so messages are handled
+        // without waiting for an app restart.
+        startDiscordBot(newAgent.id, discordToken, type as AgentType)
+          .catch((err) => logger.error({ err, agentId: newAgent.id }, "Failed to start Discord bot"));
 
         waitForTaskRunning(containerId)
           .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))

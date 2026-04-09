@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl python3 \
 COPY agent-entrypoint.sh /home/node/entrypoint.sh
 COPY whatsapp-linker.sh /home/node/whatsapp-linker.sh
 COPY whatsapp-linker.mjs /home/node/whatsapp-linker.mjs
+COPY whatsapp-relay.mjs /home/node/whatsapp-relay.mjs
 COPY agent-config.py /home/node/agent-config.py
 RUN sed -i 's/\r$//' /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \
     && chmod +x /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \

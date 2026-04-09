@@ -372,4 +372,15 @@ mkdir -p /tmp/openclaw
   fi
 ) &
 
+# ── WhatsApp relay ────────────────────────────────────────────────────────────
+# When WHATSAPP_INBOUND_WEBHOOK_URL is set, start the Baileys relay that forwards
+# inbound messages to Next.js and sends replies, bypassing OpenClaw's AI for
+# message handling. agent-config.py already skipped adding WhatsApp to openclaw.json.
+if [ -n "${WHATSAPP_INBOUND_WEBHOOK_URL:-}" ] && [ -n "${WHATSAPP_ENABLED:-}" ]; then
+  echo "Starting WhatsApp relay → ${WHATSAPP_INBOUND_WEBHOOK_URL}"
+  node /home/node/whatsapp-relay.mjs &
+  RELAY_PID=$!
+  echo "WhatsApp relay started (PID ${RELAY_PID})"
+fi
+
 exec openclaw gateway --bind lan --port 18789 --allow-unconfigured
