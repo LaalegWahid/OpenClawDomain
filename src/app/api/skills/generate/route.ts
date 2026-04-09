@@ -15,7 +15,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey = process.env.OPENROUTER_CONFIG_KEY;
     if (!apiKey) {
           logger.error({ apiKey }, "missing api KEY or wrongly configured");
 

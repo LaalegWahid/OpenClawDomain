@@ -158,7 +158,7 @@ export function ChatPanel({ agentId, agentName, agentStatus }: ChatPanelProps) {
                   {msg.content}
                   {msg.document && (
                     <a
-                      href={`data:application/pdf;base64,${msg.document.data}`}
+                      href={msg.document.data}
                       download={msg.document.filename}
                       className="mt-2 flex items-center gap-2 rounded-md border border-brand/30 bg-brand/10 px-3 py-1.5 text-xs text-white hover:bg-brand/20 transition-colors w-fit"
                     >

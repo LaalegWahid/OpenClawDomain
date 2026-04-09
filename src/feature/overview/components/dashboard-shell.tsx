@@ -9,7 +9,8 @@ import { authClient } from "../../../shared/lib/auth/client";
 const NAV = [
   { label: "Dashboard", href: "/overview", icon: LayoutDashboard },
   { label: "Skills",    href: "/skills",   icon: Sparkles },
-  { label: "Settings",  href: "/settings",  icon: Settings },
+  { label: "Chat",      href: "/chat",     icon: LayoutDashboard },
+{ label: "Settings",  href: "/settings",  icon: Settings },
 ];
 
 const ADMIN_NAV = { label: "Admin", href: "/admin", icon: ShieldAlert };
