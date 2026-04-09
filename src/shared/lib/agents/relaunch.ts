@@ -1,7 +1,7 @@
 import { db } from "../drizzle";
 import { agent, agentChannel, agentMcp } from "../../db/schema/agent";
 import { eq } from "drizzle-orm";
-import { launchContainer, stopContainer, waitForTaskRunning } from "./docker";
+import { launchContainer, stopContainer, waitForTaskRunning, fetchOpenClawAgentId } from "./docker";
 import type { ChannelConfig, McpServerConfig } from "./docker";
 import { logger } from "../logger";
 import type { AgentType } from "./config";
@@ -84,9 +84,13 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
 
   // ── 9. Promote to active when running (fire-and-forget) ───────────────────
   waitForTaskRunning(containerId)
-    .then(() =>
-      db.update(agent).set({ status: "active" }).where(eq(agent.id, agentId)),
-    )
+    .then(async () => {
+      await db.update(agent).set({ status: "active" }).where(eq(agent.id, agentId));
+      const openclawAgentId = await fetchOpenClawAgentId(containerId).catch(() => null);
+      if (openclawAgentId) {
+        await db.update(agent).set({ openclawAgentId }).where(eq(agent.id, agentId));
+      }
+    })
     .catch(async (err) => {
       logger.error({ err, agentId }, "Relaunched task never reached RUNNING");
       await db.update(agent).set({ status: "error" }).where(eq(agent.id, agentId));

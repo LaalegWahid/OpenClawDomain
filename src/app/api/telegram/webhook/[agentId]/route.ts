@@ -17,6 +17,7 @@ import {
 } from "../../../../../shared/lib/agents/document";
 import { env } from "../../../../../shared/config/env";
 import { getServiceEnabled } from "../../../../../shared/lib/service/status";
+import { randomTimeoutMessage, randomWarmupMessage } from "../../../../../shared/lib/agents/wait-messages";
 
 const MAX_HISTORY = 20;
 
@@ -137,7 +138,8 @@ export async function POST(
       await db.insert(agentActivity).values({
         agentId,
         type: "error",
-        message: `Failed to deliver to chat ${chatId}: ${err instanceof Error ? err.message : "Unknown"}`,
+        message: "Failed to send response via Telegram",
+        metadata: { chatId, error: err instanceof Error ? err.message : String(err) },
       });
       // Fallback: send the raw text so the user isn't left with no response
       if (docFormat) {
@@ -150,9 +152,7 @@ export async function POST(
     await sendMessage(
       found.botToken,
       chatId,
-      isTimeout
-        ? "⏳ Your request is taking longer than expected."
-        : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!"
+      isTimeout ? randomTimeoutMessage() : randomWarmupMessage()
     ).catch(() => {});
   }
 

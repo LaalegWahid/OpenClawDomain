@@ -16,6 +16,7 @@ import {
   isUsableContent,
 } from "../../lib/agents/document";
 import { sendDiscordMessage, sendDiscordDocument } from "./bot";
+import { randomTimeoutMessage, randomWarmupMessage } from "../agents/wait-messages";
 
 const MAX_HISTORY = 20;
 
@@ -148,7 +149,8 @@ export async function startDiscordBot(
         await db.insert(agentActivity).values({
           agentId,
           type: "error",
-          message: `Failed to deliver to Discord channel ${channelId}: ${err instanceof Error ? err.message : "Unknown"}`,
+          message: "Failed to send response via Discord",
+          metadata: { channelId, error: err instanceof Error ? err.message : String(err) },
         });
       }
     } catch (err) {
@@ -157,9 +159,7 @@ export async function startDiscordBot(
       await sendDiscordMessage(
         token,
         channelId,
-        isTimeout
-          ? "⏳ Your request is taking longer than expected. Please try again in a moment."
-          : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!",
+        isTimeout ? randomTimeoutMessage() : randomWarmupMessage(),
       ).catch(() => {});
     }
   });
