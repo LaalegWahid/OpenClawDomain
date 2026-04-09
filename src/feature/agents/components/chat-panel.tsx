@@ -4,9 +4,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { MessageSquare, Send, ChevronDown, ChevronUp, Download } from "lucide-react";
 import { Button } from "../../../shared/components/ui/button";
 
+interface ChatDocument {
+  data: string;
+  filename: string;
+}
+
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  document?: ChatDocument;
 }
 
 interface ChatPanelProps {
@@ -77,15 +83,11 @@ export function ChatPanel({ agentId, agentName, agentStatus }: ChatPanelProps) {
         return;
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
-
-      // Handle document download
-      if (data.document) {
-        const link = document.createElement("a");
-        link.href = data.document.data;
-        link.download = data.document.filename;
-        link.click();
-      }
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: data.document ? "Your document is ready." : data.reply,
+        document: data.document ?? undefined,
+      }]);
     } catch {
       setError("Failed to reach the server");
       setMessages((prev) => prev.slice(0, -1));
@@ -154,6 +156,16 @@ export function ChatPanel({ agentId, agentName, agentStatus }: ChatPanelProps) {
                   }`}
                 >
                   {msg.content}
+                  {msg.document && (
+                    <a
+                      href={`data:application/pdf;base64,${msg.document.data}`}
+                      download={msg.document.filename}
+                      className="mt-2 flex items-center gap-2 rounded-md border border-brand/30 bg-brand/10 px-3 py-1.5 text-xs text-white hover:bg-brand/20 transition-colors w-fit"
+                    >
+                      <Download className="size-3.5" />
+                      {msg.document.filename}
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
