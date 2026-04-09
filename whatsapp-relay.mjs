@@ -12,7 +12,7 @@
  * Credentials loaded from ${OPENCLAW_HOME}/credentials/whatsapp/default/ — same
  * path written by whatsapp-linker.mjs and expected by OpenClaw's whatsapp plugin.
  */
-import { makeWASocket, useMultiFileAuthState, DisconnectReason }
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers }
   from '@whiskeysockets/baileys';
 
 const webhookUrl   = process.env.WHATSAPP_INBOUND_WEBHOOK_URL;
@@ -23,9 +23,20 @@ if (!webhookUrl)   { console.error('whatsapp-relay: WHATSAPP_INBOUND_WEBHOOK_URL
 if (!gatewayToken) { console.error('whatsapp-relay: GATEWAY_TOKEN not set'); process.exit(1); }
 if (!process.env.OPENCLAW_HOME) { console.error('whatsapp-relay: OPENCLAW_HOME not set'); process.exit(1); }
 
+// Suppress Baileys internal noise (same as linker)
+const noop = () => {};
+const logger = { level: 'silent', info: noop, warn: noop, error: noop, debug: noop, trace: noop, fatal: noop, child() { return this; } };
+
 async function startRelay() {
   const { state, saveCreds } = await useMultiFileAuthState(credsDir);
-  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
+  const { version } = await fetchLatestBaileysVersion();
+  const sock = makeWASocket({
+    version,
+    browser: Browsers.ubuntu('Chrome'),
+    auth: state,
+    printQRInTerminal: false,
+    logger,
+  });
 
   sock.ev.on('creds.update', saveCreds);
 
