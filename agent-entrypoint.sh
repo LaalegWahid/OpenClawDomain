@@ -66,6 +66,14 @@ AGENT_MODEL="$(echo "${AGENT_MODEL:-openrouter/qwen/qwen3.6-plus:free}" | tr -d 
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
+OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+MISTRAL_API_KEY="${MISTRAL_API_KEY:-}"
+GROQ_API_KEY="${GROQ_API_KEY:-}"
+XAI_API_KEY="${XAI_API_KEY:-}"
+DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}"
+COHERE_API_KEY="${COHERE_API_KEY:-}"
+TOGETHER_API_KEY="${TOGETHER_API_KEY:-}"
+PERPLEXITY_API_KEY="${PERPLEXITY_API_KEY:-}"
 
 # Write SYSTEM.md always (system prompt can legitimately change per deployment)
 cat > "${WORKSPACE}/SYSTEM.md" << EOSYSTEM
@@ -197,119 +205,142 @@ OC_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 echo "DEBUG [parse] AGENT_MODEL=${AGENT_MODEL}"
 echo "DEBUG [parse] AGENT_PROVIDER=${AGENT_PROVIDER} | MODEL_ID=${MODEL_ID} | MODEL_NAME=${MODEL_NAME}"
 
-# Strip accidental whitespace and surrounding quotes from keys
+# Strip accidental whitespace and surrounding quotes from all keys
 # (ECS console sometimes saves values as `"sk-or-..."` with literal quotes)
-ANTHROPIC_API_KEY="$(echo "${ANTHROPIC_API_KEY}" | tr -d ' \t\r\n"')"
-GEMINI_API_KEY="$(echo "${GEMINI_API_KEY}" | tr -d ' \t\r\n"')"
-OPENROUTER_API_KEY="$(echo "${OPENROUTER_API_KEY}" | tr -d ' \t\r\n"')"
+for _kvar in ANTHROPIC_API_KEY GEMINI_API_KEY OPENROUTER_API_KEY OPENAI_API_KEY \
+             MISTRAL_API_KEY GROQ_API_KEY XAI_API_KEY DEEPSEEK_API_KEY \
+             COHERE_API_KEY TOGETHER_API_KEY PERPLEXITY_API_KEY; do
+  eval "${_kvar}=\"\$(echo \"\${${_kvar}}\" | tr -d ' \t\r\n\"')\""
+  eval "_v=\"\${${_kvar}}\""
+  echo "DEBUG [keys] ${_kvar}=$([ -n "${_v}" ] && echo 'SET' || echo 'UNSET')"
+done
 
-echo "DEBUG [keys] ANTHROPIC_API_KEY=$([ -n "${ANTHROPIC_API_KEY}" ] && echo 'SET' || echo 'UNSET')"
-echo "DEBUG [keys] GEMINI_API_KEY=$([ -n "${GEMINI_API_KEY}" ] && echo 'SET' || echo 'UNSET')"
-echo "DEBUG [keys] OPENROUTER_API_KEY=$([ -n "${OPENROUTER_API_KEY}" ] && echo 'SET' || echo 'UNSET')"
+# ── Provider registry ─────────────────────────────────────────────────────────
+# Maps provider slug -> env var name : base URL
+# All non-Anthropic/Google providers use OpenAI-compatible endpoints.
+declare -A PROVIDER_KEY_MAP=(
+  [anthropic]="ANTHROPIC_API_KEY"
+  [google]="GEMINI_API_KEY"
+  [openrouter]="OPENROUTER_API_KEY"
+  [openai]="OPENAI_API_KEY"
+  [mistral]="MISTRAL_API_KEY"
+  [groq]="GROQ_API_KEY"
+  [xai]="XAI_API_KEY"
+  [deepseek]="DEEPSEEK_API_KEY"
+  [cohere]="COHERE_API_KEY"
+  [together]="TOGETHER_API_KEY"
+  [perplexity]="PERPLEXITY_API_KEY"
+)
+
+declare -A PROVIDER_BASE_URL=(
+  [anthropic]="https://api.anthropic.com"
+  [google]="https://generativelanguage.googleapis.com/v1beta"
+  [openrouter]="https://openrouter.ai/api/v1"
+  [openai]="https://api.openai.com/v1"
+  [mistral]="https://api.mistral.ai/v1"
+  [groq]="https://api.groq.com/openai/v1"
+  [xai]="https://api.x.ai/v1"
+  [deepseek]="https://api.deepseek.com/v1"
+  [cohere]="https://api.cohere.com/v2"
+  [together]="https://api.together.xyz/v1"
+  [perplexity]="https://api.perplexity.ai"
+)
+
+# Default context windows per provider (used for model registration)
+declare -A PROVIDER_CTX_WINDOW=(
+  [anthropic]=200000  [google]=1000000 [openrouter]=128000
+  [openai]=128000     [mistral]=128000 [groq]=131072
+  [xai]=131072        [deepseek]=64000 [cohere]=128000
+  [together]=128000   [perplexity]=128000
+)
 
 # ── Provider fallback ─────────────────────────────────────────────────────────
-# If the primary provider's key is absent, auto-select an available one so the
-# container doesn't start in a permanently broken state.
 EFFECTIVE_AGENT_MODEL="${AGENT_MODEL}"
 EFFECTIVE_PROVIDER="${AGENT_PROVIDER}"
 
-if [ "${AGENT_PROVIDER}" = "anthropic" ] && [ -z "${ANTHROPIC_API_KEY}" ]; then
+# Check if the primary provider's key is present
+PRIMARY_KEY_VAR="${PROVIDER_KEY_MAP[${AGENT_PROVIDER}]:-}"
+PRIMARY_KEY_VAL=""
+if [ -n "${PRIMARY_KEY_VAR}" ]; then
+  eval "PRIMARY_KEY_VAL=\"\${${PRIMARY_KEY_VAR}:-}\""
+fi
+
+if [ -z "${PRIMARY_KEY_VAL}" ]; then
+  echo "WARNING: ${PRIMARY_KEY_VAR:-???} is not set for provider ${AGENT_PROVIDER}"
+  # Try fallbacks in order: openrouter, anthropic, google
   if [ -n "${OPENROUTER_API_KEY}" ]; then
     EFFECTIVE_AGENT_MODEL="openrouter/${AGENT_MODEL}"
     EFFECTIVE_PROVIDER="openrouter"
-    echo "WARNING: ANTHROPIC_API_KEY missing — falling back to OpenRouter: ${EFFECTIVE_AGENT_MODEL}"
-  elif [ -n "${GEMINI_API_KEY}" ]; then
-    EFFECTIVE_AGENT_MODEL="google/gemini-2.0-flash"
-    EFFECTIVE_PROVIDER="google"
-    echo "WARNING: ANTHROPIC_API_KEY missing — falling back to Google: ${EFFECTIVE_AGENT_MODEL}"
-  else
-    echo "WARNING: No valid API key found for any provider — container will likely fail"
-  fi
-elif [ "${AGENT_PROVIDER}" = "google" ] && [ -z "${GEMINI_API_KEY}" ]; then
-  if [ -n "${OPENROUTER_API_KEY}" ]; then
-    EFFECTIVE_AGENT_MODEL="openrouter/google/${MODEL_ID}"
-    EFFECTIVE_PROVIDER="openrouter"
-    echo "WARNING: GEMINI_API_KEY missing — falling back to OpenRouter: ${EFFECTIVE_AGENT_MODEL}"
+    echo "WARNING: Falling back to OpenRouter: ${EFFECTIVE_AGENT_MODEL}"
   elif [ -n "${ANTHROPIC_API_KEY}" ]; then
     EFFECTIVE_AGENT_MODEL="anthropic/claude-haiku-4-5-20251001"
     EFFECTIVE_PROVIDER="anthropic"
-    echo "WARNING: GEMINI_API_KEY missing — falling back to Anthropic: ${EFFECTIVE_AGENT_MODEL}"
-  fi
-elif [ "${AGENT_PROVIDER}" = "openrouter" ] && [ -z "${OPENROUTER_API_KEY}" ]; then
-  if [ -n "${ANTHROPIC_API_KEY}" ]; then
-    EFFECTIVE_AGENT_MODEL="anthropic/claude-haiku-4-5-20251001"
-    EFFECTIVE_PROVIDER="anthropic"
-    echo "WARNING: OPENROUTER_API_KEY missing — falling back to Anthropic: ${EFFECTIVE_AGENT_MODEL}"
+    echo "WARNING: Falling back to Anthropic: ${EFFECTIVE_AGENT_MODEL}"
   elif [ -n "${GEMINI_API_KEY}" ]; then
     EFFECTIVE_AGENT_MODEL="google/gemini-2.0-flash"
     EFFECTIVE_PROVIDER="google"
-    echo "WARNING: OPENROUTER_API_KEY missing — falling back to Google: ${EFFECTIVE_AGENT_MODEL}"
+    echo "WARNING: Falling back to Google: ${EFFECTIVE_AGENT_MODEL}"
   else
     echo "WARNING: No valid API key found for any provider — container will likely fail"
   fi
 fi
 
-# Recompute MODEL_ID after fallback (effective model may have changed)
 EFFECTIVE_MODEL_ID=$(echo "${EFFECTIVE_AGENT_MODEL}" | cut -d'/' -f2-)
 
 echo "DEBUG [fallback] EFFECTIVE_PROVIDER=${EFFECTIVE_PROVIDER} | EFFECTIVE_AGENT_MODEL=${EFFECTIVE_AGENT_MODEL} | EFFECTIVE_MODEL_ID=${EFFECTIVE_MODEL_ID}"
 
-# ── Build per-provider model arrays ──────────────────────────────────────────
-# Anthropic: only register a model when anthropic is the effective provider
-if [ "${EFFECTIVE_PROVIDER}" = "anthropic" ] && [ -n "${ANTHROPIC_API_KEY}" ]; then
-  ANTHROPIC_MODELS='[{"id":"'"${EFFECTIVE_MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]'
-elif [ -n "${ANTHROPIC_API_KEY}" ]; then
-  ANTHROPIC_MODELS='[{"id":"claude-haiku-4-5-20251001","name":"Claude Haiku","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]'
-else
-  ANTHROPIC_MODELS='[]'
-fi
+# ── Build provider config JSON dynamically ────────────────────────────────────
+# Helper: create a model entry JSON
+make_model_entry() {
+  local id="$1" name="$2" ctx="${3:-128000}"
+  echo '{"id":"'"${id}"'","name":"'"${name}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":'"${ctx}"',"maxTokens":8192}'
+}
 
-# Google: always gemini-2.0-flash when key is present
-if [ -n "${GEMINI_API_KEY}" ]; then
-  GOOGLE_MODELS='[{"id":"gemini-2.0-flash","name":"Gemini Flash","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]'
-else
-  GOOGLE_MODELS='[]'
-fi
+PROVIDERS_JSON=""
 
-# OpenRouter: include defaults + the effective model if it's an openrouter model
-if [ -n "${OPENROUTER_API_KEY}" ]; then
-  OPENROUTER_MODELS='[{"id":"anthropic/claude-haiku-4-5-20251001","name":"Claude Haiku (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192},{"id":"google/gemini-flash-1.5","name":"Gemini Flash (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}'
-  # Append the effective model if it's routed through openrouter and not already a default
-  if [ "${EFFECTIVE_PROVIDER}" = "openrouter" ] \
-     && [ "${EFFECTIVE_MODEL_ID}" != "anthropic/claude-haiku-4-5-20251001" ] \
-     && [ "${EFFECTIVE_MODEL_ID}" != "google/gemini-flash-1.5" ]; then
-    OR_MODEL_NAME=$(echo "${EFFECTIVE_MODEL_ID##*/}" | sed 's/[:].*//' | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
-    OPENROUTER_MODELS="${OPENROUTER_MODELS}"',{"id":"'"${EFFECTIVE_MODEL_ID}"'","name":"'"${OR_MODEL_NAME}"' (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":8192}'
-    echo "DEBUG [models] Added dynamic OpenRouter model: ${EFFECTIVE_MODEL_ID} (${OR_MODEL_NAME})"
+for provider in "${!PROVIDER_KEY_MAP[@]}"; do
+  key_var="${PROVIDER_KEY_MAP[$provider]}"
+  eval "key_val=\"\${${key_var}:-}\""
+  base_url="${PROVIDER_BASE_URL[$provider]:-}"
+  ctx="${PROVIDER_CTX_WINDOW[$provider]:-128000}"
+
+  if [ -z "${key_val}" ]; then
+    # No key — register provider with empty models so config is valid
+    models_arr="[]"
+  elif [ "${provider}" = "${EFFECTIVE_PROVIDER}" ]; then
+    # This is the active provider — register the effective model
+    entry_name=$(echo "${EFFECTIVE_MODEL_ID##*/}" | sed 's/[:].*//' | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
+    models_arr="[$(make_model_entry "${EFFECTIVE_MODEL_ID}" "${entry_name}" "${ctx}")]"
+    echo "DEBUG [models] ${provider}: registered ${EFFECTIVE_MODEL_ID}"
+  else
+    # Provider has a key but isn't the active one — register a sensible default
+    case "${provider}" in
+      anthropic)   def_id="claude-haiku-4-5-20251001"; def_name="Claude Haiku" ;;
+      google)      def_id="gemini-2.0-flash";          def_name="Gemini Flash" ;;
+      openrouter)  def_id="anthropic/claude-haiku-4-5-20251001"; def_name="Claude Haiku (OR)" ;;
+      openai)      def_id="gpt-4o-mini";               def_name="GPT-4o Mini" ;;
+      groq)        def_id="llama-3.3-70b-versatile";   def_name="Llama 3.3 70B" ;;
+      mistral)     def_id="mistral-small-latest";      def_name="Mistral Small" ;;
+      xai)         def_id="grok-3-mini-fast";          def_name="Grok 3 Mini Fast" ;;
+      deepseek)    def_id="deepseek-chat";             def_name="DeepSeek Chat" ;;
+      *)           def_id="default";                   def_name="Default" ;;
+    esac
+    models_arr="[$(make_model_entry "${def_id}" "${def_name}" "${ctx}")]"
   fi
-  OPENROUTER_MODELS="${OPENROUTER_MODELS}]"
-else
-  OPENROUTER_MODELS='[]'
-fi
 
-echo "DEBUG [models] anthropic=$(echo "${ANTHROPIC_MODELS}" | grep -co '"id"' || echo 0) model(s)"
-echo "DEBUG [models] google=$(echo "${GOOGLE_MODELS}" | grep -co '"id"' || echo 0) model(s)"
-echo "DEBUG [models] openrouter=$(echo "${OPENROUTER_MODELS}" | grep -co '"id"' || echo 0) model(s)"
+  [ -n "${PROVIDERS_JSON}" ] && PROVIDERS_JSON="${PROVIDERS_JSON},"
+  PROVIDERS_JSON="${PROVIDERS_JSON}
+      \"${provider}\": {
+        \"apiKey\": \"${key_val}\",
+        \"baseUrl\": \"${base_url}\",
+        \"models\": ${models_arr}
+      }"
+done
 
 cat > "${CONFIG_FILE}.tmp" << EOJSON
 {
   "models": {
-    "providers": {
-      "anthropic": {
-        "apiKey": "${ANTHROPIC_API_KEY}",
-        "baseUrl": "https://api.anthropic.com",
-        "models": ${ANTHROPIC_MODELS}
-      },
-      "google": {
-        "apiKey": "${GEMINI_API_KEY}",
-        "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
-        "models": ${GOOGLE_MODELS}
-      },
-      "openrouter": {
-        "apiKey": "${OPENROUTER_API_KEY}",
-        "baseUrl": "https://openrouter.ai/api/v1",
-        "models": ${OPENROUTER_MODELS}
-      }
+    "providers": {${PROVIDERS_JSON}
     }
   },
   "agents": {

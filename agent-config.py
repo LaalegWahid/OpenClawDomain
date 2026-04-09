@@ -98,6 +98,14 @@ WELL_KNOWN_PROVIDERS = {
     "ANTHROPIC_API_KEY":   ("anthropic",   "anthropic:default"),
     "GEMINI_API_KEY":      ("google",      "google:default"),
     "OPENROUTER_API_KEY":  ("openrouter",  "openrouter:default"),
+    "OPENAI_API_KEY":      ("openai",      "openai:default"),
+    "MISTRAL_API_KEY":     ("mistral",     "mistral:default"),
+    "GROQ_API_KEY":        ("groq",        "groq:default"),
+    "XAI_API_KEY":         ("xai",         "xai:default"),
+    "DEEPSEEK_API_KEY":    ("deepseek",    "deepseek:default"),
+    "COHERE_API_KEY":      ("cohere",      "cohere:default"),
+    "TOGETHER_API_KEY":    ("together",    "together:default"),
+    "PERPLEXITY_API_KEY":  ("perplexity",  "perplexity:default"),
 }
 
 
