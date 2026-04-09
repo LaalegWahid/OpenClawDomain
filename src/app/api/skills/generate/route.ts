@@ -17,6 +17,8 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
+          logger.error({ apiKey }, "missing api KEY or wrongly configured");
+
       return NextResponse.json(
         { error: "AI generation is not configured" },
         { status: 503 },
