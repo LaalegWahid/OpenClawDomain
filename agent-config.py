@@ -49,6 +49,11 @@ def patch_discord(cfg):
 def patch_whatsapp(cfg):
     if not _is_truthy(os.environ.get("WHATSAPP_ENABLED", "")):
         return
+    # Relay mode: Next.js handles WhatsApp via whatsapp-relay.mjs.
+    # Do NOT add whatsapp to OpenClaw config — avoids duplicate Baileys session.
+    if os.environ.get("WHATSAPP_INBOUND_WEBHOOK_URL", ""):
+        print("WhatsApp relay mode active — skipping OpenClaw channel config.")
+        return
     print("Adding WhatsApp channel config (Baileys)...")
     openclaw_home = os.environ.get("OPENCLAW_HOME", "")
     auth_dir = os.path.join(openclaw_home, "credentials", "whatsapp", "default")

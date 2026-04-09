@@ -102,20 +102,25 @@ export async function launchContainer(
 
   logger.info({ agentId, agentType }, "Launching ECS agent task");
 
+  const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+  if (!webhookBaseUrl) throw new Error("WEBHOOK_BASE_URL is not set");
+
   const extraEnv: { name: string; value: string }[] = [];
 
   if (channels?.whatsapp?.enabled) {
     // Credentials live on EFS (written by the WhatsApp linker task).
-    // We only need to tell the entrypoint to enable the channel in openclaw.json.
+    // Relay mode: whatsapp-relay.mjs intercepts messages and POSTs to Next.js,
+    // bypassing OpenClaw's AI. agent-config.py skips adding WhatsApp to openclaw.json.
     extraEnv.push({ name: "WHATSAPP_ENABLED", value: "true" });
+    extraEnv.push({
+      name: "WHATSAPP_INBOUND_WEBHOOK_URL",
+      value: `${webhookBaseUrl}/api/whatsapp/inbound/${agentId}`,
+    });
   }
   if (mcpServers && Object.keys(mcpServers).length > 0) {
     const mcpConfigB64 = Buffer.from(JSON.stringify(mcpServers)).toString("base64");
     extraEnv.push({ name: "MCP_CONFIG_B64", value: mcpConfigB64 });
   }
-
-  const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
-  if (!webhookBaseUrl) throw new Error("WEBHOOK_BASE_URL is not set");
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
