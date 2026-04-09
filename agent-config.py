@@ -83,30 +83,60 @@ def patch_mcp(cfg):
     print("MCP servers configured.")
 
 
-def is_valid_key(key, provider):
+def is_valid_key(key):
+    """Basic validation — rejects empty / whitespace-only values."""
     if not key or not key.strip():
         return False, "empty"
-    k = key.strip()
-    if provider == "anthropic" and not k.startswith("sk-ant-"):
-        return False, "invalid format (expected sk-ant-...)"
-    if provider == "openrouter" and not k.startswith("sk-or-"):
-        return False, "invalid format (expected sk-or-...)"
-    if provider == "google" and len(k) < 20:
+    if len(key.strip()) < 8:
         return False, "too short to be valid"
     return True, "ok"
 
 
+# Maps env var names to (provider, profile_key) for well-known providers.
+# Any env var ending in _API_KEY that isn't listed here is auto-detected.
+WELL_KNOWN_PROVIDERS = {
+    "ANTHROPIC_API_KEY":   ("anthropic",   "anthropic:default"),
+    "GEMINI_API_KEY":      ("google",      "google:default"),
+    "OPENROUTER_API_KEY":  ("openrouter",  "openrouter:default"),
+}
+
+
+def _infer_provider(env_var):
+    """Derive a provider name and profile key from an env var name.
+    e.g. MISTRAL_API_KEY -> provider='mistral', profile='mistral:default'
+    """
+    name = env_var.replace("_API_KEY", "").replace("_KEY", "").lower()
+    if not name:
+        name = env_var.lower()
+    return name, f"{name}:default"
+
+
 def write_auth_profiles(path):
     profiles = {}
-    for provider, env_var, profile_key in [
-        ("anthropic", "ANTHROPIC_API_KEY", "anthropic:default"),
-        ("google", "GEMINI_API_KEY", "google:default"),
-        ("openrouter", "OPENROUTER_API_KEY", "openrouter:default"),
-    ]:
+
+    # 1. Process well-known providers
+    for env_var, (provider, profile_key) in WELL_KNOWN_PROVIDERS.items():
         key = os.environ.get(env_var, "")
-        valid, reason = is_valid_key(key, provider)
+        valid, reason = is_valid_key(key)
         if valid:
             profiles[profile_key] = {"type": "api_key", "provider": provider, "key": key.strip()}
+        elif key:
+            print(f"WARNING: {env_var} set but skipped ({reason})", flush=True)
+
+    # 2. Auto-detect any other *_API_KEY / *_KEY env vars
+    for env_var, key in os.environ.items():
+        if env_var in WELL_KNOWN_PROVIDERS:
+            continue
+        if not (env_var.endswith("_API_KEY") or env_var.endswith("_KEY")):
+            continue
+        # Skip common non-provider keys
+        if env_var in ("ENCRYPTION_KEY", "GATEWAY_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"):
+            continue
+        valid, reason = is_valid_key(key)
+        if valid:
+            provider, profile_key = _infer_provider(env_var)
+            profiles[profile_key] = {"type": "api_key", "provider": provider, "key": key.strip()}
+            print(f"Auto-detected provider key: {env_var} -> {profile_key}")
         elif key:
             print(f"WARNING: {env_var} set but skipped ({reason})", flush=True)
 

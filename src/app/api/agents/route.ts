@@ -13,10 +13,10 @@ import { startDiscordBot } from "../../../shared/lib/discord/manager";
 import { logger } from "../../../shared/lib/logger";
 import { isSubscriptionActive } from "../../../shared/lib/subscription/cache";
 import { env } from "../../../shared/config/env";
+import { encryptIfPresent, decryptIfPresent } from "../../../shared/lib/crypto";
 
 async function linkSkillsToAgent(agentId: string, userId: string, skillIds?: string[]) {
   if (!skillIds || skillIds.length === 0) return;
-  // Verify all skills belong to the user
   const owned = await db
     .select({ id: skill.id })
     .from(skill)
@@ -27,6 +27,18 @@ async function linkSkillsToAgent(agentId: string, userId: string, skillIds?: str
       ownedIds.map((skillId) => ({ agentId, skillId })),
     );
   }
+}
+
+/**
+ * Extracts and encrypts the single per-agent API key from the request body.
+ * Fields: apiProvider ("anthropic", "mistral", …), apiKey (the secret), agentModel.
+ */
+function extractEncryptedKeys(body: Record<string, unknown>) {
+  return {
+    apiProvider: (body.apiProvider as string | undefined)?.trim().toLowerCase() || null,
+    apiKey: encryptIfPresent(body.apiKey as string | undefined),
+    agentModel: (body.agentModel as string | undefined)?.trim() || null,
+  };
 }
 
 export async function POST(req: Request) {
@@ -58,6 +70,16 @@ export async function POST(req: Request) {
     if (!["telegram", "discord", "whatsapp"].includes(platform)) {
       return NextResponse.json({ error: "Invalid platform" }, { status: 400 });
     }
+
+    // Encrypt any per-agent API keys from the request body
+    const encryptedKeys = extractEncryptedKeys(body);
+
+    // Decrypted key to inject into the container at launch
+    const apiKeys = {
+      apiProvider: encryptedKeys.apiProvider ?? undefined,
+      apiKey: decryptIfPresent(encryptedKeys.apiKey),
+      agentModel: encryptedKeys.agentModel ?? undefined,
+    };
 
     // Check if user has any existing agents — first bot gets marked as primary
     const existingAgents = await db
@@ -110,7 +132,14 @@ export async function POST(req: Request) {
 
       let containerId: string;
       try {
-        const result = await launchContainer(session.user.id, tempAgentId, type as AgentType);
+        const result = await launchContainer(
+          session.user.id,
+          tempAgentId,
+          type as AgentType,
+          undefined,
+          undefined,
+          apiKeys,
+        );
         containerId = result.containerId;
       } catch (err) {
         logger.error({ err }, "Failed to launch agent container");
@@ -136,7 +165,19 @@ export async function POST(req: Request) {
       try {
         const [newAgent] = await db
           .insert(agent)
-          .values({ id: tempAgentId, userId: session.user.id, name, botToken, botUsername: botInfo.username, systemPrompt, type: type as AgentType, status: "starting", isPrimary: isFirstBot, containerId })
+          .values({
+            id: tempAgentId,
+            userId: session.user.id,
+            name,
+            botToken,
+            botUsername: botInfo.username,
+            systemPrompt,
+            type: type as AgentType,
+            status: "starting",
+            isPrimary: isFirstBot,
+            containerId,
+            ...encryptedKeys,
+          })
           .returning();
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Telegram` });
@@ -170,7 +211,6 @@ export async function POST(req: Request) {
       }
 
       const discordToken = credentials.botToken;
-      // Use agentId as unique username placeholder since Discord bots don't have usernames in the same sense
       const placeholderUsername = `discord_${tempAgentId.split("-")[0]}`;
 
       const [existingDiscordBot] = await db
@@ -183,8 +223,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
       }
 
-      // Also check agentChannel.credentials — tokens registered via the channels route
-      // live there, not in agent.botToken, so the check above would miss them.
       const existingChannels = await db.select().from(agentChannel).where(eq(agentChannel.platform, "discord"));
       const tokenConflict = existingChannels.some(
         (ch) => (ch.credentials as Record<string, string>)?.botToken === discordToken,
@@ -200,6 +238,8 @@ export async function POST(req: Request) {
           tempAgentId,
           type as AgentType,
           { discord: { botToken: discordToken } },
+          undefined,
+          apiKeys,
         );
         containerId = result.containerId;
       } catch (err) {
@@ -213,15 +253,25 @@ export async function POST(req: Request) {
       try {
         const [newAgent] = await db
           .insert(agent)
-          .values({ id: tempAgentId, userId: session.user.id, name, botToken: discordToken, botUsername: placeholderUsername, systemPrompt, type: type as AgentType, status: "starting", isPrimary: isFirstBot, containerId })
+          .values({
+            id: tempAgentId,
+            userId: session.user.id,
+            name,
+            botToken: discordToken,
+            botUsername: placeholderUsername,
+            systemPrompt,
+            type: type as AgentType,
+            status: "starting",
+            isPrimary: isFirstBot,
+            containerId,
+            ...encryptedKeys,
+          })
           .returning();
 
         await db.insert(agentChannel).values({ agentId: newAgent.id, platform: "discord", credentials: { botToken: discordToken } });
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Discord` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
 
-        // Start the Discord bot in-process immediately so messages are handled
-        // without waiting for an app restart.
         startDiscordBot(newAgent.id, discordToken, type as AgentType)
           .catch((err) => logger.error({ err, agentId: newAgent.id }, "Failed to start Discord bot"));
 
@@ -242,8 +292,6 @@ export async function POST(req: Request) {
     }
 
     // ── WHATSAPP ──────────────────────────────────────────────────────────────
-    // QR/Baileys-based — no credentials needed at creation time.
-    // The user links their account afterwards via the "Link WhatsApp" QR flow.
     if (platform === "whatsapp") {
       const placeholderToken = `whatsapp_${tempAgentId.split("-")[0]}`;
       const placeholderUsername = `whatsapp_${tempAgentId.replace(/-/g, "").slice(0, 12)}`;
@@ -254,7 +302,9 @@ export async function POST(req: Request) {
           session.user.id,
           tempAgentId,
           type as AgentType,
-          undefined, // whatsapp channel will be enabled after QR linking via relaunchAgentWithChannels
+          undefined,
+          undefined,
+          apiKeys,
         );
         containerId = result.containerId;
       } catch (err) {
@@ -265,7 +315,19 @@ export async function POST(req: Request) {
       try {
         const [newAgent] = await db
           .insert(agent)
-          .values({ id: tempAgentId, userId: session.user.id, name, botToken: placeholderToken, botUsername: placeholderUsername, systemPrompt, type: type as AgentType, status: "starting", isPrimary: isFirstBot, containerId })
+          .values({
+            id: tempAgentId,
+            userId: session.user.id,
+            name,
+            botToken: placeholderToken,
+            botUsername: placeholderUsername,
+            systemPrompt,
+            type: type as AgentType,
+            status: "starting",
+            isPrimary: isFirstBot,
+            containerId,
+            ...encryptedKeys,
+          })
           .returning();
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched — link WhatsApp to activate` });
@@ -303,8 +365,11 @@ export async function GET(req: Request) {
       .from(agent)
       .where(eq(agent.userId, session.user.id));
 
+    // Strip encrypted key column before returning to client
+    const safeAgents = agents.map(({ apiKey, ...rest }) => rest);
+
     logger.info({ userId: session.user.id, count: agents.length }, "Agents listed");
-    return NextResponse.json({ agents });
+    return NextResponse.json({ agents: safeAgents });
   } catch (err) {
     if (err instanceof Response) return err;
     return NextResponse.json({ error: "Unhandled error in GET /api/agents. Check server logs." }, { status: 500 });

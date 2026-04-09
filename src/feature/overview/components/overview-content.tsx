@@ -124,6 +124,10 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   const [botName, setBotName] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("You are a helpful specialist agent.");
   const [customType, setCustomType] = useState("");
+  const [apiProvider, setApiProvider] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [agentModel, setAgentModel] = useState("");
+  const [modelsCatalog, setModelsCatalog] = useState<Record<string, string[]>>({});
 
   // Skills selection
   const [userSkills, setUserSkills] = useState<UserSkill[]>([]);
@@ -146,7 +150,11 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 
   useEffect(() => {
     fetchAgents();
+    fetch("/models.json").then(r => r.json()).then(setModelsCatalog).catch(() => {});
   }, [fetchAgents]);
+
+  const providerNames = Object.keys(modelsCatalog);
+  const availableModels = apiProvider ? (modelsCatalog[apiProvider] ?? []) : [];
 
   const activeAgents = agents.filter((a) => a.status !== "stopped");
 
@@ -155,6 +163,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     setBotToken(""); setBotUsername("");
     setDiscordToken("");
     setBotName(""); setSystemPrompt("You are a helpful specialist agent."); setCustomType("");
+    setApiProvider(""); setApiKey(""); setAgentModel("");
     setSelectedSkillIds([]);
     setError(null);
     setWaStep("form"); setWaAgentId(null); setWaQrData(null); setWaQrError(null);
@@ -179,7 +188,15 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 
     try {
       const effectiveType = customType.trim().toLowerCase();
-      const base = { name: botName, systemPrompt, type: effectiveType, skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined };
+      const base = {
+        name: botName,
+        systemPrompt,
+        type: effectiveType,
+        skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
+        ...(apiProvider.trim() ? { apiProvider: apiProvider.trim() } : {}),
+        ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+        ...(agentModel.trim() ? { agentModel: agentModel.trim() } : {}),
+      };
       const body =
         platform === "telegram"
           ? { platform, botToken, botUsername, ...base }
@@ -559,6 +576,38 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   required
                 />
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={labelStyle}>Provider</label>
+                  <select
+                    value={apiProvider}
+                    onChange={(e) => { setApiProvider(e.target.value); setAgentModel(""); }}
+                    style={{ ...inputStyle, cursor: "pointer" }}
+                  >
+                    <option value="">Select provider...</option>
+                    {providerNames.map((p) => (
+                      <option key={p} value={p}>{p.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
+                    ))}
+                  </select>
+                </div>
+                <ModalField label="API Key" value={apiKey} onChange={setApiKey} placeholder="sk-..." required={false} />
+              </div>
+              <div style={{ display: "grid", gap: "12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={labelStyle}>Agent Model</label>
+                  <select
+                    value={agentModel}
+                    onChange={(e) => setAgentModel(e.target.value)}
+                    style={{ ...inputStyle, cursor: "pointer" }}
+                    disabled={!apiProvider}
+                  >
+                    <option value="">{apiProvider ? "Select model..." : "Select a provider first"}</option>
+                    {availableModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <label style={labelStyle}>System Prompt / Instructions</label>
@@ -571,6 +620,8 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   style={{ ...inputStyle, resize: "none", fontFamily: "inherit" }}
                 />
               </div>
+
+             
 
               {/* Skills Selection */}
               {userSkills.length > 0 && (
@@ -649,8 +700,8 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   );
 }
 
-function ModalField({ label, value, onChange, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder: string;
+function ModalField({ label, value, onChange, placeholder, required = true }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder: string; required?: boolean;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -658,7 +709,7 @@ function ModalField({ label, value, onChange, placeholder }: {
         {label}
       </label>
       <input
-        required
+        required={required}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}

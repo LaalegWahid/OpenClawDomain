@@ -29,6 +29,9 @@ export const agent = pgTable(
     type: text("type").notNull().default("finance"), // "finance" | "marketing" | "operations"
     isPrimary: boolean("is_primary").default(false).notNull(),
     containerId: text("container_id"),
+    apiProvider: text("api_provider"),  // e.g. "anthropic", "openrouter", "gemini", "mistral", "cohere"
+    apiKey: text("api_key"),           // encrypted — single key for the chosen provider
+    agentModel: text("agent_model"),   // e.g. "claude-sonnet-4-20250514"
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()

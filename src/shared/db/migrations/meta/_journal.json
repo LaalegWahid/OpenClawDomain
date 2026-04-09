@@ -36,6 +36,20 @@
       "when": 1775601880158,
       "tag": "0004_fair_colleen_wing",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775728644909,
+      "tag": "0005_pink_lifeguard",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775730380393,
+      "tag": "0006_early_gamora",
+      "breakpoints": true
     }
   ]
 }
