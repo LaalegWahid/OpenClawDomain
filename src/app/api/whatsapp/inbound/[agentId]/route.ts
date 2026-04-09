@@ -32,8 +32,16 @@ export async function POST(
     return NextResponse.json({ type: "text", text: "Service temporarily unavailable." });
   }
 
-  const body = await req.json() as { jid: string; text: string; pushName?: string };
-  const { jid, text, pushName } = body;
+  // Parse body — must be inside a try so a malformed request never returns HTML 500
+  let jid: string, text: string;
+  try {
+    const body = await req.json() as { jid: string; text: string; pushName?: string };
+    jid = body.jid;
+    text = body.text;
+  } catch {
+    return NextResponse.json({ ok: false }, { status: 400 });
+  }
+
   if (!jid || !text?.trim()) return NextResponse.json({ ok: true });
 
   logger.info({ agentId, jid, text }, "WhatsApp inbound message received");
@@ -112,10 +120,15 @@ export async function POST(
   } catch (err) {
     logger.error({ agentId, jid, err }, "Failed to process WhatsApp message");
     const isTimeout = err instanceof Error && err.name === "TimeoutError";
-    await db.insert(agentActivity).values({
-      agentId, type: "error",
-      message: `WhatsApp ${jid}: ${err instanceof Error ? err.message : "Unknown"}`,
-    });
+    // Inner try-catch: a DB insert failure must not prevent the JSON response
+    try {
+      await db.insert(agentActivity).values({
+        agentId, type: "error",
+        message: `WhatsApp ${jid}: ${err instanceof Error ? err.message : "Unknown"}`,
+      });
+    } catch (dbErr) {
+      logger.error({ agentId, jid, dbErr }, "Failed to record WhatsApp error activity");
+    }
     return NextResponse.json({
       type: "text",
       text: isTimeout
