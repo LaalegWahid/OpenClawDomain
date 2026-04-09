@@ -89,14 +89,32 @@ export interface McpServerConfig {
 }
 
 /**
- * Per-agent API keys (already decrypted).
- * Any key not provided falls back to the corresponding .env variable.
+ * Maps a provider slug to the env-var name the container expects.
+ */
+const PROVIDER_ENV_MAP: Record<string, string> = {
+  anthropic:   "ANTHROPIC_API_KEY",
+  openrouter:  "OPENROUTER_API_KEY",
+  gemini:        "GEMINI_API_KEY",
+  google:        "GEMINI_API_KEY",
+  google_gemini: "GEMINI_API_KEY",
+  mistral:     "MISTRAL_API_KEY",
+  cohere:      "COHERE_API_KEY",
+  groq:        "GROQ_API_KEY",
+  together:    "TOGETHER_API_KEY",
+  deepseek:    "DEEPSEEK_API_KEY",
+  openai:      "OPENAI_API_KEY",
+  xai:         "XAI_API_KEY",
+  perplexity:  "PERPLEXITY_API_KEY",
+};
+
+/**
+ * Per-agent API config (already decrypted).
+ * One provider + one key per agent.
  */
 export interface AgentApiKeys {
-  anthropicKey?: string;
-  openrouterKey?: string;
-  geminiKey?: string;
-  agentModel?: string;
+  apiProvider?: string;   // e.g. "anthropic", "mistral"
+  apiKey?: string;        // the decrypted secret
+  agentModel?: string;    // e.g. "claude-sonnet-4-20250514"
 }
 
 export async function launchContainer(
@@ -136,15 +154,12 @@ export async function launchContainer(
     extraEnv.push({ name: "MCP_CONFIG_B64", value: mcpConfigB64 });
   }
 
-  // Per-agent keys take priority over .env fallbacks
-  const anthropicKey   = apiKeys?.anthropicKey   ?? process.env.ANTHROPIC_API_KEY   ?? "";
-  const openrouterKey  = apiKeys?.openrouterKey  ?? process.env.OPENROUTER_API_KEY  ?? "";
-  const geminiKey      = apiKeys?.geminiKey      ?? process.env.GEMINI_API_KEY      ?? "";
-  const agentModel     = apiKeys?.agentModel     ?? process.env.AGENT_MODEL         ?? "openrouter/qwen/qwen3.6-plus:free";
-
-  if (anthropicKey)  extraEnv.push({ name: "ANTHROPIC_API_KEY",  value: anthropicKey });
-  if (openrouterKey) extraEnv.push({ name: "OPENROUTER_API_KEY", value: openrouterKey });
-  if (geminiKey)     extraEnv.push({ name: "GEMINI_API_KEY",     value: geminiKey });
+  // Inject the agent's single provider key as the correct env var
+  if (apiKeys?.apiProvider && apiKeys?.apiKey) {
+    const envName = PROVIDER_ENV_MAP[apiKeys.apiProvider] ?? `${apiKeys.apiProvider.toUpperCase()}_API_KEY`;
+    extraEnv.push({ name: envName, value: apiKeys.apiKey });
+  }
+  const agentModel = apiKeys?.agentModel ?? process.env.AGENT_MODEL ?? "openrouter/qwen/qwen3.6-plus:free";
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),

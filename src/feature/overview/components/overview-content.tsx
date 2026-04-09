@@ -124,8 +124,10 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   const [botName, setBotName] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("You are a helpful specialist agent.");
   const [customType, setCustomType] = useState("");
+  const [apiProvider, setApiProvider] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [agentModel, setAgentModel] = useState("");
+  const [modelsCatalog, setModelsCatalog] = useState<Record<string, string[]>>({});
 
   // Skills selection
   const [userSkills, setUserSkills] = useState<UserSkill[]>([]);
@@ -148,7 +150,11 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 
   useEffect(() => {
     fetchAgents();
+    fetch("/models.json").then(r => r.json()).then(setModelsCatalog).catch(() => {});
   }, [fetchAgents]);
+
+  const providerNames = Object.keys(modelsCatalog);
+  const availableModels = apiProvider ? (modelsCatalog[apiProvider] ?? []) : [];
 
   const activeAgents = agents.filter((a) => a.status !== "stopped");
 
@@ -157,7 +163,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     setBotToken(""); setBotUsername("");
     setDiscordToken("");
     setBotName(""); setSystemPrompt("You are a helpful specialist agent."); setCustomType("");
-    setApiKey(""); setAgentModel("");
+    setApiProvider(""); setApiKey(""); setAgentModel("");
     setSelectedSkillIds([]);
     setError(null);
     setWaStep("form"); setWaAgentId(null); setWaQrData(null); setWaQrError(null);
@@ -187,6 +193,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
         systemPrompt,
         type: effectiveType,
         skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
+        ...(apiProvider.trim() ? { apiProvider: apiProvider.trim() } : {}),
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
         ...(agentModel.trim() ? { agentModel: agentModel.trim() } : {}),
       };
@@ -569,9 +576,37 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   required
                 />
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={labelStyle}>Provider</label>
+                  <select
+                    value={apiProvider}
+                    onChange={(e) => { setApiProvider(e.target.value); setAgentModel(""); }}
+                    style={{ ...inputStyle, cursor: "pointer" }}
+                  >
+                    <option value="">Select provider...</option>
+                    {providerNames.map((p) => (
+                      <option key={p} value={p}>{p.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
+                    ))}
+                  </select>
+                </div>
+                <ModalField label="API Key" value={apiKey} onChange={setApiKey} placeholder="sk-..." required={false} />
+              </div>
               <div style={{ display: "grid", gap: "12px" }}>
-                <ModalField label="API Key" value={apiKey} onChange={setApiKey} placeholder="Optional: any provider API key" required={false} />
-                <ModalField label="Agent Model" value={agentModel} onChange={setAgentModel} placeholder="Optional: e.g. openrouter/qwen/qwen3-plus" required={false} />
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={labelStyle}>Agent Model</label>
+                  <select
+                    value={agentModel}
+                    onChange={(e) => setAgentModel(e.target.value)}
+                    style={{ ...inputStyle, cursor: "pointer" }}
+                    disabled={!apiProvider}
+                  >
+                    <option value="">{apiProvider ? "Select model..." : "Select a provider first"}</option>
+                    {availableModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>

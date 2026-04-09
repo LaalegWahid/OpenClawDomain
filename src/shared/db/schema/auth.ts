@@ -143,9 +143,8 @@ export const userApiKeys = pgTable("user_api_keys", {
     .notNull()
     .unique() // one row per user
     .references(() => user.id, { onDelete: "cascade" }),
-  anthropicKey: text("anthropic_key"),     // encrypted
-  openrouterKey: text("openrouter_key"),   // encrypted
-  geminiKey: text("gemini_key"),           // encrypted
+  apiProvider: text("api_provider"),         // e.g. "anthropic", "openrouter", "gemini", "mistral"
+  apiKey: text("api_key"),                 // encrypted
   agentModel: text("agent_model"),         // e.g. "openrouter/qwen/qwen3-plus"
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")

@@ -30,14 +30,13 @@ async function linkSkillsToAgent(agentId: string, userId: string, skillIds?: str
 }
 
 /**
- * Extracts and encrypts API keys from the request body.
- * All fields are optional — omitted means fall back to .env at launch time.
+ * Extracts and encrypts the single per-agent API key from the request body.
+ * Fields: apiProvider ("anthropic", "mistral", …), apiKey (the secret), agentModel.
  */
 function extractEncryptedKeys(body: Record<string, unknown>) {
   return {
-    anthropicKey: encryptIfPresent(body.anthropicKey as string | undefined),
-    openrouterKey: encryptIfPresent(body.openrouterKey as string | undefined),
-    geminiKey: encryptIfPresent(body.geminiKey as string | undefined),
+    apiProvider: (body.apiProvider as string | undefined)?.trim().toLowerCase() || null,
+    apiKey: encryptIfPresent(body.apiKey as string | undefined),
     agentModel: (body.agentModel as string | undefined)?.trim() || null,
   };
 }
@@ -75,13 +74,11 @@ export async function POST(req: Request) {
     // Encrypt any per-agent API keys from the request body
     const encryptedKeys = extractEncryptedKeys(body);
 
-    // Decrypted keys to inject into the container at launch
-    // Falls back to undefined (launchContainer will then use .env)
+    // Decrypted key to inject into the container at launch
     const apiKeys = {
-      anthropicKey:  decryptIfPresent(encryptedKeys.anthropicKey)  ,
-      openrouterKey: decryptIfPresent(encryptedKeys.openrouterKey) ,
-      geminiKey:     decryptIfPresent(encryptedKeys.geminiKey)     ,
-      agentModel:    encryptedKeys.agentModel ?? undefined,
+      apiProvider: encryptedKeys.apiProvider ?? undefined,
+      apiKey: decryptIfPresent(encryptedKeys.apiKey),
+      agentModel: encryptedKeys.agentModel ?? undefined,
     };
 
     // Check if user has any existing agents — first bot gets marked as primary
@@ -368,8 +365,8 @@ export async function GET(req: Request) {
       .from(agent)
       .where(eq(agent.userId, session.user.id));
 
-    // Strip encrypted key columns before returning to client
-    const safeAgents = agents.map(({ anthropicKey, openrouterKey, geminiKey, ...rest }) => rest);
+    // Strip encrypted key column before returning to client
+    const safeAgents = agents.map(({ apiKey, ...rest }) => rest);
 
     logger.info({ userId: session.user.id, count: agents.length }, "Agents listed");
     return NextResponse.json({ agents: safeAgents });
