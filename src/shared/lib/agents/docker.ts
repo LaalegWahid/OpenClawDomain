@@ -92,19 +92,39 @@ export interface McpServerConfig {
  * Maps a provider slug to the env-var name the container expects.
  */
 const PROVIDER_ENV_MAP: Record<string, string> = {
-  anthropic:   "ANTHROPIC_API_KEY",
-  openrouter:  "OPENROUTER_API_KEY",
+  anthropic:     "ANTHROPIC_API_KEY",
+  openrouter:    "OPENROUTER_API_KEY",
   gemini:        "GEMINI_API_KEY",
   google:        "GEMINI_API_KEY",
   google_gemini: "GEMINI_API_KEY",
-  mistral:     "MISTRAL_API_KEY",
-  cohere:      "COHERE_API_KEY",
-  groq:        "GROQ_API_KEY",
-  together:    "TOGETHER_API_KEY",
-  deepseek:    "DEEPSEEK_API_KEY",
-  openai:      "OPENAI_API_KEY",
-  xai:         "XAI_API_KEY",
-  perplexity:  "PERPLEXITY_API_KEY",
+  mistral:       "MISTRAL_API_KEY",
+  cohere:        "COHERE_API_KEY",
+  groq:          "GROQ_API_KEY",
+  together:      "TOGETHER_API_KEY",
+  deepseek:      "DEEPSEEK_API_KEY",
+  openai:        "OPENAI_API_KEY",
+  xai:           "XAI_API_KEY",
+  perplexity:    "PERPLEXITY_API_KEY",
+};
+
+/**
+ * Maps provider slugs to the gateway routing prefix used in model IDs.
+ * The gateway expects "prefix/model" format (e.g. "anthropic/claude-4.6-sonnet").
+ * OpenRouter models already include their prefix, so openrouter is excluded.
+ */
+const PROVIDER_MODEL_PREFIX: Record<string, string> = {
+  anthropic:     "anthropic",
+  openai:        "openai",
+  google_gemini: "google",
+  gemini:        "google",
+  google:        "google",
+  mistral:       "mistral",
+  cohere:        "cohere",
+  groq:          "groq",
+  together:      "together",
+  deepseek:      "deepseek",
+  xai:           "xai",
+  perplexity:    "perplexity",
 };
 
 /**
@@ -159,7 +179,14 @@ export async function launchContainer(
     const envName = PROVIDER_ENV_MAP[apiKeys.apiProvider] ?? `${apiKeys.apiProvider.toUpperCase()}_API_KEY`;
     extraEnv.push({ name: envName, value: apiKeys.apiKey });
   }
-  const agentModel = apiKeys?.agentModel ?? process.env.AGENT_MODEL ?? "openrouter/qwen/qwen3.6-plus:free";
+
+  // Build the fully-qualified model ID the gateway expects ("provider/model").
+  // OpenRouter models already include the prefix; others need it added.
+  let agentModel = apiKeys?.agentModel ?? process.env.AGENT_MODEL ?? "openrouter/qwen/qwen3.6-plus:free";
+  if (apiKeys?.apiProvider && apiKeys?.agentModel && !apiKeys.agentModel.includes("/")) {
+    const prefix = PROVIDER_MODEL_PREFIX[apiKeys.apiProvider];
+    if (prefix) agentModel = `${prefix}/${apiKeys.agentModel}`;
+  }
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
