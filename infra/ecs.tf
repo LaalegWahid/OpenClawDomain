@@ -179,9 +179,10 @@ resource "aws_ecs_task_definition" "agent" {
     ]
 
     secrets = [
-      { name = "GEMINI_API_KEY",    valueFrom = "${aws_secretsmanager_secret.app.arn}:GEMINI_API_KEY::" },
-      { name = "ANTHROPIC_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:ANTHROPIC_API_KEY::" },
-      { name = "GATEWAY_TOKEN",     valueFrom = "${aws_secretsmanager_secret.app.arn}:GATEWAY_TOKEN::" },
+      # API keys (ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY) are now
+      # injected per-agent via RunTask container overrides in docker.ts.
+      # Do NOT set them here — ECS secrets override container environment vars.
+      { name = "GATEWAY_TOKEN", valueFrom = "${aws_secretsmanager_secret.app.arn}:GATEWAY_TOKEN::" },
     ]
 
     logConfiguration = {

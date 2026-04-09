@@ -91,40 +91,27 @@ export interface McpServerConfig {
 /**
  * Maps a provider slug to the env-var name the container expects.
  */
+/**
+ * Maps the provider slug (from the frontend/DB) to the env var the container expects.
+ * The OpenClaw gateway natively supports: anthropic, google, openai, openrouter.
+ * All other providers (groq, mistral, xai, etc.) are accessed via OpenRouter.
+ */
 const PROVIDER_ENV_MAP: Record<string, string> = {
-  anthropic:     "ANTHROPIC_API_KEY",
-  openrouter:    "OPENROUTER_API_KEY",
-  gemini:        "GEMINI_API_KEY",
-  google:        "GEMINI_API_KEY",
-  google_gemini: "GEMINI_API_KEY",
-  mistral:       "MISTRAL_API_KEY",
-  cohere:        "COHERE_API_KEY",
-  groq:          "GROQ_API_KEY",
-  together:      "TOGETHER_API_KEY",
-  deepseek:      "DEEPSEEK_API_KEY",
-  openai:        "OPENAI_API_KEY",
-  xai:           "XAI_API_KEY",
-  perplexity:    "PERPLEXITY_API_KEY",
+  anthropic:  "ANTHROPIC_API_KEY",
+  google:     "GEMINI_API_KEY",
+  openai:     "OPENAI_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
 };
 
 /**
- * Maps provider slugs to the gateway routing prefix used in model IDs.
+ * Maps provider slugs to the gateway routing prefix for model IDs.
  * The gateway expects "prefix/model" format (e.g. "anthropic/claude-4.6-sonnet").
- * OpenRouter models already include their prefix, so openrouter is excluded.
+ * OpenRouter models already include their prefix (e.g. "groq/compound-beta").
  */
 const PROVIDER_MODEL_PREFIX: Record<string, string> = {
-  anthropic:     "anthropic",
-  openai:        "openai",
-  google_gemini: "google",
-  gemini:        "google",
-  google:        "google",
-  mistral:       "mistral",
-  cohere:        "cohere",
-  groq:          "groq",
-  together:      "together",
-  deepseek:      "deepseek",
-  xai:           "xai",
-  perplexity:    "perplexity",
+  anthropic: "anthropic",
+  google:    "google",
+  openai:    "openai",
 };
 
 /**
@@ -181,11 +168,19 @@ export async function launchContainer(
   }
 
   // Build the fully-qualified model ID the gateway expects ("provider/model").
-  // OpenRouter models already include the prefix; others need it added.
-  let agentModel = apiKeys?.agentModel ?? process.env.AGENT_MODEL ?? "openrouter/qwen/qwen3.6-plus:free";
-  if (apiKeys?.apiProvider && apiKeys?.agentModel && !apiKeys.agentModel.includes("/")) {
+  // Anthropic/Google models need their prefix added (e.g. "anthropic/claude-sonnet-4-6").
+  // OpenRouter models already have a sub-provider prefix (e.g. "groq/compound-beta")
+  // but still need the "openrouter/" top-level prefix for the gateway.
+  let agentModel = apiKeys?.agentModel ?? process.env.AGENT_MODEL ?? "openrouter/qwen/qwen3-32b";
+  if (apiKeys?.apiProvider && apiKeys?.agentModel) {
     const prefix = PROVIDER_MODEL_PREFIX[apiKeys.apiProvider];
-    if (prefix) agentModel = `${prefix}/${apiKeys.agentModel}`;
+    if (prefix) {
+      // Native provider (anthropic, google): prefix/model
+      agentModel = `${prefix}/${apiKeys.agentModel}`;
+    } else if (apiKeys.apiProvider === "openrouter") {
+      // OpenRouter: openrouter/subprovider/model
+      agentModel = `openrouter/${apiKeys.agentModel}`;
+    }
   }
 
   const result = await ecs.send(new RunTaskCommand({
