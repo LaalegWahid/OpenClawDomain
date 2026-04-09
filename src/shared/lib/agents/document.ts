@@ -86,12 +86,30 @@ export function isUsableContent(text: string): boolean {
 
 // ─── PDF Generation ───────────────────────────────────────────────────────────
 
+/**
+ * Replace non-Latin-1 characters that pdf-lib's StandardFonts can't render.
+ */
+function sanitizeForPdf(text: string): string {
+  return text
+    .replace(/[\u2018\u2019\u201A]/g, "'")   // smart single quotes
+    .replace(/[\u201C\u201D\u201E]/g, '"')   // smart double quotes
+    .replace(/[\u2013\u2014]/g, "-")          // en/em dashes
+    .replace(/\u2026/g, "...")                // ellipsis
+    .replace(/\u2022/g, "*")                  // bullet
+    .replace(/[\u00A0]/g, " ")               // non-breaking space
+    // eslint-disable-next-line no-control-regex
+    .replace(/[^\x00-\xFF]/g, "");            // drop anything else outside Latin-1
+}
+
 export async function generatePdf(content: string, title: string, agentType: string): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  doc.setTitle(title);
+  const safeTitle = sanitizeForPdf(title);
+  const safeContent = sanitizeForPdf(content);
+
+  doc.setTitle(safeTitle);
   doc.setAuthor(`${agentType.charAt(0).toUpperCase() + agentType.slice(1)} Agent`);
   doc.setCreator("OpenClaw Agent Platform");
 
@@ -113,8 +131,8 @@ export async function generatePdf(content: string, title: string, agentType: str
   y -= 10;
 
   // Title
-  const tw = fontBold.widthOfTextAtSize(title, 22);
-  page.drawText(title, { x: Math.max(MARGIN, (PAGE_W - tw) / 2), y, size: 22, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
+  const tw = fontBold.widthOfTextAtSize(safeTitle, 22);
+  page.drawText(safeTitle, { x: Math.max(MARGIN, (PAGE_W - tw) / 2), y, size: 22, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
   y -= 28;
 
   // Subtitle
@@ -156,7 +174,7 @@ export async function generatePdf(content: string, title: string, agentType: str
     return lines.length ? lines : [""];
   }
 
-  for (const line of content.split("\n")) {
+  for (const line of safeContent.split("\n")) {
     const t = line.trim();
     if (!t) { y -= LINE_H * 0.6; continue; }
     const clean = t.replace(/\*\*/g, "");
