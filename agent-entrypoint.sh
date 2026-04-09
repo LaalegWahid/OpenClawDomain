@@ -270,14 +270,8 @@ else
   GOOGLE_MODELS='[]'
 fi
 
-# OpenAI
-if [ "${EFFECTIVE_PROVIDER}" = "openai" ] && [ -n "${OPENAI_API_KEY}" ]; then
-  OPENAI_MODELS='[{"id":"'"${EFFECTIVE_MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":16384}]'
-elif [ -n "${OPENAI_API_KEY}" ]; then
-  OPENAI_MODELS='[{"id":"gpt-4o-mini","name":"GPT-4o Mini","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":16384}]'
-else
-  OPENAI_MODELS='[]'
-fi
+# OpenAI: handled implicitly by OpenClaw — just needs OPENAI_API_KEY env var set.
+# No explicit provider block needed in openclaw.json.
 
 # OpenRouter: include defaults + the effective model if it's an openrouter model
 if [ -n "${OPENROUTER_API_KEY}" ]; then
@@ -297,11 +291,14 @@ fi
 
 echo "DEBUG [models] anthropic=$(echo "${ANTHROPIC_MODELS}" | grep -co '"id"' || echo 0) model(s)"
 echo "DEBUG [models] google=$(echo "${GOOGLE_MODELS}" | grep -co '"id"' || echo 0) model(s)"
-echo "DEBUG [models] openai=$(echo "${OPENAI_MODELS}" | grep -co '"id"' || echo 0) model(s)"
 echo "DEBUG [models] openrouter=$(echo "${OPENROUTER_MODELS}" | grep -co '"id"' || echo 0) model(s)"
+echo "DEBUG [models] openai key=$([ -n "${OPENAI_API_KEY}" ] && echo 'SET' || echo 'UNSET') (implicit provider)"
 
 cat > "${CONFIG_FILE}.tmp" << EOJSON
 {
+  "env": {
+    "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+  },
   "models": {
     "providers": {
       "anthropic": {
@@ -313,11 +310,6 @@ cat > "${CONFIG_FILE}.tmp" << EOJSON
         "apiKey": "${GEMINI_API_KEY}",
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "models": ${GOOGLE_MODELS}
-      },
-      "openai": {
-        "apiKey": "${OPENAI_API_KEY}",
-        "baseUrl": "https://api.openai.com/v1",
-        "models": ${OPENAI_MODELS}
       },
       "openrouter": {
         "apiKey": "${OPENROUTER_API_KEY}",
