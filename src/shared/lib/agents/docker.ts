@@ -88,12 +88,24 @@ export interface McpServerConfig {
   config: Record<string, unknown>;
 }
 
+/**
+ * Per-agent API keys (already decrypted).
+ * Any key not provided falls back to the corresponding .env variable.
+ */
+export interface AgentApiKeys {
+  anthropicKey?: string;
+  openrouterKey?: string;
+  geminiKey?: string;
+  agentModel?: string;
+}
+
 export async function launchContainer(
   userId: string,
   agentId: string,
   agentType: AgentType,
   channels?: ChannelConfig,
   mcpServers?: Record<string, McpServerConfig>,
+  apiKeys?: AgentApiKeys,
 ): Promise<LaunchResult> {
   if (process.env.LOCAL_DEV === "true") {
     const { localLaunchContainer } = await import("./docker.local");
@@ -108,19 +120,31 @@ export async function launchContainer(
   const extraEnv: { name: string; value: string }[] = [];
 
   if (channels?.whatsapp?.enabled) {
-    // Credentials live on EFS (written by the WhatsApp linker task).
-    // Relay mode: whatsapp-relay.mjs intercepts messages and POSTs to Next.js,
-    // bypassing OpenClaw's AI. agent-config.py skips adding WhatsApp to openclaw.json.
     extraEnv.push({ name: "WHATSAPP_ENABLED", value: "true" });
     extraEnv.push({
       name: "WHATSAPP_INBOUND_WEBHOOK_URL",
       value: `${webhookBaseUrl}/api/whatsapp/inbound/${agentId}`,
     });
   }
+
+  if (channels?.discord?.botToken) {
+    extraEnv.push({ name: "DISCORD_BOT_TOKEN", value: channels.discord.botToken });
+  }
+
   if (mcpServers && Object.keys(mcpServers).length > 0) {
     const mcpConfigB64 = Buffer.from(JSON.stringify(mcpServers)).toString("base64");
     extraEnv.push({ name: "MCP_CONFIG_B64", value: mcpConfigB64 });
   }
+
+  // Per-agent keys take priority over .env fallbacks
+  const anthropicKey   = apiKeys?.anthropicKey   ?? process.env.ANTHROPIC_API_KEY   ?? "";
+  const openrouterKey  = apiKeys?.openrouterKey  ?? process.env.OPENROUTER_API_KEY  ?? "";
+  const geminiKey      = apiKeys?.geminiKey      ?? process.env.GEMINI_API_KEY      ?? "";
+  const agentModel     = apiKeys?.agentModel     ?? process.env.AGENT_MODEL         ?? "openrouter/qwen/qwen3.6-plus:free";
+
+  if (anthropicKey)  extraEnv.push({ name: "ANTHROPIC_API_KEY",  value: anthropicKey });
+  if (openrouterKey) extraEnv.push({ name: "OPENROUTER_API_KEY", value: openrouterKey });
+  if (geminiKey)     extraEnv.push({ name: "GEMINI_API_KEY",     value: geminiKey });
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
@@ -140,7 +164,7 @@ export async function launchContainer(
           { name: "AGENT_ID",         value: agentId },
           { name: "AGENT_TYPE",       value: agentType },
           { name: "OPENCLAW_HOME",    value: `/home/node/.openclaw/${userId}/${agentId}` },
-          { name: "AGENT_MODEL",      value: process.env.AGENT_MODEL ?? "openrouter/qwen/qwen3.6-plus:free" },
+          { name: "AGENT_MODEL",      value: agentModel },
           { name: "WEBHOOK_BASE_URL", value: webhookBaseUrl },
           { name: "GATEWAY_TOKEN",    value: getGatewayToken() },
           ...extraEnv,
@@ -184,11 +208,11 @@ export async function launchWhatsappLinker(
       containerOverrides: [{
         name: "agent",
         environment: [
-          { name: "OPENCLAW_MODE",   value: "whatsapp_link" },
-          { name: "AGENT_ID",        value: agentId },
-          { name: "OPENCLAW_HOME",   value: `/home/node/.openclaw/${userId}/${agentId}` },
+          { name: "OPENCLAW_MODE",    value: "whatsapp_link" },
+          { name: "AGENT_ID",         value: agentId },
+          { name: "OPENCLAW_HOME",    value: `/home/node/.openclaw/${userId}/${agentId}` },
           { name: "WEBHOOK_BASE_URL", value: webhookBaseUrl },
-          { name: "GATEWAY_TOKEN",   value: getGatewayToken() },
+          { name: "GATEWAY_TOKEN",    value: getGatewayToken() },
         ],
       }],
     },
@@ -283,16 +307,6 @@ async function callGateway(baseUrl: string, input: unknown, timeoutMs: number): 
 }
 
 // ─── Agentic tool loop ────────────────────────────────────────────────────────
-//
-// OpenClaw returns function_call items when the agent wants to use a tool.
-// We must feed the result back as function_call_output and keep looping
-// until we get a plain message output — otherwise tool calls silently fail.
-//
-// We don't actually execute the tools ourselves (web_search, file_reader etc.
-// run INSIDE the agent container). We just need to handle the loop so OpenClaw
-// can complete its internal multi-step execution and return the final text.
-//
-// The loop has a max of 8 iterations to prevent runaway tool chains.
 
 async function runAgentLoop(
   baseUrl: string,
@@ -306,7 +320,6 @@ async function runAgentLoop(
     const data = await callGateway(baseUrl, input, timeoutMs);
     const output: OutputItem[] = data.output ?? [];
 
-    // Collect any text from message items
     const textParts = output
       .filter((item): item is Extract<OutputItem, { type: "message" }> => item.type === "message")
       .flatMap((item) =>
@@ -315,39 +328,25 @@ async function runAgentLoop(
           .map((c) => c.text)
       );
 
-    // Check for pending tool calls
     const toolCalls = output.filter(
       (item): item is Extract<OutputItem, { type: "function_call" }> =>
         item.type === "function_call"
     );
 
     if (toolCalls.length === 0) {
-      // No tool calls — we're done
       if (textParts.length > 0) return textParts.join("\n");
-
-      // Fallback for non-standard response shapes
       const d = data as Record<string, unknown>;
       if (typeof d.output_text === "string") return d.output_text;
       if (typeof d.response === "string") return d.response;
       return JSON.stringify(data);
     }
 
-    // There are tool calls — build the next input by appending the output
-    // items (including the function_call items) plus function_call_output
-    // stubs. OpenClaw executes the tools internally; we just need to
-    // acknowledge them so the loop can continue.
-    //
-    // Note: the output array from this turn becomes part of the next input,
-    // which is how the OpenResponses API tracks conversation state.
     const toolResults: OutputItem[] = toolCalls.map((call) => ({
       type: "function_call_output" as const,
       call_id: call.id,
-      // Empty string signals "tool ran, no output to inject" —
-      // the agent's internal tool execution already happened inside OpenClaw.
       output: "",
     }));
 
-    // Next input = prior output items + tool result acknowledgements
     input = [...output, ...toolResults];
 
     logger.info(
@@ -361,9 +360,6 @@ async function runAgentLoop(
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Send a regular chat message to the agent.
- */
 export async function sendCommand(
   taskArn: string,
   command: string,
@@ -374,8 +370,6 @@ export async function sendCommand(
 
   let input: unknown;
 
-  // Use structured input array when we have history or an agentType reminder,
-  // plain string for simple single-turn messages
   if (history && history.length > 0 || agentType) {
     type InputItem = { type: "message"; role: "developer" | "user" | "assistant"; content: string };
 
@@ -405,11 +399,6 @@ export async function sendCommand(
   return runAgentLoop(baseUrl, input, 60_000);
 }
 
-/**
- * Send a document generation request.
- * Uses the developer role to put the agent into document-writer mode,
- * which prevents it from hallucinating file-save operations.
- */
 export async function sendDocumentCommand(
   taskArn: string,
   developerInstruction: string,
@@ -424,7 +413,6 @@ export async function sendDocumentCommand(
     { type: "message", role: "developer", content: developerInstruction },
   ];
 
-  // Include recent history so "write a report about what we discussed" works
   if (history && history.length > 0) {
     for (const msg of history.slice(-10)) {
       items.push({ type: "message", role: msg.role, content: msg.content });

@@ -147,7 +147,7 @@ export async function POST(
       found.botToken,
       chatId,
       isTimeout
-        ? "⏳ Your request is taking longer than expected. Please try again in a moment."
+        ? "⏳ Your request is taking longer than expected."
         : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!"
     ).catch(() => {});
   }

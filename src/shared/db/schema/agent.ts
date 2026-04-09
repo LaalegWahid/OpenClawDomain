@@ -29,6 +29,10 @@ export const agent = pgTable(
     type: text("type").notNull().default("finance"), // "finance" | "marketing" | "operations"
     isPrimary: boolean("is_primary").default(false).notNull(),
     containerId: text("container_id"),
+    anthropicKey: text("anthropic_key"),
+    openrouterKey: text("openrouter_key"),
+    geminiKey: text("gemini_key"),
+    agentModel: text("agent_model"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()

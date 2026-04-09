@@ -135,7 +135,24 @@ export const verification = pgTable(
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
-
+export const userApiKeys = pgTable("user_api_keys", {
+  id: uuid("id")
+    .default(sql`pg_catalog.gen_random_uuid()`)
+    .primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .unique() // one row per user
+    .references(() => user.id, { onDelete: "cascade" }),
+  anthropicKey: text("anthropic_key"),     // encrypted
+  openrouterKey: text("openrouter_key"),   // encrypted
+  geminiKey: text("gemini_key"),           // encrypted
+  agentModel: text("agent_model"),         // e.g. "openrouter/qwen/qwen3-plus"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
 export const apikey = pgTable(
   "apikey",
   {

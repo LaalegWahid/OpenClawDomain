@@ -124,6 +124,8 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   const [botName, setBotName] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("You are a helpful specialist agent.");
   const [customType, setCustomType] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [agentModel, setAgentModel] = useState("");
 
   // Skills selection
   const [userSkills, setUserSkills] = useState<UserSkill[]>([]);
@@ -155,6 +157,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     setBotToken(""); setBotUsername("");
     setDiscordToken("");
     setBotName(""); setSystemPrompt("You are a helpful specialist agent."); setCustomType("");
+    setApiKey(""); setAgentModel("");
     setSelectedSkillIds([]);
     setError(null);
     setWaStep("form"); setWaAgentId(null); setWaQrData(null); setWaQrError(null);
@@ -179,7 +182,14 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 
     try {
       const effectiveType = customType.trim().toLowerCase();
-      const base = { name: botName, systemPrompt, type: effectiveType, skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined };
+      const base = {
+        name: botName,
+        systemPrompt,
+        type: effectiveType,
+        skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
+        ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+        ...(agentModel.trim() ? { agentModel: agentModel.trim() } : {}),
+      };
       const body =
         platform === "telegram"
           ? { platform, botToken, botUsername, ...base }
@@ -559,6 +569,10 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   required
                 />
               </div>
+              <div style={{ display: "grid", gap: "12px" }}>
+                <ModalField label="API Key" value={apiKey} onChange={setApiKey} placeholder="Optional: any provider API key" required={false} />
+                <ModalField label="Agent Model" value={agentModel} onChange={setAgentModel} placeholder="Optional: e.g. openrouter/qwen/qwen3-plus" required={false} />
+              </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <label style={labelStyle}>System Prompt / Instructions</label>
@@ -571,6 +585,8 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   style={{ ...inputStyle, resize: "none", fontFamily: "inherit" }}
                 />
               </div>
+
+             
 
               {/* Skills Selection */}
               {userSkills.length > 0 && (
@@ -649,8 +665,8 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   );
 }
 
-function ModalField({ label, value, onChange, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder: string;
+function ModalField({ label, value, onChange, placeholder, required = true }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder: string; required?: boolean;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -658,7 +674,7 @@ function ModalField({ label, value, onChange, placeholder }: {
         {label}
       </label>
       <input
-        required
+        required={required}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
