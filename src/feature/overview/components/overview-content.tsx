@@ -300,7 +300,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       <div style={{ marginBottom: "14px" }}>
         <button
           onClick={() => { resetForm(); fetchUserSkills(); setShowModal(true); }}
-          disabled={activeAgents.length >= MAX_BOTS || loading}
+          // disabled={activeAgents.length >= MAX_BOTS || loading}
           style={{
             background: activeAgents.length >= MAX_BOTS ? "#2A2A2A" : "#FF4D00",
             color: activeAgents.length >= MAX_BOTS ? "#555555" : "#fff",

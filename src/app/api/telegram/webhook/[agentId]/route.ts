@@ -139,6 +139,10 @@ export async function POST(
         type: "error",
         message: `Failed to deliver to chat ${chatId}: ${err instanceof Error ? err.message : "Unknown"}`,
       });
+      // Fallback: send the raw text so the user isn't left with no response
+      if (docFormat) {
+        await sendMessage(found.botToken, chatId, responseText).catch(() => {});
+      }
     }
   } catch (err) {
     logger.error({ agentId, err }, "Failed to reach agent container");
