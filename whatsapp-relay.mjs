@@ -12,7 +12,7 @@
  * Credentials loaded from ${OPENCLAW_HOME}/credentials/whatsapp/default/ — same
  * path written by whatsapp-linker.mjs and expected by OpenClaw's whatsapp plugin.
  */
-import makeWASocket, { useMultiFileAuthState, DisconnectReason }
+import { makeWASocket, useMultiFileAuthState, DisconnectReason }
   from '@whiskeysockets/baileys';
 
 const webhookUrl   = process.env.WHATSAPP_INBOUND_WEBHOOK_URL;
@@ -25,7 +25,7 @@ if (!process.env.OPENCLAW_HOME) { console.error('whatsapp-relay: OPENCLAW_HOME n
 
 async function startRelay() {
   const { state, saveCreds } = await useMultiFileAuthState(credsDir);
-  const sock = makeWASocket.default({ auth: state, printQRInTerminal: false });
+  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
 
   sock.ev.on('creds.update', saveCreds);
 
