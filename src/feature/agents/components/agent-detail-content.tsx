@@ -419,14 +419,9 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   };
 
   return (
-    <SidebarInset>
+      <>
       <main className="flex flex-1 flex-col gap-6 p-6 bg-black">
-        <Link href="/overview">
-          <Button variant="ghost" className="text-white/60 hover:text-white gap-2 px-0">
-            <ArrowLeft className="size-4" />
-            Back to Overview
-          </Button>
-        </Link>
+
 
         {error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -1106,6 +1101,5 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
           </div>
         </div>
       )}
-    </SidebarInset>
-  );
+</>  );
 }
