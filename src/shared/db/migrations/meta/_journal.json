@@ -57,6 +57,13 @@
       "when": 1775734648577,
       "tag": "0007_dark_infant_terrible",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775776431072,
+      "tag": "0008_gigantic_loners",
+      "breakpoints": true
     }
   ]
 }

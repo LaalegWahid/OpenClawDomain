@@ -170,7 +170,8 @@ async function processMessage({
       await db.insert(agentActivity).values({
         agentId,
         type: "error",
-        message: `Failed to deliver to chat ${chatId}: ${err instanceof Error ? err.message : "Unknown"}`,
+        message: "Failed to send response via Telegram",
+        metadata: { chatId, error: err instanceof Error ? err.message : String(err) },
       });
       if (docFormat) {
         await sendMessage(found.botToken, chatId, responseText).catch(() => {});

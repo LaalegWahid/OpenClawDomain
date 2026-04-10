@@ -173,7 +173,8 @@ export async function POST(
         await db.insert(agentActivity).values({
           agentId: id,
           type: "error",
-          message: `Failed to generate PDF for web chat: ${err instanceof Error ? err.message : "Unknown"}`,
+          message: "Failed to generate document",
+          metadata: { error: err instanceof Error ? err.message : String(err) },
         });
         // Still return the text response even if PDF generation fails
         return NextResponse.json({ reply: responseText });
