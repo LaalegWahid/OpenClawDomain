@@ -12,8 +12,11 @@ interface UserSkill {
 
 type Platform = "telegram" | "discord" | "whatsapp";
 
+const mono = "var(--mono), 'JetBrains Mono', monospace";
+const serif = "var(--serif), 'Cormorant Garamond', Georgia, serif";
+
 const skeleton: React.CSSProperties = {
-  background: "linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%)",
+  background: "linear-gradient(90deg, #ede8e0 25%, #e4ddd4 50%, #ede8e0 75%)",
   backgroundSize: "600px 100%",
   animation: "shimmer 1.4s infinite",
   borderRadius: 6,
@@ -76,22 +79,24 @@ interface OverviewContentProps {
 const MAX_BOTS = 3;
 
 const inputStyle: React.CSSProperties = {
-  background: "#0A0A0A",
-  border: "0.5px solid #1E1E1E",
+  background: "var(--surface-2)",
+  border: "1px solid var(--border)",
   borderRadius: "8px",
   padding: "11px 14px",
-  fontSize: "14px",
-  color: "#F0EEE8",
+  fontSize: "13px",
+  fontFamily: mono,
+  color: "var(--foreground)",
   outline: "none",
   width: "100%",
   boxSizing: "border-box",
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: "12px",
+  fontSize: "11px",
   fontWeight: 500,
-  letterSpacing: "0.02em",
-  color: "#555555",
+  letterSpacing: "0.08em",
+  fontFamily: mono,
+  color: "var(--foreground-2)",
   textTransform: "uppercase",
 };
 
@@ -278,50 +283,52 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   }
 
   return (
-    <div>
+    <div style={{ maxWidth: 960, margin: "0 auto" }}>
       {/* Heading */}
-      <div style={{ marginBottom: "2.5rem" }}>
-        <h1 style={{
-          fontSize: "clamp(1.4rem, 3vw, 1.9rem)",
-          fontWeight: 500,
-          letterSpacing: "-0.03em",
-          color: "#F0EEE8",
-          marginBottom: "6px",
-          lineHeight: 1.1,
-        }}>
-          {userName ? `Welcome back, ${userName}.` : "Welcome back."}
-        </h1>
-        <p style={{ fontSize: "13px", color: "#555555", lineHeight: 1.6 }}>
-          Manage your agents across Telegram, Discord, and WhatsApp. {activeAgents.length} of {MAX_BOTS} bots used.
-        </p>
-      </div>
+      <div style={{ marginBottom: "2.5rem", display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+        <div>
+          <h1 style={{
+            fontFamily: serif,
+            fontSize: "clamp(1.8rem, 3vw, 2.4rem)",
+            fontWeight: 600,
+            letterSpacing: "-0.02em",
+            color: "var(--foreground)",
+            marginBottom: "6px",
+            lineHeight: 1.1,
+            margin: "0 0 6px",
+          }}>
+            {userName ? `Welcome back, ${userName}.` : "Welcome back."}
+          </h1>
+          <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)", lineHeight: 1.6, letterSpacing: "0.02em", margin: 0 }}>
+            {activeAgents.length} of {MAX_BOTS} agents active — Telegram, Discord &amp; WhatsApp
+          </p>
+        </div>
 
-      {/* Add Bot button */}
-      <div style={{ marginBottom: "14px" }}>
         <button
           onClick={() => { resetForm(); fetchUserSkills(); setShowModal(true); }}
-          // disabled={activeAgents.length >= MAX_BOTS || loading}
           style={{
-            background: activeAgents.length >= MAX_BOTS ? "#2A2A2A" : "#FF4D00",
-            color: activeAgents.length >= MAX_BOTS ? "#555555" : "#fff",
+            background: activeAgents.length >= MAX_BOTS ? "var(--surface-2)" : "#FF4D00",
+            color: activeAgents.length >= MAX_BOTS ? "var(--foreground-3)" : "#fff",
             border: "none",
             borderRadius: "8px",
             padding: "10px 20px",
-            fontSize: "13px",
+            fontFamily: mono,
+            fontSize: "12px",
             fontWeight: 500,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
             cursor: activeAgents.length >= MAX_BOTS ? "not-allowed" : "pointer",
-            letterSpacing: "-0.01em",
           }}
         >
-          + Add Bot
+          + New Agent
         </button>
       </div>
 
       {/* Agent cards */}
       {loading ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "14px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} style={{ background: "#111111", border: "0.5px solid #1E1E1E", borderRadius: "16px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div key={i} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "16px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div style={{ width: 40, height: 40, borderRadius: 10, ...skeleton }} />
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -334,46 +341,47 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 <div style={{ width: "45%", height: 11, ...skeleton }} />
                 <div style={{ width: 52, height: 18, borderRadius: 4, marginTop: 2, ...skeleton }} />
               </div>
-              <div style={{ height: "0.5px", background: "#1E1E1E" }} />
+              <div style={{ height: "1px", background: "var(--border)" }} />
               <div style={{ width: "100%", height: 36, borderRadius: 8, ...skeleton }} />
             </div>
           ))}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "14px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
           {agents.length === 0 && (
             <div style={{
-              background: "#111111", border: "0.5px solid #1E1E1E", borderRadius: "16px",
-              padding: "2rem", textAlign: "center", color: "#555555", fontSize: "13px", gridColumn: "1 / -1",
+              background: "#fff", border: "1px solid var(--border)", borderRadius: "16px",
+              padding: "3rem 2rem", textAlign: "center", gridColumn: "1 / -1",
             }}>
-              No bots yet. Click &quot;Add Bot&quot; to connect your first agent.
+              <p style={{ fontFamily: serif, fontSize: "18px", color: "var(--foreground)", fontWeight: 500, margin: "0 0 6px" }}>No agents yet</p>
+              <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)", margin: 0 }}>Click &quot;New Agent&quot; to connect your first bot.</p>
             </div>
           )}
 
           {agents.map((ag) => (
-            <div key={ag.id} style={{ background: "#111111", border: "0.5px solid #1E1E1E", borderRadius: "16px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div key={ag.id} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "16px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                <div style={{ width: "40px", height: "40px", background: "rgba(255,77,0,0.1)", border: "0.5px solid rgba(255,77,0,0.2)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: "42px", height: "42px", background: "rgba(255,77,0,0.08)", border: "1px solid rgba(255,77,0,0.15)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Bot size={18} color="#FF4D00" />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                  <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: getStatusColor(ag.status), display: "inline-block" }} />
-                  <span style={{ fontSize: "10px", color: "#444444", letterSpacing: "0.05em" }}>
-                    {ag.status.charAt(0).toUpperCase() + ag.status.slice(1)}
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: getStatusColor(ag.status), display: "inline-block" }} />
+                  <span style={{ fontFamily: mono, fontSize: "10px", color: "var(--foreground-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    {ag.status}
                   </span>
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize: "15px", fontWeight: 500, color: "#F0EEE8", marginBottom: "4px" }}>{ag.name}</div>
-                <div style={{ fontSize: "11px", color: "#FF4D00", letterSpacing: "0.02em" }}>@{ag.botUsername}</div>
+                <div style={{ fontFamily: serif, fontSize: "17px", fontWeight: 600, color: "var(--foreground)", marginBottom: "4px" }}>{ag.name}</div>
+                <div style={{ fontFamily: mono, fontSize: "11px", color: "#FF4D00", letterSpacing: "0.04em" }}>@{ag.botUsername}</div>
                 {ag.type && (
                   <span style={{
-                    display: "inline-block", marginTop: "6px", fontSize: "10px", fontWeight: 500,
-                    letterSpacing: "0.05em", textTransform: "uppercase",
+                    display: "inline-block", marginTop: "8px", fontSize: "10px", fontWeight: 500,
+                    fontFamily: mono, letterSpacing: "0.06em", textTransform: "uppercase",
                     color: getTypeColor(ag.type),
-                    background: `${getTypeColor(ag.type)}15`,
-                    border: `0.5px solid ${getTypeColor(ag.type)}30`,
+                    background: `${getTypeColor(ag.type)}12`,
+                    border: `1px solid ${getTypeColor(ag.type)}25`,
                     borderRadius: "4px", padding: "2px 8px",
                   }}>
                     {ag.type}
@@ -381,11 +389,18 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 )}
               </div>
 
-              <div style={{ height: "0.5px", background: "#1E1E1E" }} />
+              <div style={{ height: "1px", background: "var(--border)" }} />
 
               <Link href={`/overview/${ag.id}`} style={{ textDecoration: "none" }}>
-                <button style={{ background: "transparent", color: "#F0EEE8", border: "0.5px solid #2A2A2A", borderRadius: "8px", padding: "10px", fontSize: "13px", fontWeight: 500, cursor: "pointer", width: "100%", letterSpacing: "-0.01em" }}>
-                  View Agent →
+                <button style={{
+                  background: "transparent", color: "var(--foreground)",
+                  border: "1px solid var(--border)", borderRadius: "8px",
+                  padding: "10px", fontFamily: mono, fontSize: "12px",
+                  fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
+                  cursor: "pointer", width: "100%",
+                  transition: "border-color 0.15s, background 0.15s",
+                }}>
+                  View Agent
                 </button>
               </Link>
             </div>
@@ -396,17 +411,16 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       {/* Add Bot Modal */}
       {showModal && (
         <div
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
-          onClick={() => setShowModal(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(28,22,18,0.4)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
         >
           <div
-            style={{ background: "#111111", border: "0.5px solid #1E1E1E", borderRadius: "16px", padding: "2rem", width: "100%", maxWidth: "460px", margin: "1rem", maxHeight: "90vh", overflowY: "auto" }}
+            style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "16px", padding: "1.5rem", width: "100%", maxWidth: "600px", margin: "1rem", maxHeight: "90vh", overflowY: "auto", scrollbarWidth: "none", msOverflowStyle: "none", transform: "translateZ(0)", boxShadow: "0 8px 40px rgba(28,22,18,0.12)" }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-              <h2 style={{ fontSize: "17px", fontWeight: 500, color: "#F0EEE8" }}>Add Bot</h2>
-              <button onClick={() => setShowModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#555" }}>
+              <h2 style={{ fontFamily: serif, fontSize: "20px", fontWeight: 600, color: "var(--foreground)", margin: 0 }}>New Agent</h2>
+              <button onClick={() => setShowModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--foreground-3)", padding: "4px" }}>
                 <X size={18} />
               </button>
             </div>
@@ -430,29 +444,27 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                       type="button"
                       onClick={() => setPlatform(p.value)}
                       style={{
-                        background: active ? ac.bg : "#0A0A0A",
-                        border: active ? `0.5px solid ${ac.border}` : "0.5px solid #1E1E1E",
+                        background: active ? ac.bg : "var(--surface-2)",
+                        border: active ? `1px solid ${ac.border}` : "1px solid var(--border)",
                         borderRadius: "10px",
                         padding: "12px 8px",
                         cursor: "pointer",
-                        opacity: 1,
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
                         gap: "6px",
                         transition: "all 0.15s",
-                        position: "relative",
                       }}
                     >
                       <PlatformSvg platform={p.value} size={22} />
-                      <span style={{ fontSize: "11px", fontWeight: 500, color: active ? ac.label : "#555", letterSpacing: "0.03em" }}>
+                      <span style={{ fontFamily: mono, fontSize: "10px", fontWeight: 500, color: active ? ac.label : "var(--foreground-2)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
                         {p.label}
                       </span>
                     </button>
                   );
                 })}
               </div>
-              <p style={{ fontSize: "11px", color: "#444", marginTop: "8px" }}>
+              <p style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", marginTop: "8px", letterSpacing: "0.02em" }}>
                 {PLATFORM_OPTIONS.find(p => p.value === platform)?.description}
               </p>
             </div>
@@ -460,16 +472,16 @@ export function OverviewContent({ userName }: OverviewContentProps) {
             {/* ── WhatsApp QR step ──────────────────────────────────────── */}
             {waStep === "qr" && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "20px", padding: "8px 0" }}>
-                <p style={{ fontSize: "13px", color: "#888", textAlign: "center", lineHeight: 1.6 }}>
-                  Open WhatsApp on your phone → <strong style={{ color: "#F0EEE8" }}>Linked Devices</strong> → <strong style={{ color: "#F0EEE8" }}>Link a Device</strong> → scan this QR
+                <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-2)", textAlign: "center", lineHeight: 1.6 }}>
+                  Open WhatsApp on your phone → <strong style={{ color: "var(--foreground)" }}>Linked Devices</strong> → <strong style={{ color: "var(--foreground)" }}>Link a Device</strong> → scan this QR
                 </p>
 
                 {waQrError ? (
-                  <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.3)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", color: "#FF4D00", textAlign: "center" }}>
+                  <div style={{ background: "rgba(255,77,0,0.06)", border: "1px solid rgba(255,77,0,0.25)", borderRadius: "8px", padding: "10px 14px", fontFamily: mono, fontSize: "12px", color: "#FF4D00", textAlign: "center" }}>
                     {waQrError}
                   </div>
                 ) : waQrData ? (
-                  <div style={{ background: "#fff", borderRadius: "12px", padding: "10px", lineHeight: 0 }}>
+                  <div style={{ background: "var(--surface)", borderRadius: "12px", padding: "10px", lineHeight: 0, border: "1px solid var(--border)" }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(waQrData)}`}
@@ -481,28 +493,24 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", padding: "40px 0" }}>
                     <div style={{ width: "28px", height: "28px", border: "2px solid #25D366", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                    <p style={{ fontSize: "12px", color: "#555" }}>Starting WhatsApp pairing session…</p>
+                    <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)" }}>Starting WhatsApp pairing session…</p>
                   </div>
                 )}
 
                 {waQrData && !waQrError && (
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#25D366", animation: "pulse 1.5s ease-in-out infinite" }} />
-                    <p style={{ fontSize: "12px", color: "#555" }}>Waiting for scan… QR refreshes every ~60s</p>
+                    <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)" }}>Waiting for scan… QR refreshes every ~60s</p>
                   </div>
                 )}
 
                 {waQrError && waAgentId && (
-                  <a href={`/overview/${waAgentId}`} style={{ fontSize: "13px", color: "#25D366", textDecoration: "none" }}>
-                    Go to agent page to link later →
+                  <a href={`/overview/${waAgentId}`} style={{ fontFamily: mono, fontSize: "12px", color: "#25D366", textDecoration: "none" }}>
+                    Go to agent page to link later
                   </a>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => { setShowModal(false); resetForm(); }}
-                  style={{ background: "transparent", border: "0.5px solid #2A2A2A", borderRadius: "8px", padding: "9px 20px", fontSize: "13px", color: "#555", cursor: "pointer" }}
-                >
+                <button type="button" onClick={() => { setShowModal(false); resetForm(); }} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", padding: "9px 20px", fontFamily: mono, fontSize: "12px", color: "var(--foreground-2)", cursor: "pointer" }}>
                   Skip for now
                 </button>
               </div>
@@ -511,25 +519,21 @@ export function OverviewContent({ userName }: OverviewContentProps) {
             {/* ── WhatsApp linked step ──────────────────────────────────── */}
             {waStep === "linked" && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", padding: "16px 0" }}>
-                <div style={{ width: "56px", height: "56px", background: "rgba(37,211,102,0.1)", border: "0.5px solid rgba(37,211,102,0.3)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: "56px", height: "56px", background: "rgba(37,211,102,0.1)", border: "1px solid rgba(37,211,102,0.25)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <PlatformSvg platform="whatsapp" size={28} />
                 </div>
                 <div style={{ textAlign: "center" }}>
-                  <p style={{ fontSize: "15px", fontWeight: 500, color: "#F0EEE8", marginBottom: "6px" }}>WhatsApp Linked!</p>
-                  <p style={{ fontSize: "13px", color: "#555", lineHeight: 1.6 }}>Your agent is ready to receive and send WhatsApp messages.</p>
+                  <p style={{ fontFamily: mono, fontSize: "14px", fontWeight: 600, color: "var(--foreground)", marginBottom: "6px" }}>WhatsApp Linked!</p>
+                  <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)", lineHeight: 1.6 }}>Your agent is ready to receive and send WhatsApp messages.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { setShowModal(false); resetForm(); }}
-                  style={{ background: "#25D366", border: "none", borderRadius: "8px", padding: "10px 28px", fontSize: "13px", fontWeight: 500, color: "#fff", cursor: "pointer" }}
-                >
+                <button type="button" onClick={() => { setShowModal(false); resetForm(); }} style={{ background: "#25D366", border: "none", borderRadius: "8px", padding: "10px 28px", fontFamily: mono, fontSize: "12px", fontWeight: 500, color: "#fff", cursor: "pointer" }}>
                   Done
                 </button>
               </div>
             )}
 
             {error && waStep === "form" && (
-              <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.3)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", color: "#FF4D00", marginBottom: "14px" }}>
+              <div style={{ background: "rgba(255,77,0,0.06)", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "8px", padding: "10px 14px", fontFamily: mono, fontSize: "12px", color: "#FF4D00", marginBottom: "14px" }}>
                 {error}
               </div>
             )}
@@ -554,9 +558,9 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                     <PlatformSvg platform="whatsapp" size={20} />
                   </div>
                   <div>
-                    <p style={{ fontSize: "13px", fontWeight: 500, color: "#25D366", marginBottom: "4px" }}>No credentials needed</p>
-                    <p style={{ fontSize: "12px", color: "#555", lineHeight: 1.6 }}>
-                      Your agent will be created immediately. Then open the agent page and tap <strong style={{ color: "#888" }}>Link WhatsApp</strong> to scan a QR code with your phone — just like WhatsApp Web.
+                    <p style={{ fontFamily: mono, fontSize: "12px", fontWeight: 500, color: "#25D366", marginBottom: "4px", letterSpacing: "0.04em" }}>No credentials needed</p>
+                    <p style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", lineHeight: 1.6 }}>
+                      Your agent will be created immediately. Then open the agent page and tap <strong style={{ color: "var(--foreground-2)" }}>Link WhatsApp</strong> to scan a QR code with your phone.
                     </p>
                   </div>
                 </div>
@@ -630,35 +634,23 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                     <Sparkles size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
                     Attach Skills ({selectedSkillIds.length} selected)
                   </label>
-                  <div style={{ maxHeight: "160px", overflowY: "auto", border: "0.5px solid #1E1E1E", borderRadius: "8px", background: "#0A0A0A" }}>
+                  <div style={{ maxHeight: "160px", overflowY: "auto", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface-2)" }}>
                     {userSkills.map((s) => {
                       const checked = selectedSkillIds.includes(s.id);
                       return (
                         <label
                           key={s.id}
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "10px",
-                            padding: "10px 12px",
-                            cursor: "pointer",
-                            borderBottom: "0.5px solid #1E1E1E",
+                            display: "flex", alignItems: "center", gap: "10px",
+                            padding: "10px 12px", cursor: "pointer",
+                            borderBottom: "1px solid var(--border)",
                             background: checked ? "rgba(255,77,0,0.05)" : "transparent",
                           }}
                         >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              setSelectedSkillIds((prev) =>
-                                checked ? prev.filter((id) => id !== s.id) : [...prev, s.id]
-                              );
-                            }}
-                            style={{ accentColor: "#FF4D00" }}
-                          />
+                          <input type="checkbox" checked={checked} onChange={() => setSelectedSkillIds((prev) => checked ? prev.filter((id) => id !== s.id) : [...prev, s.id])} style={{ accentColor: "#FF4D00" }} />
                           <div style={{ overflow: "hidden" }}>
-                            <p style={{ fontSize: "12px", fontWeight: 600, color: "#F0EEE8", margin: 0 }}>{s.name}</p>
-                            <p style={{ fontSize: "11px", color: "#555", margin: 0, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{s.description}</p>
+                            <p style={{ fontFamily: mono, fontSize: "12px", fontWeight: 600, color: "var(--foreground)", margin: 0 }}>{s.name}</p>
+                            <p style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", margin: 0, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{s.description}</p>
                           </div>
                         </label>
                       );
@@ -672,10 +664,11 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 disabled={submitting}
                 style={{
                   marginTop: "4px",
-                  background: submitting ? "#2A2A2A" : "#FF4D00",
-                  color: submitting ? "#555555" : "#fff",
-                  border: "none", borderRadius: "8px", padding: "10px",
-                  fontSize: "13px", fontWeight: 500,
+                  background: submitting ? "var(--surface-2)" : "#FF4D00",
+                  color: submitting ? "var(--foreground-3)" : "#fff",
+                  border: "none", borderRadius: "8px", padding: "11px",
+                  fontFamily: mono, fontSize: "12px", fontWeight: 500,
+                  letterSpacing: "0.06em", textTransform: "uppercase",
                   cursor: submitting ? "wait" : "pointer",
                   width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
                 }}
@@ -683,7 +676,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 {submitting ? (
                   <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Adding Bot…</>
                 ) : (
-                  `Add ${PLATFORM_OPTIONS.find(p => p.value === platform)?.label} Bot →`
+                  `Add ${PLATFORM_OPTIONS.find(p => p.value === platform)?.label} Bot`
                 )}
               </button>
             </form>
@@ -703,9 +696,10 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 function ModalField({ label, value, onChange, placeholder, required = true }: {
   label: string; value: string; onChange: (v: string) => void; placeholder: string; required?: boolean;
 }) {
+  const mono = "var(--mono), 'JetBrains Mono', monospace";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-      <label style={{ fontSize: "12px", fontWeight: 500, letterSpacing: "0.02em", color: "#555555", textTransform: "uppercase" as const }}>
+      <label style={{ fontFamily: mono, fontSize: "11px", fontWeight: 500, letterSpacing: "0.08em", color: "var(--foreground-2)", textTransform: "uppercase" as const }}>
         {label}
       </label>
       <input
@@ -715,8 +709,8 @@ function ModalField({ label, value, onChange, placeholder, required = true }: {
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         style={{
-          background: "#0A0A0A", border: "0.5px solid #1E1E1E", borderRadius: "8px",
-          padding: "11px 14px", fontSize: "14px", color: "#F0EEE8",
+          background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "8px",
+          padding: "11px 14px", fontSize: "13px", fontFamily: mono, color: "var(--foreground)",
           outline: "none", width: "100%", boxSizing: "border-box" as const,
         }}
       />

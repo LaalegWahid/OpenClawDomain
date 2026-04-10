@@ -10,22 +10,26 @@ interface Props {
   onCreated: () => void;
 }
 
+const mono  = "var(--mono), 'JetBrains Mono', monospace";
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  background: "#0A0A0A",
-  border: "0.5px solid #1E1E1E",
+  background: "var(--surface-2)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
   padding: "10px 12px",
-  color: "#F0EEE8",
+  color: "var(--foreground)",
+  fontFamily: mono,
   fontSize: 13,
   outline: "none",
   boxSizing: "border-box",
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontFamily: mono,
+  fontSize: 11,
   fontWeight: 500,
-  color: "#555555",
+  color: "var(--foreground-2)",
   marginBottom: 6,
   display: "block",
   textTransform: "uppercase",
@@ -244,7 +248,6 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
         justifyContent: "center",
         background: "rgba(0,0,0,0.7)",
       }}
-      onClick={onClose}
     >
       <div
         style={{

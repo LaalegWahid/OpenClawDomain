@@ -2,94 +2,150 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ── Master tokens (exact colors requested) ─────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --sidebar: hsl(0 0% 98%);
-  --sidebar-foreground: hsl(240 5.3% 26.1%);
-  --sidebar-primary: #FF4D00;
-  --sidebar-primary-foreground: hsl(0 0% 98%);
-  --sidebar-accent: hsl(240 4.8% 95.9%);
-  --sidebar-accent-foreground: hsl(240 5.9% 10%);
-  --sidebar-border: hsl(220 13% 91%);
-  --sidebar-ring: #FF4D00;
+  --background:   #f8f2ed;
+  --surface:      #ffffff;
+  --surface-2:    #f1ebe4;
+  --foreground:   #2a1f19;
+  --foreground-2: #7a5f52;
+  --foreground-3: #b09484;
+  --border:       #e4d8cf;
+  --border-2:     #d0c2b7;
+
+  /* Brand */
+  --brand:        #FF4D00;
+  --brand-dark:   #D14A22;
+  --success:      #2FBF71;
+  --warning:      #FFB020;
+  --error:        #E23D2D;
+
+  /* Tailwind token aliases (used by Button, Input, etc.) */
+  --color-background:         #f8f2ed;
+  --color-foreground:         #2a1f19;
+  --color-border:             #e4d8cf;
+  --color-input:              #e4d8cf;
+  --color-ring:               #FF4D00;
+  --color-primary:            #FF4D00;
+  --color-primary-foreground: #ffffff;
+  --color-secondary:          #f1ebe4;
+  --color-secondary-foreground: #2a1f19;
+  --color-accent:             #f1ebe4;
+  --color-accent-foreground:  #2a1f19;
+  --color-muted:              #f1ebe4;
+  --color-muted-foreground:   #b09484;
+  --color-destructive:        #E23D2D;
+  --color-card:               #ffffff;
+  --color-card-foreground:    #2a1f19;
+
+  /* Brand aliases */
+  --color-brand:       #FF4D00;
+  --color-brand-dark:  #D14A22;
+  --color-success:     #2FBF71;
+  --color-warning:     #FFB020;
+  --color-error:       #E23D2D;
+  --color-neutral:     #8B7F77;
+
+  /* Radix sidebar compat */
+  --sidebar:                    #ffffff;
+  --sidebar-foreground:         #2a1f19;
+  --sidebar-primary:            #FF4D00;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent:             #f1ebe4;
+  --sidebar-accent-foreground:  #2a1f19;
+  --sidebar-border:             #e4d8cf;
+  --sidebar-ring:               #FF4D00;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
+  --color-background:          var(--background);
+  --color-foreground:          var(--foreground);
+  --font-sans:                 var(--serif);
+  --font-mono:                 var(--mono);
+  --color-brand:               var(--brand);
+  --color-brand-dark:          var(--brand-dark);
+  --color-success:             var(--success);
+  --color-warning:             var(--warning);
+  --color-error:               var(--error);
+  --color-sidebar-ring:               var(--sidebar-ring);
+  --color-sidebar-border:             var(--sidebar-border);
+  --color-sidebar-accent-foreground:  var(--sidebar-accent-foreground);
+  --color-sidebar-accent:             var(--sidebar-accent);
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-
-  /* ── OpenClaw brand palette ──────────────────────────── */
-  --color-brand:        #FF4D00;   /* primary orange */
-  --color-brand-light:  #FF4D00;   /* light orange */
-  --color-brand-dark:   #D14A22;   /* burnt orange */
-  --color-success:      #2FBF71;   /* green */
-  --color-warning:      #FFB020;   /* amber */
-  --color-error:        #E23D2D;   /* red */
-  --color-neutral:      #8B7F77;   /* warm gray */
+  --color-sidebar-primary:            var(--sidebar-primary);
+  --color-sidebar-foreground:         var(--sidebar-foreground);
+  --color-sidebar:                    var(--sidebar);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ── Base ────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--background); }
 
 body {
-  background: var(--background);
+  background:  var(--background);
+  color:       var(--foreground);
+  font-family: var(--mono), "JetBrains Mono", monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+input, textarea, select {
+  font-family: inherit;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
-/* ── OpenClaw sidebar theme (dark warm + orange) ─────────────────────── */
-[data-slot="sidebar"] {
-  --sidebar: oklch(0.13 0.03 25);                /* dark warm brown */
-  --sidebar-foreground: oklch(0.97 0 0);          /* near-white */
-  --sidebar-primary: #FF4D00;                     /* brand orange */
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(1 0 0 / 8%);            /* subtle white hover */
-  --sidebar-accent-foreground: oklch(0.97 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: #FF4D00;                        /* orange focus ring */
-}
+/* ── Light-theme overrides for dark Tailwind classes ─────────── */
+/* These flip every dark utility class used by agent-detail and   */
+/* other components that still carry Tailwind dark-mode styles.   */
 
-.dark {
-  --sidebar: hsl(20 5% 10%);
-  --sidebar-foreground: hsl(30 10% 95%);
-  --sidebar-primary: #FF4D00;
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(20 5% 16%);
-  --sidebar-accent-foreground: hsl(30 10% 95%);
-  --sidebar-border: hsl(20 5% 16%);
-  --sidebar-ring: #FF4D00;
-}
+/* Backgrounds */
+.bg-black                   { background-color: transparent; }
+.bg-\[\#111\]                { background-color: var(--surface); }
+.bg-\[\#111111\]             { background-color: var(--surface); }
+.bg-white\/\[0\.02\]        { background-color: var(--surface); }
+.bg-white\/\[0\.03\]        { background-color: var(--surface-2); }
+.bg-white\/5                { background-color: var(--surface-2); }
+.bg-white\/10               { background-color: var(--surface-2); }
+.bg-white\/15               { background-color: var(--border); }
+.bg-white\/20               { background-color: var(--border); }
 
-/* ── Landing page animations ─────────────────────────────────────────────── */
+/* Text */
+.text-white                 { color: var(--foreground); }
+.text-white\/70             { color: var(--foreground); }
+.text-white\/60             { color: var(--foreground-2); }
+.text-white\/50             { color: var(--foreground-2); }
+.text-white\/40             { color: var(--foreground-3); }
+.text-white\/30             { color: var(--foreground-3); }
+.text-white\/20             { color: var(--foreground-3); }
+
+/* Borders */
+.border-white\/5            { border-color: var(--border); }
+.border-white\/10           { border-color: var(--border); }
+.border-white\/20           { border-color: var(--border-2); }
+
+/* Separator component */
+.bg-white\/10               { background-color: var(--border); }
+
+/* Hover overrides */
+.hover\:text-white:hover              { color: var(--foreground); }
+.hover\:bg-white\/5:hover             { background-color: var(--surface-2); }
+.hover\:bg-white\/10:hover            { background-color: var(--surface-2); }
+.hover\:bg-white\/15:hover            { background-color: var(--border); }
+.hover\:bg-white\/\[0\.06\]:hover     { background-color: var(--surface-2); }
+.hover\:border-white\/10:hover        { border-color: var(--border-2); }
+
+/* ── Animations ──────────────────────────────────────────────── */
 @keyframes floatY {
   0%, 100% { transform: translateY(0); }
   50%       { transform: translateY(-10px); }
 }
-
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }
 }
-
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-
 @keyframes shimmer {
   0%   { background-position: -600px 0; }
   100% { background-position:  600px 0; }

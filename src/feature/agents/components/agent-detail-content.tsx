@@ -7,6 +7,7 @@ import { SidebarInset } from "../../../shared/components/ui/sidebar";
 import { Separator } from "../../../shared/components/ui/separator";
 import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
+import { ChatPageContent } from "../../../feature/chat/components/chat-page-content";
 import Link from "next/link";
 
 const TYPE_BADGE_STYLES: Record<string, string> = {
@@ -138,6 +139,9 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [availableSkills, setAvailableSkills] = useState<{id: string; name: string; description: string}[]>([]);
   const [showAddSkill, setShowAddSkill] = useState(false);
   const [addingSkill, setAddingSkill] = useState(false);
+
+  // Tabs
+  const [activeTab, setActiveTab] = useState<"info" | "playground" | "config" | "skills" | "mcp">("info");
 
   const fetchAgent = useCallback(async () => {
     try {
@@ -420,7 +424,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
 
   return (
       <>
-      <main className="flex flex-1 flex-col gap-6 p-6 bg-black">
+      <main className="flex flex-1 flex-col gap-6">
 
 
         {error && (
@@ -437,58 +441,116 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
           <p className="text-white/50">Agent not found.</p>
         ) : (
           <>
-            {/* Agent header */}
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="flex size-14 items-center justify-center rounded-xl bg-gradient-to-br from-brand-dark to-brand">
-                  <Bot className="size-7 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-white">{agent.name}</h1>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-sm text-white/50">
-                      @{agent.botUsername} &middot; Created{" "}
-                      {new Date(agent.createdAt).toLocaleDateString()}
-                    </p>
-                    {agent.type && (
-                      <span className={`rounded-full px-3 py-0.5 text-xs font-medium border ${getBadgeStyle(agent.type)}`}>
-                        {agent.type.charAt(0).toUpperCase() + agent.type.slice(1)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    agent.status === "active"
-                      ? "bg-success/15 text-success"
-                      : agent.status === "error"
-                        ? "bg-red-500/15 text-red-400"
-                        : agent.status === "starting"
-                          ? "bg-yellow-500/15 text-yellow-400"
-                          : "bg-white/10 text-white/50"
+            <div className="flex flex-col md:flex-row gap-6">
+              {/* Internal Sidebar Navigation */}
+              <div className="w-full md:w-56 shrink-0 flex flex-col gap-1 pr-4 border-r border-white/10 min-h-[400px]">
+                <button
+                  onClick={() => setActiveTab("info")}
+                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
+                    activeTab === "info" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
                   }`}
                 >
-                  {agent.status}
-                </span>
-
-                {agent.status === "active" && (
-                  <Button
-                    onClick={handleStop}
-                    disabled={stopping}
-                    variant="ghost"
-                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                  >
-                    <Power className="size-4 mr-1" />
-                    {stopping ? "Stopping..." : "Unlink Bot"}
-                  </Button>
-                )}
+                  <div className="flex items-center gap-2">
+                    <Brain className="size-4" /> Info & Memory
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab("playground")}
+                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
+                    activeTab === "playground" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Bot className="size-4" /> Playground
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab("config")}
+                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
+                    activeTab === "config" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Plug className="size-4" /> Connected Platforms
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab("skills")}
+                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
+                    activeTab === "skills" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Brain className="size-4" /> Skills
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab("mcp")}
+                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
+                    activeTab === "mcp" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Server className="size-4" /> MCP Servers
+                  </div>
+                </button>
               </div>
-            </div>
 
-            {/* Container info */}
+              {/* Main Content Area */}
+              <div className="flex-1 min-w-0 pb-10">
+                {activeTab === "info" && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    {/* Agent header */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="flex size-14 items-center justify-center rounded-xl bg-gradient-to-br from-brand-dark to-brand">
+                          <Bot className="size-7 text-white" />
+                        </div>
+                        <div>
+                          <h1 className="text-xl font-bold text-white">{agent.name}</h1>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-sm text-white/50">
+                              @{agent.botUsername} &middot; Created{" "}
+                              {new Date(agent.createdAt).toLocaleDateString()}
+                            </p>
+                            {agent.type && (
+                              <span className={`rounded-full px-3 py-0.5 text-xs font-medium border ${getBadgeStyle(agent.type)}`}>
+                                {agent.type.charAt(0).toUpperCase() + agent.type.slice(1)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            agent.status === "active"
+                              ? "bg-success/15 text-success"
+                              : agent.status === "error"
+                                ? "bg-red-500/15 text-red-400"
+                                : agent.status === "starting"
+                                  ? "bg-yellow-500/15 text-yellow-400"
+                                  : "bg-white/10 text-white/50"
+                          }`}
+                        >
+                          {agent.status}
+                        </span>
+
+                        {agent.status === "active" && (
+                          <Button
+                            onClick={handleStop}
+                            disabled={stopping}
+                            variant="ghost"
+                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                          >
+                            <Power className="size-4 mr-1" />
+                            {stopping ? "Stopping..." : "Unlink Bot"}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Container info */}
             {agent.containerId && (
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                 <p className="text-xs text-white/40 mb-1">Container</p>
@@ -573,8 +635,19 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
               )}
             </div>
 
-            <Separator className="bg-white/10" />
+          </div>
+        )}
 
+        {/* PLAYGROUND TAB */}
+        {activeTab === "playground" && (
+          <div className="h-[600px] rounded-xl border border-white/10 bg-black/20 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <ChatPageContent defaultAgentId={agentId} hideHeader={true} />
+          </div>
+        )}
+
+        {/* CONFIG TAB */}
+        {activeTab === "config" && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* Connected Platforms */}
             <div>
               <div className="flex items-center gap-2 mb-4">
@@ -732,13 +805,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                 })}
               </div>
             </div>
+          </div>
+        )}
 
-            <Separator className="bg-white/10" />
-
-          
-
-            <Separator className="bg-white/10" />
-
+        {/* SKILLS TAB */}
+        {activeTab === "skills" && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* Skills */}
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -818,9 +890,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                 )}
               </div>
             </div>
+          </div>
+        )}
 
-            <Separator className="bg-white/10" />
-
+        {/* MCP TAB */}
+        {activeTab === "mcp" && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* MCP Servers */}
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -972,7 +1047,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                 )}
               </div>
             </div>
-
+            
             <Separator className="bg-white/10" />
 
             {/* Activity log */}
@@ -1014,14 +1089,18 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                 </div>
               )}
             </div>
+          </div>
+        )}
+              </div>
+            </div>
           </>
         )}
       </main>
 
       {/* WhatsApp QR linking modal */}
       {showWaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm" style={{ background: "rgba(42,31,25,0.35)" }}>
+          <div className="relative w-full max-w-sm rounded-2xl p-6 shadow-2xl" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
             <button
               onClick={cancelWhatsappLink}
               className="absolute right-4 top-4 text-white/40 hover:text-white transition-colors"
