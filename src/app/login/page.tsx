@@ -9,7 +9,7 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0A0A0A',
+      background: 'var(--background)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -25,7 +25,7 @@ export default function LoginPage() {
         transform: 'translate(-50%, -50%)',
         width: '600px',
         height: '400px',
-        background: 'radial-gradient(ellipse, rgba(255,77,0,0.04) 0%, transparent 70%)',
+        background: 'radial-gradient(ellipse, rgba(255,77,0,0.08) 0%, transparent 70%)',
         pointerEvents: 'none',
       }} />
 

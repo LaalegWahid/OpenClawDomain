@@ -8,8 +8,10 @@ import {
 } from "../actions/settings.actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CreditCard } from "lucide-react";
+import { CreditCard, ChevronRight } from "lucide-react";
 
+const mono  = "var(--mono), 'JetBrains Mono', monospace";
+const serif = "var(--serif), 'Cormorant Garamond', Georgia, serif";
 
 function useSaved() {
   const [saved, setSaved] = useState(false);
@@ -33,8 +35,8 @@ function Field({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
       <label style={{
-        fontSize: "12px", fontWeight: 500,
-        letterSpacing: "0.02em", color: "#555555",
+        fontFamily: mono, fontSize: "11px", fontWeight: 500,
+        letterSpacing: "0.08em", color: "var(--foreground-2)",
         textTransform: "uppercase",
       }}>
         {label}
@@ -47,12 +49,13 @@ function Field({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
-          background: "#0A0A0A",
-          border: `0.5px solid ${focused ? "#FF4D00" : "#1E1E1E"}`,
+          background: "var(--surface-2)",
+          border: `1px solid ${focused ? "#FF4D00" : "var(--border)"}`,
           borderRadius: "8px",
           padding: "11px 14px",
-          fontSize: "14px",
-          color: "#F0EEE8",
+          fontSize: "13px",
+          fontFamily: mono,
+          color: "var(--foreground)",
           outline: "none",
           width: "100%",
           transition: "border-color 0.15s",
@@ -72,20 +75,20 @@ function Card({ title, desc, children, onSubmit, saved }: {
 }) {
   return (
     <form onSubmit={onSubmit} style={{
-      background: "#111111",
-      border: "0.5px solid #1E1E1E",
-      borderRadius: "16px",
+      background: "#fff",
+      border: "1px solid var(--border)",
+      borderRadius: "14px",
       padding: "1.75rem",
       display: "flex",
       flexDirection: "column",
       gap: "1.25rem",
     }}>
       <div>
-        <div style={{ fontSize: "15px", fontWeight: 500, color: "#F0EEE8", marginBottom: "4px" }}>{title}</div>
-        <div style={{ fontSize: "13px", color: "#555555", lineHeight: 1.6 }}>{desc}</div>
+        <div style={{ fontFamily: serif, fontSize: "18px", fontWeight: 600, color: "var(--foreground)", marginBottom: "4px" }}>{title}</div>
+        <div style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)", lineHeight: 1.6, letterSpacing: "0.02em" }}>{desc}</div>
       </div>
 
-      <div style={{ height: "0.5px", background: "#1E1E1E" }} />
+      <div style={{ height: "1px", background: "var(--border)" }} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         {children}
@@ -97,16 +100,18 @@ function Card({ title, desc, children, onSubmit, saved }: {
           color: "#fff",
           border: "none",
           borderRadius: "8px",
-          padding: "10px 20px",
-          fontSize: "13px",
+          padding: "9px 22px",
+          fontFamily: mono,
+          fontSize: "11px",
           fontWeight: 500,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
           cursor: "pointer",
-          letterSpacing: "-0.01em",
         }}>
           Save
         </button>
         {saved && (
-          <span style={{ fontSize: "12px", color: "#4CAF50" }}>Saved</span>
+          <span style={{ fontFamily: mono, fontSize: "11px", color: "#2FBF71", letterSpacing: "0.04em" }}>Saved ✓</span>
         )}
       </div>
     </form>
@@ -122,7 +127,6 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
   /* ── Profile ── */
   const [name, setName] = useState(userName ?? "");
   const [email, setEmail] = useState(userEmail ?? "");
-
   const profile = useSaved();
 
   function handleProfile(e: React.FormEvent) {
@@ -137,7 +141,6 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
   const [confirmPw, setConfirmPw] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
   const router = useRouter();
-
   const security = useSaved();
 
   function handlePassword(e: React.FormEvent) {
@@ -149,11 +152,13 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
     setCurrentPw(""); setNextPw(""); setConfirmPw("");
     security.flash();
   }
+
   useEffect(() => {
     if (!userName && !userEmail) {
       router.push("/login");
     }
   }, [userName, userEmail, router]);
+
   /* ── Account ── */
   const [preferences, setPreferences] = useState("");
   const [prefFocused, setPrefFocused] = useState(false);
@@ -166,20 +171,22 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
   }
 
   return (
-    <div>
+    <div style={{ maxWidth: 960, margin: "0 auto" }}>
       {/* Heading */}
       <div style={{ marginBottom: "2.5rem" }}>
         <h1 style={{
-          fontSize: "clamp(1.4rem, 3vw, 1.9rem)",
-          fontWeight: 500,
-          letterSpacing: "-0.03em",
-          color: "#F0EEE8",
+          fontFamily: serif,
+          fontSize: "clamp(1.8rem, 3vw, 2.4rem)",
+          fontWeight: 600,
+          letterSpacing: "-0.02em",
+          color: "var(--foreground)",
           marginBottom: "6px",
           lineHeight: 1.1,
+          margin: "0 0 6px",
         }}>
-          Settings
+          Profile
         </h1>
-        <p style={{ fontSize: "13px", color: "#555555", lineHeight: 1.6 }}>
+        <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)", lineHeight: 1.6, letterSpacing: "0.02em", margin: 0 }}>
           Manage your account and preferences.
         </p>
       </div>
@@ -197,10 +204,10 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
           {pwError && (
             <div style={{
               background: "rgba(255,77,0,0.06)",
-              border: "0.5px solid rgba(255,77,0,0.3)",
+              border: "1px solid rgba(255,77,0,0.25)",
               borderRadius: "8px",
               padding: "10px 14px",
-              fontSize: "13px",
+              fontFamily: mono, fontSize: "12px",
               color: "#FF4D00",
             }}>
               {pwError}
@@ -214,10 +221,10 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
         {/* Billing */}
         <Link href="/settings/billing" style={{ textDecoration: "none" }}>
           <div style={{
-            background: "#111111",
-            border: "0.5px solid #1E1E1E",
-            borderRadius: "16px",
-            padding: "1.75rem",
+            background: "#fff",
+            border: "1px solid var(--border)",
+            borderRadius: "14px",
+            padding: "1.5rem 1.75rem",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -225,38 +232,40 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
             transition: "border-color 0.15s",
           }}
           onMouseEnter={e => (e.currentTarget.style.borderColor = "#FF4D00")}
-          onMouseLeave={e => (e.currentTarget.style.borderColor = "#1E1E1E")}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <CreditCard size={18} style={{ color: "#FF4D00" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+              <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: "rgba(255,77,0,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <CreditCard size={17} style={{ color: "#FF4D00" }} />
+              </div>
               <div>
-                <div style={{ fontSize: "15px", fontWeight: 500, color: "#F0EEE8", marginBottom: "4px" }}>Billing</div>
-                <div style={{ fontSize: "13px", color: "#555555", lineHeight: 1.6 }}>
+                <div style={{ fontFamily: serif, fontSize: "17px", fontWeight: 600, color: "var(--foreground)", marginBottom: "3px" }}>Billing</div>
+                <div style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", letterSpacing: "0.02em" }}>
                   Manage your subscription, payment methods, and invoices.
                 </div>
               </div>
             </div>
-            <span style={{ fontSize: "18px", color: "#555555" }}>&rarr;</span>
+            <ChevronRight size={16} style={{ color: "var(--foreground-3)", flexShrink: 0 }} />
           </div>
         </Link>
 
         {/* Account */}
         <form onSubmit={handleAccount} style={{
-          background: "#111111",
-          border: "0.5px solid #1E1E1E",
-          borderRadius: "16px",
+          background: "#fff",
+          border: "1px solid var(--border)",
+          borderRadius: "14px",
           padding: "1.75rem",
           display: "flex",
           flexDirection: "column",
           gap: "1.25rem",
         }}>
           <div>
-            <div style={{ fontSize: "15px", fontWeight: 500, color: "#F0EEE8", marginBottom: "4px" }}>Account</div>
-            <div style={{ fontSize: "13px", color: "#555555", lineHeight: 1.6 }}>Manage your account preferences and notes.</div>
+            <div style={{ fontFamily: serif, fontSize: "18px", fontWeight: 600, color: "var(--foreground)", marginBottom: "4px" }}>Account</div>
+            <div style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)", lineHeight: 1.6, letterSpacing: "0.02em" }}>Manage your account preferences and notes.</div>
           </div>
-          <div style={{ height: "0.5px", background: "#1E1E1E" }} />
+          <div style={{ height: "1px", background: "var(--border)" }} />
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <label style={{ fontSize: "12px", fontWeight: 500, letterSpacing: "0.02em", color: "#555555", textTransform: "uppercase" }}>
+            <label style={{ fontFamily: mono, fontSize: "11px", fontWeight: 500, letterSpacing: "0.08em", color: "var(--foreground-2)", textTransform: "uppercase" }}>
               Preferences
             </label>
             <textarea
@@ -267,17 +276,17 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
               onFocus={() => setPrefFocused(true)}
               onBlur={() => setPrefFocused(false)}
               style={{
-                background: "#0A0A0A",
-                border: `0.5px solid ${prefFocused ? "#FF4D00" : "#1E1E1E"}`,
+                background: "var(--surface-2)",
+                border: `1px solid ${prefFocused ? "#FF4D00" : "var(--border)"}`,
                 borderRadius: "8px",
                 padding: "11px 14px",
-                fontSize: "14px",
-                color: "#F0EEE8",
+                fontSize: "13px",
+                fontFamily: mono,
+                color: "var(--foreground)",
                 outline: "none",
                 width: "100%",
                 resize: "none",
                 transition: "border-color 0.15s",
-                fontFamily: "inherit",
                 boxSizing: "border-box",
               }}
             />
@@ -285,12 +294,13 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <button type="submit" style={{
               background: "#FF4D00", color: "#fff", border: "none",
-              borderRadius: "8px", padding: "10px 20px",
-              fontSize: "13px", fontWeight: 500, cursor: "pointer", letterSpacing: "-0.01em",
+              borderRadius: "8px", padding: "9px 22px",
+              fontFamily: mono, fontSize: "11px", fontWeight: 500,
+              letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer",
             }}>
               Save
             </button>
-            {account.saved && <span style={{ fontSize: "12px", color: "#4CAF50" }}>Saved</span>}
+            {account.saved && <span style={{ fontFamily: mono, fontSize: "11px", color: "#2FBF71", letterSpacing: "0.04em" }}>Saved ✓</span>}
           </div>
         </form>
       </div>

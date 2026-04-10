@@ -22,9 +22,9 @@ interface AgentOption {
   type?: string;
 }
 
-export function ChatPageContent() {
+export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaultAgentId?: string, hideHeader?: boolean } = {}) {
   const [agents, setAgents] = useState<AgentOption[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(defaultAgentId || "");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -33,7 +33,7 @@ export function ChatPageContent() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+  const selectedAgent = defaultAgentId ? { id: defaultAgentId, name: "Agent", status: "active", type: "default" } : agents.find((a) => a.id === selectedAgentId);
   const isActive = selectedAgent?.status === "active";
 
   const scrollToBottom = useCallback(() => {
@@ -44,6 +44,10 @@ export function ChatPageContent() {
 
   // Load agents list
   useEffect(() => {
+    if (defaultAgentId) {
+       setLoadingAgents(false);
+       return;
+    }
     fetch("/api/agents")
       .then((r) => r.json())
       .then((data) => {
@@ -63,7 +67,7 @@ export function ChatPageContent() {
       })
       .catch(() => setError("Failed to load agents"))
       .finally(() => setLoadingAgents(false));
-  }, []);
+  }, [defaultAgentId]);
 
   // Load chat history when agent changes
   useEffect(() => {
@@ -147,7 +151,7 @@ if (loadingAgents) {
   );
 }
 
-if (agents.length === 0) {
+if (!defaultAgentId && agents.length === 0) {
   return (
     <div className="text-center py-20 px-4">
       <Bot className="size-12 text-white/20 mx-auto mb-4" />
@@ -157,25 +161,27 @@ if (agents.length === 0) {
 }
 
 return (
-  <div className="flex flex-col h-[calc(100dvh-120px)] min-h-0">
-    {/* Agent selector */}
-    <div className="mb-3 flex-shrink-0">
-      <label className="block text-xs text-white/40 mb-1.5">Agent</label>
-      <div className="relative">
-        <select
-          value={selectedAgentId}
-          onChange={(e) => setSelectedAgentId(e.target.value)}
-          className="w-full appearance-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 sm:px-4 sm:py-2.5 pr-9 text-sm text-white focus:outline-none focus:border-brand/40"
-        >
-          {agents.map((a) => (
-            <option key={a.id} value={a.id} className="bg-zinc-900 text-white">
-              {a.name} — {a.status}{a.type ? ` (${a.type})` : ""}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-white/40" />
+  <div className="flex flex-col h-full min-h-0 flex-1">
+    {/* Agent selector (hide if hideHeader is true) */}
+    {!hideHeader && (
+      <div className="mb-3 flex-shrink-0">
+        <label className="block text-xs text-white/40 mb-1.5">Agent</label>
+        <div className="relative">
+          <select
+            value={selectedAgentId}
+            onChange={(e) => setSelectedAgentId(e.target.value)}
+            className="w-full appearance-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 sm:px-4 sm:py-2.5 pr-9 text-sm text-white focus:outline-none focus:border-brand/40"
+          >
+            {agents.map((a) => (
+              <option key={a.id} value={a.id} className="bg-zinc-900 text-white">
+                {a.name} — {a.status}{a.type ? ` (${a.type})` : ""}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-white/40" />
+        </div>
       </div>
-    </div>
+    )}
 
     {/* Chat area */}
     <div className="flex-1 flex flex-col rounded-xl border border-white/10 bg-white/5 overflow-hidden min-h-0">
