@@ -380,7 +380,7 @@ export default function ClawScrollSection() {
           height: '100vh',
           width: '100%',
           overflow: 'hidden',
-          background: '#1A1A1A',
+          background: '#f8f2ed',
         }}
       >
         {/* LAYER 1 — Hand images (crossfade) */}
@@ -391,17 +391,17 @@ export default function ClawScrollSection() {
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, calc(-50% + 40px)) scale(0.88)',
-            width: 'min(520px, 80vw)',
+            width: 'min(820px, 90vw)',
             willChange: 'transform',
             pointerEvents: 'none',
             userSelect: 'none',
           }}
         >
-          {/* frame-1 — closed fist, fades out */}
+          {/* frame-1 — closing arms, fades out */}
           <img
             ref={frame1Ref}
-            src="/images/frame-1.png"
-            alt="Closed fist"
+            src="/images/lobster-closing-arms.png"
+            alt="Lobster closing arms"
             style={{
               position: 'absolute',
               top: 0,
@@ -412,11 +412,11 @@ export default function ClawScrollSection() {
               willChange: 'opacity',
             }}
           />
-          {/* frame-2 — open hand, crossfades in */}
+          {/* frame-2 — opening arms, crossfades in */}
           <img
             ref={frame2Ref}
-            src="/images/frame-2.png"
-            alt="Open hand"
+            src="/images/lobster-opening-arms.png"
+            alt="Lobster opening arms"
             style={{
               position: 'relative',
               width: '100%',
@@ -434,7 +434,7 @@ export default function ClawScrollSection() {
               left: '-20%',
               width: '140%',
               height: '55%',
-              background: 'radial-gradient(ellipse 70% 60% at 50% 100%, #0A0A0A 30%, transparent 75%)',
+              background: 'radial-gradient(ellipse 70% 60% at 50% 100%, #f8f2ed 30%, transparent 75%)',
               pointerEvents: 'none',
             }}
           />
@@ -446,7 +446,7 @@ export default function ClawScrollSection() {
             transform: 'translateX(-50%)',
             width: '140%',
             height: '52%',
-            background: 'radial-gradient(ellipse 80% 70% at 50% 100%, #1A1A1A 38%, rgba(26,26,26,0.85) 58%, rgba(26,26,26,0.4) 75%, transparent 100%)',
+            background: 'radial-gradient(ellipse 80% 70% at 50% 100%, #f8f2ed 38%, rgba(248,242,237,0.85) 58%, rgba(248,242,237,0.4) 75%, transparent 100%)',
             pointerEvents: 'none',
           }} />
         </div>
@@ -495,14 +495,14 @@ export default function ClawScrollSection() {
                 fontSize: 'clamp(2rem, 5vw, 3.2rem)',
                 fontWeight: 500,
                 letterSpacing: '-0.03em',
-                color: '#FFFFFF',
+                color: '#2a1f19',
                 lineHeight: 1.15,
                 margin: 0,
                 padding: '0 20px',
               }}
             >
-              Your agents are on line 1, waiting to{' '}
-              <span style={{ color: '#FF4D00' }}>deploy.</span>
+              Your agents are ready, <i>waiting to{' '}
+              <span style={{ color: '#FF4D00' }}>deploy.</span></i>
             </h2>
           </div>
 
@@ -523,7 +523,7 @@ export default function ClawScrollSection() {
             <span
               style={{
                 fontSize: 'clamp(1rem, 2.5vw, 1.4rem)',
-                color: '#C8C4BC',
+                color: '#8a7060',
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
               }}
