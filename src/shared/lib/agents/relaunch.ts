@@ -5,6 +5,7 @@ import { launchContainer, stopContainer, waitForTaskRunning } from "./docker";
 import type { ChannelConfig, McpServerConfig } from "./docker";
 import { logger } from "../logger";
 import type { AgentType } from "./config";
+import { decryptIfPresent } from "../crypto";
 
 /**
  * Stops the agent's current ECS task and relaunches it with the full set of
@@ -62,27 +63,35 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
     };
   }
 
-  // ── 6. Stop old container ─────────────────────────────────────────────────
+  // ── 6. Decrypt per-agent API keys ─────────────────────────────────────────
+  const apiKeys = {
+    apiProvider: agentRecord.apiProvider ?? undefined,
+    apiKey: decryptIfPresent(agentRecord.apiKey),
+    agentModel: agentRecord.agentModel ?? undefined,
+  };
+
+  // ── 7. Stop old container ─────────────────────────────────────────────────
   if (agentRecord.containerId) {
     await stopContainer(agentRecord.containerId);
   }
 
-  // ── 7. Relaunch with full config ──────────────────────────────────────────
+  // ── 8. Relaunch with full config ──────────────────────────────────────────
   const { containerId } = await launchContainer(
     agentRecord.userId,
     agentId,
     agentRecord.type as AgentType,
     channelConfig,
     Object.keys(mcpConfig).length > 0 ? mcpConfig : undefined,
+    apiKeys,
   );
 
-  // ── 8. Update agent record ────────────────────────────────────────────────
+  // ── 9. Update agent record ────────────────────────────────────────────────
   await db
     .update(agent)
     .set({ containerId, status: "starting" })
     .where(eq(agent.id, agentId));
 
-  // ── 9. Promote to active when running (fire-and-forget) ───────────────────
+  // ── 10. Promote to active when running (fire-and-forget) ──────────────────
   waitForTaskRunning(containerId)
     .then(() =>
       db.update(agent).set({ status: "active" }).where(eq(agent.id, agentId)),
