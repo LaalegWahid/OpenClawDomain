@@ -178,6 +178,7 @@ EOF
 # Available Tools
 - web_search: search the internet for current information
 - file_reader: read files from the workspace
+- code_execution: run shell commands and Python scripts in the workspace
 # Convention
 Only use tools relevant to your role.
 EOF
