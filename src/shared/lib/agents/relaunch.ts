@@ -2,7 +2,7 @@ import { db } from "../drizzle";
 import { agent, agentChannel, agentMcp } from "../../db/schema/agent";
 import { eq } from "drizzle-orm";
 import { launchContainer, stopContainer, waitForTaskRunning, fetchOpenClawAgentId } from "./docker";
-import type { ChannelConfig, McpServerConfig } from "./docker";
+import type { ChannelConfig, McpServerConfig, AgentApiKeys } from "./docker";
 import { logger } from "../logger";
 import type { AgentType } from "./config";
 import { decryptIfPresent } from "../crypto";
@@ -63,12 +63,23 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
     };
   }
 
-  // ── 6. Decrypt per-agent API keys ─────────────────────────────────────────
-  const apiKeys = {
-    apiProvider: agentRecord.apiProvider ?? undefined,
-    apiKey: decryptIfPresent(agentRecord.apiKey),
-    agentModel: agentRecord.agentModel ?? undefined,
-  };
+  // ── 6. Decrypt API key (must match what launchContainer originally received) ─
+  const decryptedKey = agentRecord.apiKey
+    ? decryptIfPresent(agentRecord.apiKey)
+    : undefined;
+
+  const apiKeys: AgentApiKeys | undefined =
+    agentRecord.apiProvider && decryptedKey
+      ? {
+          apiProvider: agentRecord.apiProvider,
+          apiKey: decryptedKey,
+          agentModel: agentRecord.agentModel ?? undefined,
+        }
+      : undefined;
+
+  if (!apiKeys) {
+    logger.warn({ agentId }, "Relaunching agent with no API key — container will fail to call LLM");
+  }
 
   // ── 7. Stop old container ─────────────────────────────────────────────────
   if (agentRecord.containerId) {
