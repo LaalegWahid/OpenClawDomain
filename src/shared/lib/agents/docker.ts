@@ -436,6 +436,21 @@ export async function sendCommand(
   return runAgentLoop(baseUrl, input, 60_000);
 }
 
+export async function fetchOpenClawAgentId(taskArn: string): Promise<string | null> {
+  try {
+    const baseUrl = await getContainerBaseUrl(taskArn);
+    const res = await fetch(`${baseUrl}/v1/agents`, {
+      headers: { Authorization: `Bearer ${getGatewayToken()}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.agents?.[0]?.id ?? data?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function sendDocumentCommand(
   taskArn: string,
   developerInstruction: string,
