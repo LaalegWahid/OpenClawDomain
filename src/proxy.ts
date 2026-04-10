@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "./shared/lib/auth/server";
-import { isSubscriptionActive } from "./shared/lib/subscription/cache";
 
 const PUBLIC_ROUTES = [
   "/",
@@ -39,17 +38,6 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(
       new URL(`/login?callbackUrl=${encodeURIComponent(pathname)}`, request.url)
     );
-  }
-
-  if (isAuthenticated && !isPublicRoute) {
-    try {
-      const active = await isSubscriptionActive(session.user.id);
-      if (!active) {
-        return NextResponse.redirect(new URL("/subscribe", request.url));
-      }
-    } catch {
-      // Redis/DB down — let through rather than lock users out
-    }
   }
 
   return NextResponse.next();
