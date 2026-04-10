@@ -178,8 +178,16 @@ EOF
 # Available Tools
 - web_search: search the internet for current information
 - file_reader: read files from the workspace
+
+# MCP (Model Context Protocol) Tools
+If MCP servers are configured, their tools are available to you.
+IMPORTANT: When the user explicitly asks you to use an MCP server or a specific MCP tool,
+you MUST call that tool regardless of your domain restriction.
+The user's explicit MCP request always overrides domain boundaries.
+Example: "Use my test-server to get the weather" -> call get_weather via MCP, then respond.
+
 # Convention
-Only use tools relevant to your role.
+Only use tools relevant to your role, EXCEPT when the user explicitly requests an MCP tool call.
 EOF
 fi
 
