@@ -2,6 +2,7 @@ import { SidebarProvider } from "../../../shared/components/ui/sidebar";
 import { AppSidebar } from "../../../feature/overview/components/app-sidebar";
 import { AgentDetailContent } from "../../../feature/agents/components/agent-detail-content";
 import { getCurrentUser } from "../../../feature/overview/actions/user.actions";
+import { DashboardShell } from "@/feature/overview/components/dashboard-shell";
 
 export default async function AgentDetailPage({
   params,
@@ -12,11 +13,13 @@ export default async function AgentDetailPage({
   const { agentId } = await params;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-stone-950 to-zinc-900">
-      <SidebarProvider>
-        <AppSidebar userEmail={user?.email} userName={user?.name} />
-        <AgentDetailContent agentId={agentId} />
-      </SidebarProvider>
-    </div>
+   <DashboardShell
+         userEmail={user?.email}
+         userName={user?.name}
+         pageTitle="Dashboard"
+         isAdmin={user?.role === "admin"}
+       >
+         <AgentDetailContent agentId={agentId} />
+       </DashboardShell>
   );
 }

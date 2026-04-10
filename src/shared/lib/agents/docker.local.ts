@@ -1,3 +1,4 @@
+// /docker.local.ts
 import Dockerode from "dockerode";
 import net from "net";
 import path from "path";
@@ -5,7 +6,6 @@ import fs from "fs";
 import { logger } from "../logger";
 import type { ChannelConfig, LaunchResult, McpServerConfig } from "./docker";
 import type { AgentType } from "./config";
-import { DOMAIN_CONFIGS } from "./config";
 
 const docker = new Dockerode();
 
@@ -38,15 +38,15 @@ export async function localGetContainerPort(containerId: string): Promise<number
 export async function localLaunchContainer(
   userId: string,
   agentId: string,
-  systemPrompt: string,
   agentType: AgentType,
   channels?: ChannelConfig,
   mcpServers?: Record<string, McpServerConfig>,
 ): Promise<LaunchResult> {
-  const domainConfig = DOMAIN_CONFIGS[agentType];
-  const fullSystemPrompt = domainConfig.boundaryPreamble + systemPrompt;
   const image = process.env.LOCAL_AGENT_IMAGE;
   if (!image) throw new Error("LOCAL_AGENT_IMAGE is not set");
+
+  const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+  if (!webhookBaseUrl) throw new Error("WEBHOOK_BASE_URL is not set");
 
   const baseDir = path.resolve(process.env.LOCAL_OPENCLAW_HOME ?? "./local-agent-data");
   const hostHome = path.join(baseDir, userId, agentId);
@@ -55,15 +55,16 @@ export async function localLaunchContainer(
   const env: string[] = [
     `AGENT_ID=${agentId}`,
     `AGENT_TYPE=${agentType}`,
-    `SYSTEM_PROMPT=${fullSystemPrompt}`,
     `OPENCLAW_HOME=/home/node/.openclaw/${userId}/${agentId}`,
     `GATEWAY_TOKEN=${process.env.GATEWAY_TOKEN ?? ""}`,
+    `WEBHOOK_BASE_URL=${webhookBaseUrl}`,
   ];
   if (process.env.ANTHROPIC_API_KEY) env.push(`ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`);
   if (process.env.GEMINI_API_KEY) env.push(`GEMINI_API_KEY=${process.env.GEMINI_API_KEY}`);
   if (process.env.OPENROUTER_API_KEY) env.push(`OPENROUTER_API_KEY=${process.env.OPENROUTER_API_KEY}`);
+  if (process.env.OPENROUTER_CONFIG_KEY) env.push(`OPENROUTER_CONFIG_KEY=${process.env.OPENROUTER_CONFIG_KEY}`);
+
   if (process.env.AGENT_MODEL) env.push(`AGENT_MODEL=${process.env.AGENT_MODEL}`);
-  if (channels?.discord?.botToken) env.push(`DISCORD_BOT_TOKEN=${channels.discord.botToken}`);
   if (channels?.whatsapp?.enabled) env.push(`WHATSAPP_ENABLED=true`);
   if (mcpServers && Object.keys(mcpServers).length > 0) {
     env.push(`MCP_CONFIG_B64=${Buffer.from(JSON.stringify(mcpServers)).toString("base64")}`);

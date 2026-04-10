@@ -4,6 +4,7 @@ import { db } from "../../../../../shared/lib/drizzle";
 import { agent, agentMcp } from "../../../../../shared/db/schema/agent";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../../../../../shared/lib/logger";
+import { relaunchAgentWithChannels } from "../../../../../shared/lib/agents/relaunch";
 
 const ALLOWED_TRANSPORTS = ["stdio", "http"] as const;
 
@@ -105,6 +106,9 @@ export async function POST(
       .values({ agentId: id, serverName, transport, config })
       .returning();
 
+    void relaunchAgentWithChannels(id).catch((err) =>
+      logger.error({ err, agentId: id }, "Failed to relaunch agent after MCP add"),
+    );
     logger.info({ agentId: id, serverName, transport }, "MCP server added");
     return NextResponse.json({ server: created }, { status: 201 });
   } catch (err) {

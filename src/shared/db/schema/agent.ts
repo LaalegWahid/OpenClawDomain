@@ -10,6 +10,7 @@ import {
   boolean,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
+import { agentSkill } from "./skill";
 
 export const agent = pgTable(
   "agent",
@@ -26,7 +27,11 @@ export const agent = pgTable(
     botUsername: text("bot_username").notNull(),
     systemPrompt: text("system_prompt").notNull(),
     type: text("type").notNull().default("finance"), // "finance" | "marketing" | "operations"
+    isPrimary: boolean("is_primary").default(false).notNull(),
     containerId: text("container_id"),
+    apiProvider: text("api_provider"),  // e.g. "anthropic", "openrouter", "gemini", "mistral", "cohere"
+    apiKey: text("api_key"),           // encrypted — single key for the chosen provider
+    agentModel: text("agent_model"),   // e.g. "claude-sonnet-4-20250514"
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
@@ -139,6 +144,7 @@ export const agentRelations = relations(agent, ({ one, many }) => ({
   chatSessions: many(chatSession),
   channels: many(agentChannel),
   mcpServers: many(agentMcp),
+  skills: many(agentSkill),
 }));
 
 export const agentActivityRelations = relations(agentActivity, ({ one }) => ({

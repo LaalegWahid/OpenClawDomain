@@ -1,3 +1,5 @@
+// /docker.ts
+
 import {
   ECSClient,
   RunTaskCommand,
@@ -5,9 +7,11 @@ import {
   DescribeTasksCommand,
 } from "@aws-sdk/client-ecs";
 import { logger } from "../logger";
-import { DOMAIN_CONFIGS, type AgentType } from "./config";
+import { getDomainConfig, type AgentType } from "./config";
 
 const ecs = new ECSClient({ region: process.env.AWS_REGION || "us-west-1" });
+
+const TASK_DEFINITION = process.env.ECS_TASK_DEFINITION ?? "openclawmanager-agent";
 
 function getCluster(): string {
   const v = process.env.ECS_CLUSTER_ARN;
@@ -84,41 +88,104 @@ export interface McpServerConfig {
   config: Record<string, unknown>;
 }
 
+/**
+ * Maps a provider slug to the env-var name the container expects.
+ */
+/**
+ * Maps the provider slug (from the frontend/DB) to the env var the container expects.
+ * The OpenClaw gateway natively supports: anthropic, google, openai, openrouter.
+ * All other providers (groq, mistral, xai, etc.) are accessed via OpenRouter.
+ */
+const PROVIDER_ENV_MAP: Record<string, string> = {
+  anthropic:  "ANTHROPIC_API_KEY",
+  google:     "GEMINI_API_KEY",
+  openai:     "OPENAI_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+};
+
+/**
+ * Maps provider slugs to the gateway routing prefix for model IDs.
+ * The gateway expects "prefix/model" format (e.g. "anthropic/claude-4.6-sonnet").
+ * OpenRouter models already include their prefix (e.g. "groq/compound-beta").
+ */
+const PROVIDER_MODEL_PREFIX: Record<string, string> = {
+  anthropic: "anthropic",
+  google:    "google",
+  openai:    "openai",
+};
+
+/**
+ * Per-agent API config (already decrypted).
+ * One provider + one key per agent.
+ */
+export interface AgentApiKeys {
+  apiProvider?: string;   // e.g. "anthropic", "mistral"
+  apiKey?: string;        // the decrypted secret
+  agentModel?: string;    // e.g. "claude-sonnet-4-20250514"
+}
+
 export async function launchContainer(
   userId: string,
   agentId: string,
-  systemPrompt: string,
   agentType: AgentType,
   channels?: ChannelConfig,
   mcpServers?: Record<string, McpServerConfig>,
+  apiKeys?: AgentApiKeys,
 ): Promise<LaunchResult> {
   if (process.env.LOCAL_DEV === "true") {
     const { localLaunchContainer } = await import("./docker.local");
-    return localLaunchContainer(userId, agentId, systemPrompt, agentType, channels, mcpServers);
+    return localLaunchContainer(userId, agentId, agentType, channels, mcpServers);
   }
-  const domainConfig = DOMAIN_CONFIGS[agentType];
-  const fullSystemPrompt = domainConfig.boundaryPreamble + systemPrompt;
 
   logger.info({ agentId, agentType }, "Launching ECS agent task");
 
+  const webhookBaseUrl = process.env.WEBHOOK_BASE_URL;
+  if (!webhookBaseUrl) throw new Error("WEBHOOK_BASE_URL is not set");
+
   const extraEnv: { name: string; value: string }[] = [];
+
+  if (channels?.whatsapp?.enabled) {
+    extraEnv.push({ name: "WHATSAPP_ENABLED", value: "true" });
+    extraEnv.push({
+      name: "WHATSAPP_INBOUND_WEBHOOK_URL",
+      value: `${webhookBaseUrl}/api/whatsapp/inbound/${agentId}`,
+    });
+  }
 
   if (channels?.discord?.botToken) {
     extraEnv.push({ name: "DISCORD_BOT_TOKEN", value: channels.discord.botToken });
   }
-  if (channels?.whatsapp?.enabled) {
-    // Credentials live on EFS (written by the WhatsApp linker task).
-    // We only need to tell the entrypoint to enable the channel in openclaw.json.
-    extraEnv.push({ name: "WHATSAPP_ENABLED", value: "true" });
-  }
+
   if (mcpServers && Object.keys(mcpServers).length > 0) {
     const mcpConfigB64 = Buffer.from(JSON.stringify(mcpServers)).toString("base64");
     extraEnv.push({ name: "MCP_CONFIG_B64", value: mcpConfigB64 });
   }
 
+  // Inject the agent's single provider key as the correct env var
+  if (apiKeys?.apiProvider && apiKeys?.apiKey) {
+    const envName = PROVIDER_ENV_MAP[apiKeys.apiProvider] ?? `${apiKeys.apiProvider.toUpperCase()}_API_KEY`;
+    extraEnv.push({ name: envName, value: apiKeys.apiKey });
+  }
+
+  // Build the fully-qualified model ID the gateway expects ("provider/model").
+  // Anthropic/Google models need their prefix added (e.g. "anthropic/claude-sonnet-4-6").
+  // OpenRouter models already have a sub-provider prefix (e.g. "groq/compound-beta")
+  // but still need the "openrouter/" top-level prefix for the gateway.
+  let agentModel = apiKeys?.agentModel ?? process.env.AGENT_MODEL ?? "openrouter/qwen/qwen3-32b";
+  if (apiKeys?.apiProvider && apiKeys?.agentModel) {
+    const prefix = PROVIDER_MODEL_PREFIX[apiKeys.apiProvider];
+    if (prefix) {
+      // Native provider (anthropic, google): prefix/model
+      agentModel = `${prefix}/${apiKeys.agentModel}`;
+    } else if (apiKeys.apiProvider === "openrouter") {
+      // OpenRouter: openrouter/subprovider/model
+      agentModel = `openrouter/${apiKeys.agentModel}`;
+    }
+  }
+
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
-    taskDefinition: `openclawmanager-agent-${agentType}`,
+    taskDefinition: TASK_DEFINITION,
     launchType: "FARGATE",
     networkConfiguration: {
       awsvpcConfiguration: {
@@ -131,10 +198,12 @@ export async function launchContainer(
       containerOverrides: [{
         name: "agent",
         environment: [
-          { name: "AGENT_ID",      value: agentId },
-          { name: "AGENT_TYPE",    value: agentType },
-          { name: "SYSTEM_PROMPT", value: fullSystemPrompt },
-          { name: "OPENCLAW_HOME", value: `/home/node/.openclaw/${userId}/${agentId}` },
+          { name: "AGENT_ID",         value: agentId },
+          { name: "AGENT_TYPE",       value: agentType },
+          { name: "OPENCLAW_HOME",    value: `/home/node/.openclaw/${userId}/${agentId}` },
+          { name: "AGENT_MODEL",      value: agentModel },
+          { name: "WEBHOOK_BASE_URL", value: webhookBaseUrl },
+          { name: "GATEWAY_TOKEN",    value: getGatewayToken() },
           ...extraEnv,
         ],
       }],
@@ -153,7 +222,6 @@ export async function launchContainer(
 export async function launchWhatsappLinker(
   userId: string,
   agentId: string,
-  agentType: AgentType,
 ): Promise<string> {
   if (process.env.LOCAL_DEV === "true") {
     const { localLaunchWhatsappLinker } = await import("./docker.local");
@@ -164,7 +232,7 @@ export async function launchWhatsappLinker(
 
   const result = await ecs.send(new RunTaskCommand({
     cluster: getCluster(),
-    taskDefinition: `openclawmanager-agent-${agentType}`,
+    taskDefinition: TASK_DEFINITION,
     launchType: "FARGATE",
     networkConfiguration: {
       awsvpcConfiguration: {
@@ -177,11 +245,11 @@ export async function launchWhatsappLinker(
       containerOverrides: [{
         name: "agent",
         environment: [
-          { name: "OPENCLAW_MODE",   value: "whatsapp_link" },
-          { name: "AGENT_ID",        value: agentId },
-          { name: "OPENCLAW_HOME",   value: `/home/node/.openclaw/${userId}/${agentId}` },
+          { name: "OPENCLAW_MODE",    value: "whatsapp_link" },
+          { name: "AGENT_ID",         value: agentId },
+          { name: "OPENCLAW_HOME",    value: `/home/node/.openclaw/${userId}/${agentId}` },
           { name: "WEBHOOK_BASE_URL", value: webhookBaseUrl },
-          { name: "GATEWAY_TOKEN",   value: getGatewayToken() },
+          { name: "GATEWAY_TOKEN",    value: getGatewayToken() },
         ],
       }],
     },
@@ -276,16 +344,6 @@ async function callGateway(baseUrl: string, input: unknown, timeoutMs: number): 
 }
 
 // ─── Agentic tool loop ────────────────────────────────────────────────────────
-//
-// OpenClaw returns function_call items when the agent wants to use a tool.
-// We must feed the result back as function_call_output and keep looping
-// until we get a plain message output — otherwise tool calls silently fail.
-//
-// We don't actually execute the tools ourselves (web_search, file_reader etc.
-// run INSIDE the agent container). We just need to handle the loop so OpenClaw
-// can complete its internal multi-step execution and return the final text.
-//
-// The loop has a max of 8 iterations to prevent runaway tool chains.
 
 async function runAgentLoop(
   baseUrl: string,
@@ -299,7 +357,6 @@ async function runAgentLoop(
     const data = await callGateway(baseUrl, input, timeoutMs);
     const output: OutputItem[] = data.output ?? [];
 
-    // Collect any text from message items
     const textParts = output
       .filter((item): item is Extract<OutputItem, { type: "message" }> => item.type === "message")
       .flatMap((item) =>
@@ -308,39 +365,25 @@ async function runAgentLoop(
           .map((c) => c.text)
       );
 
-    // Check for pending tool calls
     const toolCalls = output.filter(
       (item): item is Extract<OutputItem, { type: "function_call" }> =>
         item.type === "function_call"
     );
 
     if (toolCalls.length === 0) {
-      // No tool calls — we're done
       if (textParts.length > 0) return textParts.join("\n");
-
-      // Fallback for non-standard response shapes
       const d = data as Record<string, unknown>;
       if (typeof d.output_text === "string") return d.output_text;
       if (typeof d.response === "string") return d.response;
       return JSON.stringify(data);
     }
 
-    // There are tool calls — build the next input by appending the output
-    // items (including the function_call items) plus function_call_output
-    // stubs. OpenClaw executes the tools internally; we just need to
-    // acknowledge them so the loop can continue.
-    //
-    // Note: the output array from this turn becomes part of the next input,
-    // which is how the OpenResponses API tracks conversation state.
     const toolResults: OutputItem[] = toolCalls.map((call) => ({
       type: "function_call_output" as const,
       call_id: call.id,
-      // Empty string signals "tool ran, no output to inject" —
-      // the agent's internal tool execution already happened inside OpenClaw.
       output: "",
     }));
 
-    // Next input = prior output items + tool result acknowledgements
     input = [...output, ...toolResults];
 
     logger.info(
@@ -354,9 +397,6 @@ async function runAgentLoop(
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Send a regular chat message to the agent.
- */
 export async function sendCommand(
   taskArn: string,
   command: string,
@@ -367,19 +407,17 @@ export async function sendCommand(
 
   let input: unknown;
 
-  // Use structured input array when we have history or an agentType reminder,
-  // plain string for simple single-turn messages
   if (history && history.length > 0 || agentType) {
     type InputItem = { type: "message"; role: "developer" | "user" | "assistant"; content: string };
 
     const items: InputItem[] = [];
 
     if (agentType) {
-      const domainConfig = DOMAIN_CONFIGS[agentType];
+      const domainCfg = await getDomainConfig(agentType);
       items.push({
         type: "message",
         role: "developer",
-        content: `[REMINDER: You are a ${domainConfig.label}. If the question is NOT about ${agentType}, refuse politely.]`,
+        content: `[REMINDER: You are a ${domainCfg.label}. If the question is NOT about ${agentType}, refuse politely.]`,
       });
     }
 
@@ -398,11 +436,6 @@ export async function sendCommand(
   return runAgentLoop(baseUrl, input, 60_000);
 }
 
-/**
- * Send a document generation request.
- * Uses the developer role to put the agent into document-writer mode,
- * which prevents it from hallucinating file-save operations.
- */
 export async function sendDocumentCommand(
   taskArn: string,
   developerInstruction: string,
@@ -417,7 +450,6 @@ export async function sendDocumentCommand(
     { type: "message", role: "developer", content: developerInstruction },
   ];
 
-  // Include recent history so "write a report about what we discussed" works
   if (history && history.length > 0) {
     for (const msg of history.slice(-10)) {
       items.push({ type: "message", role: msg.role, content: msg.content });

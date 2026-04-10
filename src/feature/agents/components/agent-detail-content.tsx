@@ -9,20 +9,24 @@ import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
 import Link from "next/link";
 
-type AgentType = "finance" | "marketing" | "operations";
-
-const TYPE_BADGE_STYLES: Record<AgentType, string> = {
+const TYPE_BADGE_STYLES: Record<string, string> = {
   finance: "bg-green-500/15 text-green-400 border-green-500/30",
   marketing: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   operations: "bg-orange-500/15 text-orange-400 border-orange-500/30",
 };
+
+const FALLBACK_BADGE_STYLE = "bg-purple-500/15 text-purple-400 border-purple-500/30";
+
+function getBadgeStyle(type?: string): string {
+  return (type && TYPE_BADGE_STYLES[type]) || FALLBACK_BADGE_STYLE;
+}
 
 interface AgentRecord {
   id: string;
   name: string;
   botUsername: string;
   status: string;
-  type?: AgentType;
+  type?: string;
   containerId: string | null;
   createdAt: string;
 }
@@ -129,6 +133,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [mcpArgs, setMcpArgs] = useState("");
   const [addingMcp, setAddingMcp] = useState(false);
 
+  // Skills
+  const [agentSkills, setAgentSkills] = useState<{id: string; name: string; description: string; linkId: string}[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<{id: string; name: string; description: string}[]>([]);
+  const [showAddSkill, setShowAddSkill] = useState(false);
+  const [addingSkill, setAddingSkill] = useState(false);
+
   const fetchAgent = useCallback(async () => {
     try {
       const res = await fetch(`/api/agents/${agentId}`);
@@ -171,12 +181,34 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     } catch { /* non-critical */ }
   }, [agentId]);
 
+  const fetchAgentSkills = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/skills`);
+      if (res.ok) {
+        const data = await res.json();
+        setAgentSkills(data.skills ?? []);
+      }
+    } catch { /* non-critical */ }
+  }, [agentId]);
+
+  const fetchAvailableSkills = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/skills`);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableSkills(data.skills ?? []);
+      }
+    } catch { /* non-critical */ }
+  }, []);
+
   useEffect(() => {
     fetchAgent();
     fetchMemory();
     fetchChannels();
     fetchMcp();
-  }, [fetchAgent, fetchMemory, fetchChannels, fetchMcp]);
+    fetchAgentSkills();
+    fetchAvailableSkills();
+  }, [fetchAgent, fetchMemory, fetchChannels, fetchMcp, fetchAgentSkills, fetchAvailableSkills]);
 
   const handleStop = async () => {
     setStopping(true);
@@ -354,15 +386,42 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     }
   };
 
+  const handleAddSkill = async (skillId: string) => {
+    setAddingSkill(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/skills`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skillId }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Failed to add skill");
+        return;
+      }
+      setShowAddSkill(false);
+      await fetchAgentSkills();
+    } catch {
+      setError("Failed to add skill");
+    } finally {
+      setAddingSkill(false);
+    }
+  };
+
+  const handleRemoveSkill = async (skillId: string) => {
+    try {
+      await fetch(`/api/agents/${agentId}/skills/${skillId}`, { method: "DELETE" });
+      await fetchAgentSkills();
+    } catch {
+      setError("Failed to remove skill");
+    }
+  };
+
   return (
-    <SidebarInset>
+      <>
       <main className="flex flex-1 flex-col gap-6 p-6 bg-black">
-        <Link href="/overview">
-          <Button variant="ghost" className="text-white/60 hover:text-white gap-2 px-0">
-            <ArrowLeft className="size-4" />
-            Back to Overview
-          </Button>
-        </Link>
+
 
         {error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -392,7 +451,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                       {new Date(agent.createdAt).toLocaleDateString()}
                     </p>
                     {agent.type && (
-                      <span className={`rounded-full px-3 py-0.5 text-xs font-medium border ${TYPE_BADGE_STYLES[agent.type] ?? "bg-white/10 text-white/50 border-white/20"}`}>
+                      <span className={`rounded-full px-3 py-0.5 text-xs font-medium border ${getBadgeStyle(agent.type)}`}>
                         {agent.type.charAt(0).toUpperCase() + agent.type.slice(1)}
                       </span>
                     )}
@@ -561,9 +620,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                     <div key={platform}>
                       {/* Row */}
                       <div
-                        className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${colors.ring} ${colors.bg} ${!isConnected && !isWhatsApp ? "cursor-pointer hover:border-white/10 hover:bg-white/5" : ""}`}
+                        className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${colors.ring} ${colors.bg} ${!isConnected ? "cursor-pointer hover:border-white/10 hover:bg-white/5" : ""}`}
                         onClick={() => {
-                          if (!isConnected && !isWhatsApp) setExpandedPlatform(isExpanded ? null : platform);
+                          if (!isConnected) {
+                            if (isWhatsApp) { setShowWaModal(true); startWhatsappLink(); }
+                            else setExpandedPlatform(isExpanded ? null : platform);
+                          }
                         }}
                       >
                         <div className="flex items-center gap-3">
@@ -576,7 +638,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                               <p className="text-xs text-white/40">{handle}</p>
                             ) : (
                               <p className="text-xs text-white/30">
-                                {isWhatsApp ? "Coming soon" : "Not connected · click to connect"}
+                                Not connected · click to connect
                               </p>
                             )}
                           </div>
@@ -594,13 +656,8 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                               <X className="size-4" />
                             </button>
                           )}
-                          {!isConnected && isWhatsApp && (
-                            <span className="text-xs text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                              Coming Soon
-                            </span>
-                          )}
-                          {!isConnected && !isWhatsApp && (
-                            <span className="text-xs text-white/30">{isExpanded ? "▲" : "▼"}</span>
+                          {!isConnected && (
+                            <span className="text-xs text-white/30">{isWhatsApp ? "→" : isExpanded ? "▲" : "▼"}</span>
                           )}
                         </div>
                       </div>
@@ -673,6 +730,92 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            <Separator className="bg-white/10" />
+
+          
+
+            <Separator className="bg-white/10" />
+
+            {/* Skills */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Brain className="size-5 text-white/60" />
+                  <h2 className="text-lg font-semibold text-white">Skills</h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAddSkill(!showAddSkill)}
+                  className="text-white/60 hover:text-white"
+                >
+                  <Plus className="size-4 mr-1" />
+                  Add Skill
+                </Button>
+              </div>
+
+              {showAddSkill && (
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 mb-4 space-y-2">
+                  <p className="text-xs text-white/40 mb-2">Select a skill to attach</p>
+                  {availableSkills
+                    .filter((s) => !agentSkills.some((as_) => as_.id === s.id))
+                    .map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => handleAddSkill(s.id)}
+                        disabled={addingSkill}
+                        className="w-full flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3 hover:bg-white/[0.06] transition-colors text-left"
+                      >
+                        <div>
+                          <p className="text-sm text-white font-medium">{s.name}</p>
+                          {s.description && (
+                            <p className="text-xs text-white/40 mt-0.5">{s.description}</p>
+                          )}
+                        </div>
+                        <Plus className="size-4 text-white/40" />
+                      </button>
+                    ))}
+                  {availableSkills.filter((s) => !agentSkills.some((as_) => as_.id === s.id)).length === 0 && (
+                    <p className="text-sm text-white/30 py-2">No available skills to add.</p>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowAddSkill(false)}
+                    className="text-white/50 hover:text-white mt-2"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {agentSkills.map((s) => (
+                  <div key={s.linkId} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Brain className="size-4 text-white/40" />
+                      <div>
+                        <p className="text-sm text-white font-medium">{s.name}</p>
+                        {s.description && (
+                          <p className="text-xs text-white/40">{s.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveSkill(s.id)}
+                      className="text-white/30 hover:text-red-400 transition-colors"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                ))}
+
+                {agentSkills.length === 0 && (
+                  <p className="text-sm text-white/30 py-2">No skills attached.</p>
+                )}
               </div>
             </div>
 
@@ -958,6 +1101,5 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
           </div>
         </div>
       )}
-    </SidebarInset>
-  );
+</>  );
 }

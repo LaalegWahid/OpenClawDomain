@@ -54,7 +54,8 @@ export async function sendDocument(
 ) {
   const formData = new FormData();
   formData.append("chat_id", chatId);
-  const file = new File([new Uint8Array(fileBuffer)], filename, { type: "application/pdf" });
+  const safeFilename = filename.replace(/[^\x20-\x7E]/g, '-');
+  const file = new File([new Uint8Array(fileBuffer)], safeFilename, { type: "application/pdf" });
   formData.append("document", file);
   if (caption) {
     formData.append("caption", caption.slice(0, 1024));

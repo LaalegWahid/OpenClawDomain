@@ -5,6 +5,7 @@ import { agent, agentChannel } from "../../../../../../shared/db/schema/agent";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../../../../../../shared/lib/logger";
 import { relaunchAgentWithChannels } from "../../../../../../shared/lib/agents/relaunch";
+import { stopDiscordBot } from "../../../../../../shared/lib/discord/manager";
 
 export async function DELETE(
   req: Request,
@@ -26,11 +27,14 @@ export async function DELETE(
       .where(and(eq(agentChannel.id, channelId), eq(agentChannel.agentId, id)))
       .returning({ platform: agentChannel.platform });
 
-    logger.info({ agentId: id, channelId }, "Channel deleted");
+    logger.info({ agentId: id, channelId, platform: deleted?.platform }, "Channel deleted");
 
-    // Relaunch so the removed channel is no longer active in openclaw.json
-    // (Telegram is webhook-only — no relaunch needed)
-    if (deleted?.platform !== "telegram") {
+    if (deleted?.platform === "discord") {
+      // Next.js owns Discord — stop the in-process bot, no container relaunch needed
+      await stopDiscordBot(id);
+    } else if (deleted?.platform !== "telegram") {
+      // Relaunch so the removed channel is no longer active in openclaw.json
+      // (Telegram is webhook-only — no relaunch needed)
       relaunchAgentWithChannels(id).catch((err) =>
         logger.error({ err, agentId: id, channelId }, "Relaunch after channel delete failed"),
       );

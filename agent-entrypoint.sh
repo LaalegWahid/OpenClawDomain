@@ -1,27 +1,74 @@
 #!/bin/bash
-set -e
+set -Eeuo pipefail
+IFS=$'\n\t'
+trap 'echo "ERROR: entrypoint failed at line ${LINENO} — aborting" >&2' ERR
 
 export HOME="${HOME:-/home/node}"
 
-# ── WhatsApp linker mode ───────────────────────────────────────────────────────
-if [ "${OPENCLAW_MODE}" = "whatsapp_link" ]; then
-  exec /home/node/whatsapp-linker.sh
-fi
+# ── Mode check ────────────────────────────────────────────────────────────────
+case "${OPENCLAW_MODE:-agent}" in
+  whatsapp_link)
+    exec /home/node/whatsapp-linker.sh
+    ;;
+  agent) ;;   # normal path — continue
+  *)
+    echo "ERROR: Unknown OPENCLAW_MODE '${OPENCLAW_MODE:-}'" >&2
+    exit 1
+    ;;
+esac
+
+# ── Upfront input validation ──────────────────────────────────────────────────
+for _var in AGENT_ID AGENT_TYPE GATEWAY_TOKEN; do
+  if [ -z "${!_var:-}" ]; then
+    echo "ERROR: required env var ${_var} is not set" >&2
+    exit 1
+  fi
+done
+
+for _tool in python3 openclaw; do
+  if ! command -v "${_tool}" >/dev/null 2>&1; then
+    echo "ERROR: required tool '${_tool}' not found in PATH" >&2
+    exit 1
+  fi
+done
 
 OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
-DEFAULT_OC_DIR="/home/node/.openclaw"
-CONFIG_FILE="${DEFAULT_OC_DIR}/openclaw.json"
+CONFIG_FILE="${OPENCLAW_HOME}/openclaw.json"
 WORKSPACE="${OPENCLAW_HOME}/workspace"
+AUTH_DIR="${OPENCLAW_HOME}/agents/main/agent"
 
-echo "Starting OpenClaw agent: ${AGENT_ID} (${AGENT_TYPE})"
-echo "HOME=${HOME} CONFIG_FILE=${CONFIG_FILE} WORKSPACE=${WORKSPACE}"
-
-mkdir -p "${OPENCLAW_HOME}"
-mkdir -p "${DEFAULT_OC_DIR}"
-mkdir -p "${WORKSPACE}"
+mkdir -p "${OPENCLAW_HOME}" "${WORKSPACE}" "${AUTH_DIR}"
 
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful AI assistant.}"
-AGENT_MODEL="${AGENT_MODEL:-anthropic/claude-haiku-4-5-20251001}"
+
+# ── Fetch full system prompt from domain API (avoids ECS 8192-byte env var limit) ──
+if [ -n "${WEBHOOK_BASE_URL:-}" ]; then
+  FETCHED_PROMPT=""
+  for _attempt in 1 2 3 4 5; do
+    FETCHED_PROMPT=$(curl -sf -H "Authorization: Bearer ${GATEWAY_TOKEN}" \
+      "${WEBHOOK_BASE_URL}/api/internal/agents/${AGENT_ID}/config" \
+      | python3 -c "import sys,json; print(json.load(sys.stdin)['systemPrompt'])" 2>/dev/null) && break
+    echo "Attempt ${_attempt}: waiting for domain API..." >&2
+    sleep 3
+  done
+  if [ -n "${FETCHED_PROMPT}" ]; then
+    SYSTEM_PROMPT="${FETCHED_PROMPT}"
+    echo "DEBUG [config] Fetched system prompt from domain API (${#SYSTEM_PROMPT} bytes)"
+  else
+    echo "WARNING: Could not fetch config from domain API — using env SYSTEM_PROMPT fallback" >&2
+  fi
+fi
+
+# Strip accidental surrounding quotes (e.g. ECS console saves `"openrouter/..."` literally)
+AGENT_MODEL="$(echo "${AGENT_MODEL:-openrouter/qwen/qwen3.6-plus:free}" | tr -d '"')"
+
+# Optional API keys — default to empty to satisfy nounset
+# The OpenClaw gateway natively supports: anthropic, google, openai, openrouter.
+# All other providers (groq, mistral, xai, etc.) are accessed through OpenRouter.
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+GEMINI_API_KEY="${GEMINI_API_KEY:-}"
+OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
 
 # Write SYSTEM.md always (system prompt can legitimately change per deployment)
 cat > "${WORKSPACE}/SYSTEM.md" << EOSYSTEM
@@ -33,7 +80,7 @@ EOSYSTEM
 if [ ! -f "${WORKSPACE}/SOUL.md" ]; then
   echo "First launch — writing role files for ${AGENT_TYPE}"
 
-  case "$AGENT_TYPE" in
+  case "${AGENT_TYPE}" in
     "finance")
       cat > "${WORKSPACE}/SOUL.md" << 'EOF'
 # Identity
@@ -44,7 +91,7 @@ You are FinBot, the Finance Agent.
 - Format reports in structured tables
 # Hard Boundaries
 You ONLY handle finance. If asked about anything else respond:
-"I'm the Finance Agent — I only handle financial analysis, budgets, and reporting."
+"I'm the Finance Agent, I only handle financial analysis, budgets, and reporting."
 EOF
       cat > "${WORKSPACE}/AGENTS.md" << 'EOF'
 # Rules
@@ -66,7 +113,7 @@ You are MktBot, the Marketing Agent.
 - Use marketing terminology (ROAS, CTR, CAC, funnel)
 # Hard Boundaries
 You ONLY handle marketing. If asked about anything else respond:
-"I'm the Marketing Agent — I handle campaigns, content, and growth."
+"I'm the Marketing Agent, I handle campaigns, content, and growth."
 EOF
       cat > "${WORKSPACE}/AGENTS.md" << 'EOF'
 # Rules
@@ -88,7 +135,7 @@ You are OpsBot, the Operations Agent.
 - Use ops terminology (standup, sprint, blockers, SLA)
 # Hard Boundaries
 You ONLY handle operations. If asked about anything else respond:
-"I'm the Operations Agent — I handle tasks, workflows, and team coordination."
+"I'm the Operations Agent, I handle tasks, workflows, and team coordination."
 EOF
       cat > "${WORKSPACE}/AGENTS.md" << 'EOF'
 # Rules
@@ -99,6 +146,30 @@ EOF
 name: OpsBot
 emoji: ⚙️
 role: Operations Agent
+EOF
+      ;;
+    *)
+      # Custom/dynamic agent type — derive generic role files from AGENT_TYPE
+      # The full domain config is already in SYSTEM_PROMPT (generated server-side)
+      PRETTY_TYPE="$(echo "${AGENT_TYPE}" | sed 's/[-_]/ /g' | sed 's/\b\(.\)/\u\1/g')"
+      cat > "${WORKSPACE}/SOUL.md" << EOF
+# Identity
+You are a specialized ${PRETTY_TYPE} Agent.
+# Personality
+- Professional, knowledgeable, focused on ${AGENT_TYPE}
+# Hard Boundaries
+You ONLY handle ${AGENT_TYPE}-related topics. If asked about anything else respond:
+"I'm the ${PRETTY_TYPE} Agent, I only handle ${AGENT_TYPE}-related tasks."
+EOF
+      cat > "${WORKSPACE}/AGENTS.md" << EOF
+# Rules
+- ONLY respond to topics related to: ${AGENT_TYPE}
+- Stay within your domain of expertise
+EOF
+      cat > "${WORKSPACE}/IDENTITY.md" << EOF
+name: ${PRETTY_TYPE}Bot
+emoji: 🤖
+role: ${PRETTY_TYPE} Agent
 EOF
       ;;
   esac
@@ -122,34 +193,134 @@ fi
 
 AGENT_PROVIDER=$(echo "${AGENT_MODEL}" | cut -d'/' -f1)
 MODEL_ID=$(echo "${AGENT_MODEL}" | cut -d'/' -f2-)
-MODEL_NAME=$(echo "${MODEL_ID##*/}" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
-OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '[\d.]+' | head -1 || echo "2026.3.13")
+MODEL_NAME=$(echo "${MODEL_ID##*/}" | sed 's/[:].*//' | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
+OC_VERSION=$(openclaw --version 2>/dev/null | grep -Eo '[0-9.]+' | head -1 || echo "2026.3.13")
 OC_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
-cat > "${CONFIG_FILE}" << EOJSON
+echo "DEBUG [parse] AGENT_MODEL=${AGENT_MODEL}"
+echo "DEBUG [parse] AGENT_PROVIDER=${AGENT_PROVIDER} | MODEL_ID=${MODEL_ID} | MODEL_NAME=${MODEL_NAME}"
+
+# Strip accidental whitespace and surrounding quotes from keys
+# (ECS console sometimes saves values as `"sk-or-..."` with literal quotes)
+ANTHROPIC_API_KEY="$(echo "${ANTHROPIC_API_KEY}" | tr -d ' \t\r\n"')"
+GEMINI_API_KEY="$(echo "${GEMINI_API_KEY}" | tr -d ' \t\r\n"')"
+OPENAI_API_KEY="$(echo "${OPENAI_API_KEY}" | tr -d ' \t\r\n"')"
+OPENROUTER_API_KEY="$(echo "${OPENROUTER_API_KEY}" | tr -d ' \t\r\n"')"
+
+echo "DEBUG [keys] ANTHROPIC_API_KEY=$([ -n "${ANTHROPIC_API_KEY}" ] && echo 'SET' || echo 'UNSET')"
+echo "DEBUG [keys] GEMINI_API_KEY=$([ -n "${GEMINI_API_KEY}" ] && echo 'SET' || echo 'UNSET')"
+echo "DEBUG [keys] OPENAI_API_KEY=$([ -n "${OPENAI_API_KEY}" ] && echo 'SET' || echo 'UNSET')"
+echo "DEBUG [keys] OPENROUTER_API_KEY=$([ -n "${OPENROUTER_API_KEY}" ] && echo 'SET' || echo 'UNSET')"
+
+# ── Provider fallback ─────────────────────────────────────────────────────────
+# If the primary provider's key is absent, auto-select an available one so the
+# container doesn't start in a permanently broken state.
+EFFECTIVE_AGENT_MODEL="${AGENT_MODEL}"
+EFFECTIVE_PROVIDER="${AGENT_PROVIDER}"
+
+# Check if the chosen provider's key is present; if not, fall back
+_need_fallback=false
+case "${AGENT_PROVIDER}" in
+  anthropic)   [ -z "${ANTHROPIC_API_KEY}" ]   && _need_fallback=true ;;
+  google)      [ -z "${GEMINI_API_KEY}" ]      && _need_fallback=true ;;
+  openai)      [ -z "${OPENAI_API_KEY}" ]      && _need_fallback=true ;;
+  openrouter)  [ -z "${OPENROUTER_API_KEY}" ]  && _need_fallback=true ;;
+  *)           _need_fallback=true ;;
+esac
+
+if [ "${_need_fallback}" = "true" ]; then
+  echo "WARNING: Key missing for provider ${AGENT_PROVIDER}"
+  if [ -n "${OPENROUTER_API_KEY}" ]; then
+    EFFECTIVE_AGENT_MODEL="openrouter/${AGENT_MODEL}"
+    EFFECTIVE_PROVIDER="openrouter"
+  elif [ -n "${ANTHROPIC_API_KEY}" ]; then
+    EFFECTIVE_AGENT_MODEL="anthropic/claude-haiku-4-5-20251001"
+    EFFECTIVE_PROVIDER="anthropic"
+  elif [ -n "${OPENAI_API_KEY}" ]; then
+    EFFECTIVE_AGENT_MODEL="openai/gpt-4o-mini"
+    EFFECTIVE_PROVIDER="openai"
+  elif [ -n "${GEMINI_API_KEY}" ]; then
+    EFFECTIVE_AGENT_MODEL="google/gemini-2.0-flash"
+    EFFECTIVE_PROVIDER="google"
+  else
+    echo "WARNING: No valid API key found for any provider — container will likely fail"
+  fi
+  echo "WARNING: Falling back to ${EFFECTIVE_PROVIDER}: ${EFFECTIVE_AGENT_MODEL}"
+fi
+
+# Recompute MODEL_ID after fallback (effective model may have changed)
+EFFECTIVE_MODEL_ID=$(echo "${EFFECTIVE_AGENT_MODEL}" | cut -d'/' -f2-)
+
+echo "DEBUG [fallback] EFFECTIVE_PROVIDER=${EFFECTIVE_PROVIDER} | EFFECTIVE_AGENT_MODEL=${EFFECTIVE_AGENT_MODEL} | EFFECTIVE_MODEL_ID=${EFFECTIVE_MODEL_ID}"
+
+# ── Build per-provider model arrays ──────────────────────────────────────────
+# Anthropic: only register a model when anthropic is the effective provider
+if [ "${EFFECTIVE_PROVIDER}" = "anthropic" ] && [ -n "${ANTHROPIC_API_KEY}" ]; then
+  ANTHROPIC_MODELS='[{"id":"'"${EFFECTIVE_MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]'
+elif [ -n "${ANTHROPIC_API_KEY}" ]; then
+  ANTHROPIC_MODELS='[{"id":"claude-haiku-4-5-20251001","name":"Claude Haiku","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]'
+else
+  ANTHROPIC_MODELS='[]'
+fi
+
+# Google: always gemini-2.0-flash when key is present
+if [ -n "${GEMINI_API_KEY}" ]; then
+  GOOGLE_MODELS='[{"id":"gemini-2.0-flash","name":"Gemini Flash","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]'
+else
+  GOOGLE_MODELS='[]'
+fi
+
+# OpenAI: handled implicitly by OpenClaw — just needs OPENAI_API_KEY env var set.
+# No explicit provider block needed in openclaw.json.
+
+# OpenRouter: include defaults + the effective model if it's an openrouter model
+if [ -n "${OPENROUTER_API_KEY}" ]; then
+  OPENROUTER_MODELS='[{"id":"anthropic/claude-haiku-4-5-20251001","name":"Claude Haiku (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192},{"id":"google/gemini-flash-1.5","name":"Gemini Flash (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}'
+  # Append the effective model if it's routed through openrouter and not already a default
+  if [ "${EFFECTIVE_PROVIDER}" = "openrouter" ] \
+     && [ "${EFFECTIVE_MODEL_ID}" != "anthropic/claude-haiku-4-5-20251001" ] \
+     && [ "${EFFECTIVE_MODEL_ID}" != "google/gemini-flash-1.5" ]; then
+    OR_MODEL_NAME=$(echo "${EFFECTIVE_MODEL_ID##*/}" | sed 's/[:].*//' | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
+    OPENROUTER_MODELS="${OPENROUTER_MODELS}"',{"id":"'"${EFFECTIVE_MODEL_ID}"'","name":"'"${OR_MODEL_NAME}"' (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":8192}'
+    echo "DEBUG [models] Added dynamic OpenRouter model: ${EFFECTIVE_MODEL_ID} (${OR_MODEL_NAME})"
+  fi
+  OPENROUTER_MODELS="${OPENROUTER_MODELS}]"
+else
+  OPENROUTER_MODELS='[]'
+fi
+
+echo "DEBUG [models] anthropic=$(echo "${ANTHROPIC_MODELS}" | grep -co '"id"' || echo 0) model(s)"
+echo "DEBUG [models] google=$(echo "${GOOGLE_MODELS}" | grep -co '"id"' || echo 0) model(s)"
+echo "DEBUG [models] openrouter=$(echo "${OPENROUTER_MODELS}" | grep -co '"id"' || echo 0) model(s)"
+echo "DEBUG [models] openai key=$([ -n "${OPENAI_API_KEY}" ] && echo 'SET' || echo 'UNSET') (implicit provider)"
+
+cat > "${CONFIG_FILE}.tmp" << EOJSON
 {
+  "env": {
+    "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+  },
   "models": {
     "providers": {
       "anthropic": {
         "apiKey": "${ANTHROPIC_API_KEY}",
         "baseUrl": "https://api.anthropic.com",
-        "models": $([ "${AGENT_PROVIDER}" = "anthropic" ] && echo '[{"id":"'"${MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]' || echo '[]')
+        "models": ${ANTHROPIC_MODELS}
       },
       "google": {
         "apiKey": "${GEMINI_API_KEY}",
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
-        "models": $([ "${AGENT_PROVIDER}" = "google" ] && echo '[{"id":"'"${MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]' || echo '[]')
+        "models": ${GOOGLE_MODELS}
       },
       "openrouter": {
         "apiKey": "${OPENROUTER_API_KEY}",
         "baseUrl": "https://openrouter.ai/api/v1",
-        "models": $([ -n "${OPENROUTER_API_KEY}" ] && echo '[{"id":"anthropic/claude-haiku-4-5-20251001","name":"Claude Haiku (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192},{"id":"google/gemini-flash-1.5","name":"Gemini Flash (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]' || echo '[]')
+        "models": ${OPENROUTER_MODELS}
       }
     }
   },
   "agents": {
     "defaults": {
-      "model": { "primary": "${AGENT_MODEL}" },
+      "model": { "primary": "${EFFECTIVE_AGENT_MODEL}" },
       "workspace": "${WORKSPACE}",
       "skipBootstrap": true,
       "compaction": { "mode": "safeguard" }
@@ -177,115 +348,45 @@ cat > "${CONFIG_FILE}" << EOJSON
   }
 }
 EOJSON
+mv "${CONFIG_FILE}.tmp" "${CONFIG_FILE}"
+chmod 600 "${CONFIG_FILE}"
 
-# ── Discord channel ───────────────────────────────────────────────────────────
-if [ -n "${DISCORD_BOT_TOKEN}" ]; then
-  echo "Adding Discord channel config..."
-  python3 - "${CONFIG_FILE}" "${DISCORD_BOT_TOKEN}" << 'PYEOF'
-import json, sys
-path = sys.argv[1]
-token = sys.argv[2]
-with open(path) as f:
-    cfg = json.load(f)
-cfg.setdefault("channels", {})["discord"] = {
-    "enabled": True,
-    "token": token,
-    "dmPolicy": "open",
-    "allowFrom": ["*"],
-    "execApprovals": {
-        "enabled": True
-    }
-}
-with open(path, "w") as f:
-    json.dump(cfg, f, indent=2)
-PYEOF
-  echo "Discord channel configured."
-fi
-
-# ── WhatsApp channel (Baileys / QR-based) ────────────────────────────────────
-# Credentials live on EFS (written by the whatsapp-linker task).
-# We only need to enable the channel in openclaw.json so the gateway picks them up.
-if [ -n "${WHATSAPP_ENABLED}" ]; then
-  echo "Adding WhatsApp channel config (Baileys)..."
-  python3 - "${CONFIG_FILE}" << 'PYEOF'
-import json, sys
-path = sys.argv[1]
-with open(path) as f:
-    cfg = json.load(f)
-cfg.setdefault("channels", {})["whatsapp"] = {
-    "enabled": True,
-    "dmPolicy": "open",
-    "allowFrom": ["*"]
-}
-with open(path, "w") as f:
-    json.dump(cfg, f, indent=2)
-PYEOF
-  echo "WhatsApp channel configured."
-fi
-
-# ── MCP servers ───────────────────────────────────────────────────────────────
-if [ -n "${MCP_CONFIG_B64}" ]; then
-  echo "Adding MCP server config..."
-  python3 - "${CONFIG_FILE}" "${MCP_CONFIG_B64}" << 'PYEOF'
-import json, sys, base64
-path = sys.argv[1]
-mcp_b64 = sys.argv[2]
-mcp_servers = json.loads(base64.b64decode(mcp_b64).decode())
-with open(path) as f:
-    cfg = json.load(f)
-cfg.setdefault("mcp", {})["servers"] = mcp_servers
-with open(path, "w") as f:
-    json.dump(cfg, f, indent=2)
-PYEOF
-  echo "MCP servers configured."
-fi
-
-echo "Config written | Agent: ${AGENT_ID} | Type: ${AGENT_TYPE} | Home: ${OPENCLAW_HOME}"
-
-# Verify config is readable
-echo "Config check: $(cat ${CONFIG_FILE} | head -c 50)..."
-ls -la "${CONFIG_FILE}"
-
-# ── Connectivity diagnostics ──────────────────────────────────────────────────
-echo "=== CONNECTIVITY TEST ==="
-echo "GEMINI_API_KEY set: ${GEMINI_API_KEY:+YES}"
-echo "GATEWAY_TOKEN set: ${GATEWAY_TOKEN:+YES}"
-echo "AGENT_MODEL: ${AGENT_MODEL}"
-
-# Test DNS resolution
-echo "DNS test (google):"
-nslookup generativelanguage.googleapis.com 2>&1 | head -5 || echo "nslookup not found, trying getent"
-getent hosts generativelanguage.googleapis.com 2>&1 | head -2 || echo "getent failed"
-
-# Test outbound HTTPS
-echo "Outbound HTTPS test (google):"
-curl -sS -m 5 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" https://generativelanguage.googleapis.com/ 2>&1 || echo "CURL FAILED - no internet access"
-
-echo "Outbound HTTPS test (anthropic):"
-curl -sS -m 5 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" https://api.anthropic.com/ 2>&1 || echo "CURL FAILED - no internet access"
-
-echo "=== END CONNECTIVITY TEST ==="
+echo "DEBUG [config] openclaw.json written successfully"
+echo "DEBUG [config] primary model = ${EFFECTIVE_AGENT_MODEL}"
+echo "OpenClaw agent starting | id=${AGENT_ID} type=${AGENT_TYPE} provider=${EFFECTIVE_PROVIDER}"
 
 export OPENCLAW_CONFIG_PATH="${CONFIG_FILE}"
 
-# ── Auth profiles ─────────────────────────────────────────────────────────────
-# OpenClaw reads API keys from auth-profiles.json, not from openclaw.json
-AUTH_DIR="${OPENCLAW_HOME}/.openclaw/agents/main/agent"
-mkdir -p "${AUTH_DIR}"
-python3 - "${AUTH_DIR}/auth-profiles.json" << PYEOF
-import json, sys, os
-path = sys.argv[1]
-profiles = {}
-if os.environ.get("ANTHROPIC_API_KEY"):
-    profiles["anthropic:default"] = {"type": "api_key", "provider": "anthropic", "key": os.environ["ANTHROPIC_API_KEY"]}
-if os.environ.get("GEMINI_API_KEY"):
-    profiles["google:default"] = {"type": "api_key", "provider": "google", "key": os.environ["GEMINI_API_KEY"]}
-if os.environ.get("OPENROUTER_API_KEY"):
-    profiles["openrouter:default"] = {"type": "api_key", "provider": "openrouter", "key": os.environ["OPENROUTER_API_KEY"]}
-data = {"version": 1, "profiles": profiles}
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-print(f"Auth profiles written: {list(profiles.keys())}")
-PYEOF
+# ── Channels, MCP, and auth profiles ─────────────────────────────────────────
+# agent-config.py handles: Discord/WhatsApp/MCP patches to openclaw.json,
+# and validated auth-profiles.json writing.
+python3 /home/node/agent-config.py "${CONFIG_FILE}" "${AUTH_DIR}/auth-profiles.json"
+
+# Stream OpenClaw's internal log file to stdout so all channel logs (including
+# WhatsApp) are visible in CloudWatch — the log file is not stdout by default.
+mkdir -p /tmp/openclaw
+(
+  set +e  # errors inside this background subshell must not fire the parent ERR trap
+  logfile="/tmp/openclaw/openclaw-$(date -u +%Y-%m-%d).log"
+  # Wait up to 30s for OpenClaw to create the log file, then follow it
+  for _i in $(seq 1 30); do
+    [ -f "${logfile}" ] && break
+    sleep 1
+  done
+  if [ -f "${logfile}" ]; then
+    tail -f "${logfile}" 2>/dev/null || true
+  fi
+) &
+
+# ── WhatsApp relay ────────────────────────────────────────────────────────────
+# When WHATSAPP_INBOUND_WEBHOOK_URL is set, start the Baileys relay that forwards
+# inbound messages to Next.js and sends replies, bypassing OpenClaw's AI for
+# message handling. agent-config.py already skipped adding WhatsApp to openclaw.json.
+if [ -n "${WHATSAPP_INBOUND_WEBHOOK_URL:-}" ] && [ -n "${WHATSAPP_ENABLED:-}" ]; then
+  echo "Starting WhatsApp relay → ${WHATSAPP_INBOUND_WEBHOOK_URL}"
+  node /home/node/whatsapp-relay.mjs &
+  RELAY_PID=$!
+  echo "WhatsApp relay started (PID ${RELAY_PID})"
+fi
 
 exec openclaw gateway --bind lan --port 18789 --allow-unconfigured
