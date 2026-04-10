@@ -178,8 +178,9 @@ EOF
 # Available Tools
 - web_search: search the internet for current information
 - file_reader: read files from the workspace
+- code_execution: run shell commands and Python scripts in the workspace
 # Convention
-Only use tools relevant to your role.
+Only use tools relevant to your role, EXCEPT when the user explicitly requests an MCP tool call.
 EOF
 fi
 
@@ -256,16 +257,16 @@ echo "DEBUG [fallback] EFFECTIVE_PROVIDER=${EFFECTIVE_PROVIDER} | EFFECTIVE_AGEN
 # ── Build per-provider model arrays ──────────────────────────────────────────
 # Anthropic: only register a model when anthropic is the effective provider
 if [ "${EFFECTIVE_PROVIDER}" = "anthropic" ] && [ -n "${ANTHROPIC_API_KEY}" ]; then
-  ANTHROPIC_MODELS='[{"id":"'"${EFFECTIVE_MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]'
+  ANTHROPIC_MODELS='[{"id":"'"${EFFECTIVE_MODEL_ID}"'","name":"'"${MODEL_NAME}"'","reasoning":true,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]'
 elif [ -n "${ANTHROPIC_API_KEY}" ]; then
-  ANTHROPIC_MODELS='[{"id":"claude-haiku-4-5-20251001","name":"Claude Haiku","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]'
+  ANTHROPIC_MODELS='[{"id":"claude-haiku-4-5-20251001","name":"Claude Haiku","reasoning":true,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192}]'
 else
   ANTHROPIC_MODELS='[]'
 fi
 
 # Google: always gemini-2.0-flash when key is present
 if [ -n "${GEMINI_API_KEY}" ]; then
-  GOOGLE_MODELS='[{"id":"gemini-2.0-flash","name":"Gemini Flash","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]'
+  GOOGLE_MODELS='[{"id":"gemini-2.0-flash","name":"Gemini Flash","reasoning":true,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}]'
 else
   GOOGLE_MODELS='[]'
 fi
@@ -275,13 +276,13 @@ fi
 
 # OpenRouter: include defaults + the effective model if it's an openrouter model
 if [ -n "${OPENROUTER_API_KEY}" ]; then
-  OPENROUTER_MODELS='[{"id":"anthropic/claude-haiku-4-5-20251001","name":"Claude Haiku (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192},{"id":"google/gemini-flash-1.5","name":"Gemini Flash (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}'
+  OPENROUTER_MODELS='[{"id":"anthropic/claude-haiku-4-5-20251001","name":"Claude Haiku (OpenRouter)","reasoning":true,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192},{"id":"google/gemini-flash-1.5","name":"Gemini Flash (OpenRouter)","reasoning":true,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":1000000,"maxTokens":8192}'
   # Append the effective model if it's routed through openrouter and not already a default
   if [ "${EFFECTIVE_PROVIDER}" = "openrouter" ] \
      && [ "${EFFECTIVE_MODEL_ID}" != "anthropic/claude-haiku-4-5-20251001" ] \
      && [ "${EFFECTIVE_MODEL_ID}" != "google/gemini-flash-1.5" ]; then
     OR_MODEL_NAME=$(echo "${EFFECTIVE_MODEL_ID##*/}" | sed 's/[:].*//' | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
-    OPENROUTER_MODELS="${OPENROUTER_MODELS}"',{"id":"'"${EFFECTIVE_MODEL_ID}"'","name":"'"${OR_MODEL_NAME}"' (OpenRouter)","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":8192}'
+    OPENROUTER_MODELS="${OPENROUTER_MODELS}"',{"id":"'"${EFFECTIVE_MODEL_ID}"'","name":"'"${OR_MODEL_NAME}"' (OpenRouter)","reasoning":true,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":8192}'
     echo "DEBUG [models] Added dynamic OpenRouter model: ${EFFECTIVE_MODEL_ID} (${OR_MODEL_NAME})"
   fi
   OPENROUTER_MODELS="${OPENROUTER_MODELS}]"

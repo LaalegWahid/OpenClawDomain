@@ -11,7 +11,6 @@ import { and, inArray } from "drizzle-orm";
 import { launchContainer, stopContainer, waitForTaskRunning } from "../../../shared/lib/agents/docker";
 import { startDiscordBot } from "../../../shared/lib/discord/manager";
 import { logger } from "../../../shared/lib/logger";
-import { isSubscriptionActive } from "../../../shared/lib/subscription/cache";
 import { env } from "../../../shared/config/env";
 import { encryptIfPresent, decryptIfPresent } from "../../../shared/lib/crypto";
 
@@ -44,11 +43,6 @@ function extractEncryptedKeys(body: Record<string, unknown>) {
 export async function POST(req: Request) {
   try {
     const session = await getSessionOrThrow(req);
-
-    const active = await isSubscriptionActive(session.user.id);
-    if (!active) {
-      return NextResponse.json({ error: "Active subscription required" }, { status: 403 });
-    }
 
     const body = await req.json();
     const { platform = "telegram", name, systemPrompt, type, skillIds } = body;

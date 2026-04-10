@@ -62,7 +62,7 @@ export function RegisterForm() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Could not create account. Please try again."); setLoading(false); return; }
-      await signIn(email, password, "/subscribe");
+      await signIn(email, password, "/overview");
     } catch {
       setError("Could not create account. Please try again.");
       setLoading(false);
