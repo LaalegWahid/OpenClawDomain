@@ -8,7 +8,7 @@ import { agent, agentActivity, agentChannel } from "../../../shared/db/schema/ag
 import { skill, agentSkill } from "../../../shared/db/schema/skill";
 import { and, inArray } from "drizzle-orm";
 
-import { launchContainer, stopContainer, waitForTaskRunning } from "../../../shared/lib/agents/docker";
+import { launchContainer, stopContainer, waitForTaskRunning, fetchOpenClawAgentId } from "../../../shared/lib/agents/docker";
 import { startDiscordBot } from "../../../shared/lib/discord/manager";
 import { logger } from "../../../shared/lib/logger";
 import { isSubscriptionActive } from "../../../shared/lib/subscription/cache";
@@ -184,7 +184,13 @@ export async function POST(req: Request) {
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
 
         waitForTaskRunning(containerId)
-          .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
+          .then(async () => {
+            await db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId));
+            const openclawAgentId = await fetchOpenClawAgentId(containerId).catch(() => null);
+            if (openclawAgentId) {
+              await db.update(agent).set({ openclawAgentId }).where(eq(agent.id, tempAgentId));
+            }
+          })
           .catch(async (err) => {
             logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
             await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));
@@ -276,7 +282,13 @@ export async function POST(req: Request) {
           .catch((err) => logger.error({ err, agentId: newAgent.id }, "Failed to start Discord bot"));
 
         waitForTaskRunning(containerId)
-          .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
+          .then(async () => {
+            await db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId));
+            const openclawAgentId = await fetchOpenClawAgentId(containerId).catch(() => null);
+            if (openclawAgentId) {
+              await db.update(agent).set({ openclawAgentId }).where(eq(agent.id, tempAgentId));
+            }
+          })
           .catch(async (err) => {
             logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
             await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));
@@ -334,7 +346,13 @@ export async function POST(req: Request) {
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
 
         waitForTaskRunning(containerId)
-          .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
+          .then(async () => {
+            await db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId));
+            const openclawAgentId = await fetchOpenClawAgentId(containerId).catch(() => null);
+            if (openclawAgentId) {
+              await db.update(agent).set({ openclawAgentId }).where(eq(agent.id, tempAgentId));
+            }
+          })
           .catch(async (err) => {
             logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
             await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));

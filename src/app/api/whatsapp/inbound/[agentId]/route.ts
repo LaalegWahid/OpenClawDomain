@@ -12,6 +12,7 @@ import {
 } from "../../../../../shared/lib/agents/document";
 import { env } from "../../../../../shared/config/env";
 import { getServiceEnabled } from "../../../../../shared/lib/service/status";
+import { randomTimeoutMessage, randomWarmupMessage } from "../../../../../shared/lib/agents/wait-messages";
 
 const MAX_HISTORY = 20;
 
@@ -124,16 +125,15 @@ export async function POST(
     try {
       await db.insert(agentActivity).values({
         agentId, type: "error",
-        message: `WhatsApp ${jid}: ${err instanceof Error ? err.message : "Unknown"}`,
+        message: "Failed to send response via WhatsApp",
+        metadata: { jid, error: err instanceof Error ? err.message : String(err) },
       });
     } catch (dbErr) {
       logger.error({ agentId, jid, dbErr }, "Failed to record WhatsApp error activity");
     }
     return NextResponse.json({
       type: "text",
-      text: isTimeout
-        ? "⏳ Your request is taking longer than expected. Please try again in a moment."
-        : "🚀 The agent is warming up. Please send your message again in a few seconds!",
+      text: isTimeout ? randomTimeoutMessage() : randomWarmupMessage(),
     });
   }
 }
