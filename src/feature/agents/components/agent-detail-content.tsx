@@ -537,7 +537,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                           {agent.status}
                         </span>
 
-                        {agent.status === "active" && (
+                        {/* {agent.status === "active" && (
                           <Button
                             onClick={handleStop}
                             disabled={stopping}
@@ -547,7 +547,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                             <Power className="size-4 mr-1" />
                             {stopping ? "Stopping..." : "Unlink Bot"}
                           </Button>
-                        )}
+                        )} */}
                       </div>
                     </div>
                     {/* Container info */}
