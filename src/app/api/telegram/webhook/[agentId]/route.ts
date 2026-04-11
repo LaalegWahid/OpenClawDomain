@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../../shared/lib/drizzle";
-import { agent, agentActivity, chatSession } from "../../../../../shared/db/schema";
+import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
 import { logger } from "../../../../../shared/lib/logger";
 import { sendDocument, sendMessage } from "../../../../../shared/lib/telegram/bot";
 import { eq, and } from "drizzle-orm";
@@ -73,28 +73,39 @@ export async function POST(
   const agentType = (found.type as AgentType) || "operations";
   const docFormat = detectDocumentRequest(text);
 
-  try {
-    let responseText: string;
+  // Create log entry
+  const [logEntry] = await db.insert(agentLog).values({
+    agentId,
+    source: "telegram",
+    status: "running",
+    userPrompt: text,
+  }).returning();
+  const startTime = Date.now();
 
-    if (docFormat) {
-      // Document path — developer role injection puts the agent into
-      // document-writer mode. The tool loop in sendDocumentCommand handles
-      // any web_search calls the agent makes for data to include.
-      responseText = await sendDocumentCommand(
-        found.containerId,
-        buildDocumentSystemInstruction(agentType),
-        rewriteAsContentPrompt(text),
-        history,
-      );
-    } else {
-      // Normal chat — tool loop handles any tool calls the agent makes
-      responseText = await sendCommand(
-        found.containerId,
-        text,
-        history.length > 0 ? history : undefined,
-        agentType,
-      );
-    }
+  try {
+    const result = docFormat
+      ? await sendDocumentCommand(
+          found.containerId,
+          buildDocumentSystemInstruction(agentType),
+          rewriteAsContentPrompt(text),
+          history,
+        )
+      : await sendCommand(
+          found.containerId,
+          text,
+          history.length > 0 ? history : undefined,
+          agentType,
+        );
+
+    const responseText = result.text;
+    await db.update(agentLog).set({
+      status: "completed",
+      assistantResponse: responseText,
+      inputTokens: result.usage.inputTokens,
+      outputTokens: result.usage.outputTokens,
+      durationMs: Date.now() - startTime,
+      completedAt: new Date(),
+    }).where(eq(agentLog.id, logEntry.id));
 
     // Save history with the original user text so conversation context stays natural
     const updatedHistory: ChatMessage[] = [
@@ -145,6 +156,12 @@ export async function POST(
       }
     }
   } catch (err) {
+    await db.update(agentLog).set({
+      status: "error",
+      durationMs: Date.now() - startTime,
+      completedAt: new Date(),
+    }).where(eq(agentLog.id, logEntry.id));
+
     logger.error({ agentId, err }, "Failed to reach agent container");
     const isTimeout = err instanceof Error && err.name === "TimeoutError";
     await sendMessage(

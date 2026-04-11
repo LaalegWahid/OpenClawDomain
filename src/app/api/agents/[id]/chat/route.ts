@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSessionOrThrow } from "../../../../../shared/lib/auth/getSessionOrThrow";
 import { db } from "../../../../../shared/lib/drizzle";
-import { agent, agentActivity, chatSession } from "../../../../../shared/db/schema";
+import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../../../../../shared/lib/logger";
-import { ChatMessage, sendCommand, sendDocumentCommand } from "../../../../../shared/lib/agents/docker";
+import { ChatMessage, sendCommand, sendDocumentCommand, registerAbort, cleanupAbort } from "../../../../../shared/lib/agents/docker";
 import { AgentType } from "../../../../../shared/lib/agents/config";
 import {
   detectDocumentRequest,
@@ -104,31 +104,71 @@ export async function POST(
 
     logger.info({ agentId: id, chatId, text, docFormat }, "Web chat message");
 
+    // Create log entry + abort controller
+    const [logEntry] = await db.insert(agentLog).values({
+      agentId: id,
+      source: "chat_ui",
+      status: "running",
+      userPrompt: text,
+    }).returning();
+    const abortController = registerAbort(logEntry.id);
+    const startTime = Date.now();
+
     let responseText: string;
 
     try {
       if (docFormat) {
-        responseText = await sendDocumentCommand(
+        const result = await sendDocumentCommand(
           found.containerId,
           buildDocumentSystemInstruction(agentType),
           rewriteAsContentPrompt(text),
           history,
+          abortController.signal,
         );
+        responseText = result.text;
+        await db.update(agentLog).set({
+          status: "completed",
+          assistantResponse: responseText,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          durationMs: Date.now() - startTime,
+          completedAt: new Date(),
+        }).where(eq(agentLog.id, logEntry.id));
       } else {
-        responseText = await sendCommand(
+        const result = await sendCommand(
           found.containerId,
           text,
           history.length > 0 ? history : undefined,
           agentType,
+          abortController.signal,
         );
+        responseText = result.text;
+        await db.update(agentLog).set({
+          status: "completed",
+          assistantResponse: responseText,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          durationMs: Date.now() - startTime,
+          completedAt: new Date(),
+        }).where(eq(agentLog.id, logEntry.id));
       }
     } catch (err) {
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      await db.update(agentLog).set({
+        status: isAbort ? "aborted" : "error",
+        durationMs: Date.now() - startTime,
+        completedAt: new Date(),
+      }).where(eq(agentLog.id, logEntry.id));
+      cleanupAbort(logEntry.id);
+
       logger.error({ agentId: id, err }, "Failed to reach agent container");
       const isTimeout = err instanceof Error && err.name === "TimeoutError";
       return NextResponse.json(
-        { error: isTimeout ? "Processing took too long, please try again." : "Failed to reach the agent. It may be starting up — try again shortly." },
-        { status: 502 },
+        { error: isAbort ? "Task was aborted." : isTimeout ? "Processing took too long, please try again." : "Failed to reach the agent. It may be starting up — try again shortly." },
+        { status: isAbort ? 499 : 502 },
       );
+    } finally {
+      cleanupAbort(logEntry.id);
     }
 
     // Save history

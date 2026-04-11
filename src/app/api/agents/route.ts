@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     const session = await getSessionOrThrow(req);
 
     const body = await req.json();
-    const { platform = "telegram", name, systemPrompt, type, skillIds } = body;
+    const { platform = "telegram", name, systemPrompt, type, skillIds, profileImage } = body;
 
     if (!name || !systemPrompt || !type) {
       return NextResponse.json(
@@ -171,6 +171,7 @@ export async function POST(req: Request) {
             isPrimary: isFirstBot,
             containerId,
             ...encryptedKeys,
+            profileImage: profileImage || null,
           })
           .returning();
 
@@ -259,6 +260,7 @@ export async function POST(req: Request) {
             isPrimary: isFirstBot,
             containerId,
             ...encryptedKeys,
+            profileImage: profileImage || null,
           })
           .returning();
 
@@ -321,6 +323,7 @@ export async function POST(req: Request) {
             isPrimary: isFirstBot,
             containerId,
             ...encryptedKeys,
+            profileImage: profileImage || null,
           })
           .returning();
 

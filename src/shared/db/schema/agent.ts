@@ -8,6 +8,7 @@ import {
   jsonb,
   uniqueIndex,
   boolean,
+  integer,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { agentSkill } from "./skill";
@@ -32,6 +33,8 @@ export const agent = pgTable(
     apiProvider: text("api_provider"),  // e.g. "anthropic", "openrouter", "gemini", "mistral", "cohere"
     apiKey: text("api_key"),           // encrypted — single key for the chosen provider
     agentModel: text("agent_model"),   // e.g. "claude-sonnet-4-20250514"
+    profileImage: text("profile_image"), // base64-encoded image (data URI)
+    openclawAgentId: text("openclaw_agent_id"), // external OpenClaw agent identifier
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
@@ -133,6 +136,31 @@ export const whatsappLinkSession = pgTable(
   (table) => [index("whatsapp_link_agentId_idx").on(table.agentId)],
 );
 
+export const agentLog = pgTable(
+  "agent_log",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    source: text("source").notNull(), // "chat_ui" | "telegram" | "discord" | "whatsapp"
+    status: text("status").notNull().default("running"), // "running" | "completed" | "aborted" | "error"
+    userPrompt: text("user_prompt").notNull(),
+    assistantResponse: text("assistant_response"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    durationMs: integer("duration_ms"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => [
+    index("agent_log_agentId_idx").on(table.agentId),
+    index("agent_log_createdAt_idx").on(table.createdAt),
+  ],
+);
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const agentRelations = relations(agent, ({ one, many }) => ({
@@ -145,6 +173,7 @@ export const agentRelations = relations(agent, ({ one, many }) => ({
   channels: many(agentChannel),
   mcpServers: many(agentMcp),
   skills: many(agentSkill),
+  logs: many(agentLog),
 }));
 
 export const agentActivityRelations = relations(agentActivity, ({ one }) => ({
@@ -178,6 +207,13 @@ export const agentMcpRelations = relations(agentMcp, ({ one }) => ({
 export const whatsappLinkSessionRelations = relations(whatsappLinkSession, ({ one }) => ({
   agent: one(agent, {
     fields: [whatsappLinkSession.agentId],
+    references: [agent.id],
+  }),
+}));
+
+export const agentLogRelations = relations(agentLog, ({ one }) => ({
+  agent: one(agent, {
+    fields: [agentLog.agentId],
     references: [agent.id],
   }),
 }));

@@ -321,9 +321,48 @@ async function getContainerBaseUrl(taskArn: string): Promise<string> {
   return `http://${privateIp}:18789`;
 }
 
+// ─── Abort registry (per-log) ────────────────────────────────────────────────
+
+const activeAbortControllers = new Map<string, AbortController>();
+
+export function registerAbort(logId: string): AbortController {
+  const controller = new AbortController();
+  activeAbortControllers.set(logId, controller);
+  return controller;
+}
+
+export function abortTask(logId: string): boolean {
+  const controller = activeAbortControllers.get(logId);
+  if (controller) {
+    controller.abort();
+    activeAbortControllers.delete(logId);
+    return true;
+  }
+  return false;
+}
+
+export function cleanupAbort(logId: string) {
+  activeAbortControllers.delete(logId);
+}
+
 // ─── Core gateway caller ──────────────────────────────────────────────────────
 
-async function callGateway(baseUrl: string, input: unknown, timeoutMs: number): Promise<{ output: OutputItem[] }> {
+export interface GatewayUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface GatewayResult {
+  output: OutputItem[];
+  usage: GatewayUsage;
+}
+
+async function callGateway(baseUrl: string, input: unknown, timeoutMs: number, signal?: AbortSignal): Promise<GatewayResult> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal;
+
   const res = await fetch(`${baseUrl}/v1/responses`, {
     method: "POST",
     headers: {
@@ -332,7 +371,7 @@ async function callGateway(baseUrl: string, input: unknown, timeoutMs: number): 
       "x-openclaw-agent-id": "main",
     },
     body: JSON.stringify({ model: "openclaw", input }),
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: combinedSignal,
   });
 
   if (!res.ok) {
@@ -340,21 +379,37 @@ async function callGateway(baseUrl: string, input: unknown, timeoutMs: number): 
     logger.error({ status: res.status, errorBody }, "Gateway error response");
     throw new Error(`Gateway responded ${res.status}: ${errorBody}`);
   }
-  return res.json();
+  const data = await res.json();
+
+  const usage: GatewayUsage = {
+    inputTokens: data.usage?.input_tokens ?? data.usage?.prompt_tokens ?? 0,
+    outputTokens: data.usage?.output_tokens ?? data.usage?.completion_tokens ?? 0,
+  };
+
+  return { output: data.output ?? [], usage };
 }
 
 // ─── Agentic tool loop ────────────────────────────────────────────────────────
+
+export interface AgentLoopResult {
+  text: string;
+  usage: GatewayUsage;
+}
 
 async function runAgentLoop(
   baseUrl: string,
   initialInput: unknown,
   timeoutMs: number,
-): Promise<string> {
+  signal?: AbortSignal,
+): Promise<AgentLoopResult> {
   const MAX_ITERATIONS = 8;
   let input = initialInput;
+  const totalUsage: GatewayUsage = { inputTokens: 0, outputTokens: 0 };
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const data = await callGateway(baseUrl, input, timeoutMs);
+    const data = await callGateway(baseUrl, input, timeoutMs, signal);
+    totalUsage.inputTokens += data.usage.inputTokens;
+    totalUsage.outputTokens += data.usage.outputTokens;
     const output: OutputItem[] = data.output ?? [];
 
     const textParts = output
@@ -371,11 +426,16 @@ async function runAgentLoop(
     );
 
     if (toolCalls.length === 0) {
-      if (textParts.length > 0) return textParts.join("\n");
-      const d = data as Record<string, unknown>;
-      if (typeof d.output_text === "string") return d.output_text;
-      if (typeof d.response === "string") return d.response;
-      return JSON.stringify(data);
+      let text: string;
+      if (textParts.length > 0) {
+        text = textParts.join("\n");
+      } else {
+        const d = data as unknown as Record<string, unknown>;
+        if (typeof d.output_text === "string") text = d.output_text;
+        else if (typeof d.response === "string") text = d.response;
+        else text = JSON.stringify(data);
+      }
+      return { text, usage: totalUsage };
     }
 
     const toolResults: OutputItem[] = toolCalls.map((call) => ({
@@ -402,7 +462,8 @@ export async function sendCommand(
   command: string,
   history?: ChatMessage[],
   agentType?: AgentType,
-): Promise<string> {
+  signal?: AbortSignal,
+): Promise<AgentLoopResult> {
   const baseUrl = await getContainerBaseUrl(taskArn);
 
   let input: unknown;
@@ -433,7 +494,7 @@ export async function sendCommand(
     input = command;
   }
 
-  return runAgentLoop(baseUrl, input, 60_000);
+  return runAgentLoop(baseUrl, input, 60_000, signal);
 }
 
 export async function sendDocumentCommand(
@@ -441,7 +502,8 @@ export async function sendDocumentCommand(
   developerInstruction: string,
   contentPrompt: string,
   history?: ChatMessage[],
-): Promise<string> {
+  signal?: AbortSignal,
+): Promise<AgentLoopResult> {
   const baseUrl = await getContainerBaseUrl(taskArn);
 
   type InputItem = { type: "message"; role: "developer" | "user" | "assistant"; content: string };
@@ -458,5 +520,5 @@ export async function sendDocumentCommand(
 
   items.push({ type: "message", role: "user", content: contentPrompt });
 
-  return runAgentLoop(baseUrl, items, 90_000);
+  return runAgentLoop(baseUrl, items, 90_000, signal);
 }

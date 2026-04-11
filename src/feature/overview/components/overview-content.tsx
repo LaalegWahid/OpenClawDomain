@@ -70,6 +70,7 @@ interface AgentRecord {
   botUsername: string;
   status: string;
   type?: string;
+  profileImage?: string | null;
 }
 
 interface OverviewContentProps {
@@ -134,6 +135,9 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   const [agentModel, setAgentModel] = useState("");
   const [modelsCatalog, setModelsCatalog] = useState<Record<string, string[]>>({});
 
+  // Profile image
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+
   // Skills selection
   const [userSkills, setUserSkills] = useState<UserSkill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
@@ -169,6 +173,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     setDiscordToken("");
     setBotName(""); setSystemPrompt("You are a helpful specialist agent."); setCustomType("");
     setApiProvider(""); setApiKey(""); setAgentModel("");
+    setProfileImage(null);
     setSelectedSkillIds([]);
     setError(null);
     setWaStep("form"); setWaAgentId(null); setWaQrData(null); setWaQrError(null);
@@ -201,6 +206,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
         ...(apiProvider.trim() ? { apiProvider: apiProvider.trim() } : {}),
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
         ...(agentModel.trim() ? { agentModel: agentModel.trim() } : {}),
+        ...(profileImage ? { profileImage } : {}),
       };
       const body =
         platform === "telegram"
@@ -361,8 +367,12 @@ export function OverviewContent({ userName }: OverviewContentProps) {
           {agents.map((ag) => (
             <div key={ag.id} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "16px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                <div style={{ width: "42px", height: "42px", background: "rgba(255,77,0,0.08)", border: "1px solid rgba(255,77,0,0.15)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Bot size={18} color="#FF4D00" />
+                <div style={{ width: "42px", height: "42px", background: ag.profileImage ? "transparent" : "rgba(255,77,0,0.08)", border: ag.profileImage ? "none" : "1px solid rgba(255,77,0,0.15)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+                  {ag.profileImage ? (
+                    <img src={ag.profileImage} alt={ag.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "10px" }} />
+                  ) : (
+                    <Bot size={18} color="#FF4D00" />
+                  )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                   <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: getStatusColor(ag.status), display: "inline-block" }} />
@@ -566,6 +576,67 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 </div>
               )}
 
+              {/* Profile image */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={labelStyle}>Profile Image</label>
+                <label style={{
+                  display: "flex", alignItems: "center", gap: "16px", width: "100%",
+                  padding: "14px 16px", borderRadius: 10, cursor: "pointer",
+                  background: profileImage ? "rgba(255,77,0,0.03)" : "var(--surface-2)",
+                  border: profileImage ? "1px solid rgba(255,77,0,0.2)" : "1px dashed var(--border)",
+                  transition: "all 0.15s",
+                }}>
+                  <div style={{
+                    width: 52, height: 52, borderRadius: 10, flexShrink: 0,
+                    background: profileImage ? "transparent" : "rgba(255,77,0,0.08)",
+                    border: profileImage ? "none" : "1px solid rgba(255,77,0,0.15)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    overflow: "hidden",
+                  }}>
+                    {profileImage ? (
+                      <img src={profileImage} alt="Agent" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 10 }} />
+                    ) : (
+                      <Bot size={20} color="#FF4D00" />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontFamily: mono, fontSize: "12px", fontWeight: 500, color: "var(--foreground)", margin: "0 0 2px" }}>
+                      {profileImage ? "Image selected" : "Click to upload"}
+                    </p>
+                    <p style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", margin: 0 }}>
+                      {profileImage ? "Click to change or use the remove button" : "PNG, JPG or WebP — max 500KB"}
+                    </p>
+                  </div>
+                  {profileImage && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setProfileImage(null); }}
+                      style={{
+                        fontFamily: mono, fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
+                        color: "var(--foreground-3)", background: "none",
+                        border: "1px solid var(--border)", borderRadius: 6, padding: "4px 10px",
+                        cursor: "pointer", flexShrink: 0,
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 500_000) { setError("Image must be under 500KB."); return; }
+                      const reader = new FileReader();
+                      reader.onload = () => setProfileImage(reader.result as string);
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </label>
+              </div>
+
               {/* Common fields */}
               <ModalField label="Agent Name" value={botName} onChange={setBotName} placeholder="e.g. Customer Support" />
 
@@ -632,30 +703,57 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   <label style={labelStyle}>
                     <Sparkles size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
-                    Attach Skills ({selectedSkillIds.length} selected)
+                    Attach Skills
                   </label>
-                  <div style={{ maxHeight: "160px", overflowY: "auto", border: "1px solid var(--border)", borderRadius: "8px", background: "var(--surface-2)" }}>
-                    {userSkills.map((s) => {
-                      const checked = selectedSkillIds.includes(s.id);
-                      return (
-                        <label
-                          key={s.id}
-                          style={{
-                            display: "flex", alignItems: "center", gap: "10px",
-                            padding: "10px 12px", cursor: "pointer",
-                            borderBottom: "1px solid var(--border)",
-                            background: checked ? "rgba(255,77,0,0.05)" : "transparent",
-                          }}
-                        >
-                          <input type="checkbox" checked={checked} onChange={() => setSelectedSkillIds((prev) => checked ? prev.filter((id) => id !== s.id) : [...prev, s.id])} style={{ accentColor: "#FF4D00" }} />
-                          <div style={{ overflow: "hidden" }}>
-                            <p style={{ fontFamily: mono, fontSize: "12px", fontWeight: 600, color: "var(--foreground)", margin: 0 }}>{s.name}</p>
-                            <p style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", margin: 0, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{s.description}</p>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      if (id && !selectedSkillIds.includes(id)) {
+                        setSelectedSkillIds((prev) => [...prev, id]);
+                      }
+                    }}
+                    style={{ ...inputStyle, cursor: "pointer" }}
+                  >
+                    <option value="">Select a skill to add...</option>
+                    {userSkills
+                      .filter((s) => !selectedSkillIds.includes(s.id))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                  </select>
+                  {selectedSkillIds.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
+                      {selectedSkillIds.map((id) => {
+                        const skill = userSkills.find((s) => s.id === id);
+                        if (!skill) return null;
+                        return (
+                          <span
+                            key={id}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: "6px",
+                              padding: "4px 10px", borderRadius: "6px",
+                              background: "rgba(255,77,0,0.06)", border: "1px solid rgba(255,77,0,0.2)",
+                              fontFamily: mono, fontSize: "11px", fontWeight: 500, color: "var(--foreground)",
+                            }}
+                          >
+                            {skill.name}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSkillIds((prev) => prev.filter((i) => i !== id))}
+                              style={{
+                                background: "none", border: "none", cursor: "pointer", padding: 0,
+                                color: "var(--foreground-3)", fontSize: "14px", lineHeight: 1,
+                                display: "flex", alignItems: "center",
+                              }}
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
