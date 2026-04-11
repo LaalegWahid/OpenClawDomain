@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Download, Bot, ChevronDown } from "lucide-react";
-import { Button } from "../../../shared/components/ui/button";
+import { Send, Download, Bot, ChevronDown, RotateCcw } from "lucide-react";
+
+const mono = "var(--mono), 'JetBrains Mono', monospace";
 
 interface ChatDocument {
   data: string;
@@ -22,7 +23,7 @@ interface AgentOption {
   type?: string;
 }
 
-export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaultAgentId?: string, hideHeader?: boolean } = {}) {
+export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaultAgentId?: string; hideHeader?: boolean } = {}) {
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>(defaultAgentId || "");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -33,7 +34,9 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const selectedAgent = defaultAgentId ? { id: defaultAgentId, name: "Agent", status: "active", type: "default" } : agents.find((a) => a.id === selectedAgentId);
+  const selectedAgent = defaultAgentId
+    ? { id: defaultAgentId, name: "Agent", status: "active", type: "default" }
+    : agents.find((a) => a.id === selectedAgentId);
   const isActive = selectedAgent?.status === "active";
 
   const scrollToBottom = useCallback(() => {
@@ -45,22 +48,18 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
   // Load agents list
   useEffect(() => {
     if (defaultAgentId) {
-       setLoadingAgents(false);
-       return;
+      setLoadingAgents(false);
+      return;
     }
     fetch("/api/agents")
       .then((r) => r.json())
       .then((data) => {
         const list: AgentOption[] = (data.agents ?? []).map(
           (a: { id: string; name: string; status: string; type?: string }) => ({
-            id: a.id,
-            name: a.name,
-            status: a.status,
-            type: a.type,
+            id: a.id, name: a.name, status: a.status, type: a.type,
           }),
         );
         setAgents(list);
-        // Auto-select first active agent
         const active = list.find((a) => a.status === "active");
         if (active) setSelectedAgentId(active.id);
         else if (list.length > 0) setSelectedAgentId(list[0].id);
@@ -128,6 +127,16 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
     }
   }, [input, sending, isActive, selectedAgentId]);
 
+  const handleReset = async () => {
+    if (!selectedAgentId) return;
+    try {
+      await fetch(`/api/agents/${selectedAgentId}/chat`, { method: "DELETE" });
+      setMessages([]);
+    } catch {
+      setError("Failed to clear conversation");
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -135,144 +144,253 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
     }
   };
 
-// Key responsive improvements:
-// 1. h-[calc(100vh-120px)] → flex-based height that adapts to mobile
-// 2. Agent selector uses tighter padding on small screens
-// 3. Message bubbles use responsive max-width (95% on mobile, 80% on desktop)
-// 4. Input area stacks better on small screens
-// 5. Added min-h-0 to prevent flex overflow
-// 6. Used clamp-friendly sizing throughout
-
-if (loadingAgents) {
-  return (
-    <div className="flex items-center justify-center py-20">
-      <div className="size-6 animate-spin rounded-full border-2 border-white/20 border-t-brand" />
-    </div>
-  );
-}
-
-if (!defaultAgentId && agents.length === 0) {
-  return (
-    <div className="text-center py-20 px-4">
-      <Bot className="size-12 text-white/20 mx-auto mb-4" />
-      <p className="text-white/40 text-sm">No agents found. Create one from the dashboard first.</p>
-    </div>
-  );
-}
-
-return (
-  <div className="flex flex-col h-full min-h-0 flex-1">
-    {/* Agent selector (hide if hideHeader is true) */}
-    {!hideHeader && (
-      <div className="mb-3 flex-shrink-0">
-        <label className="block text-xs text-white/40 mb-1.5">Agent</label>
-        <div className="relative">
-          <select
-            value={selectedAgentId}
-            onChange={(e) => setSelectedAgentId(e.target.value)}
-            className="w-full appearance-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 sm:px-4 sm:py-2.5 pr-9 text-sm text-white focus:outline-none focus:border-brand/40"
-          >
-            {agents.map((a) => (
-              <option key={a.id} value={a.id} className="bg-zinc-900 text-white">
-                {a.name} — {a.status}{a.type ? ` (${a.type})` : ""}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-white/40" />
-        </div>
+  if (loadingAgents) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "5rem 0" }}>
+        <div style={{
+          width: 24, height: 24, border: "2px solid var(--border)",
+          borderTopColor: "#FF4D00", borderRadius: "50%",
+          animation: "spin 1s linear infinite",
+        }} />
       </div>
-    )}
+    );
+  }
 
-    {/* Chat area */}
-    <div className="flex-1 flex flex-col rounded-xl border border-white/10 bg-white/5 overflow-hidden min-h-0">
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-3">
-        {messages.length === 0 && !sending && (
-          <p className="text-center text-sm text-white/20 mt-8 px-4">
-            {isActive
-              ? `Send a message to ${selectedAgent?.name}`
-              : selectedAgent
-                ? `Agent is ${selectedAgent.status} — chat unavailable`
-                : "Select an agent to start chatting"}
-          </p>
-        )}
+  if (!defaultAgentId && agents.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "5rem 1rem" }}>
+        <Bot size={48} color="var(--foreground-3)" style={{ margin: "0 auto 1rem" }} />
+        <p style={{ fontFamily: mono, fontSize: 13, color: "var(--foreground-3)" }}>
+          No agents found. Create one from the dashboard first.
+        </p>
+      </div>
+    );
+  }
 
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[95%] sm:max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
-                msg.role === "user"
-                  ? "bg-brand/15 text-white border border-brand/20"
-                  : "bg-white/5 text-white/80 border border-white/10"
-              }`}
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, flex: 1 }}>
+      {/* Agent selector + reset */}
+      {!hideHeader && (
+        <div style={{ marginBottom: 12, flexShrink: 0, display: "flex", alignItems: "flex-end", gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{
+              display: "block", fontFamily: mono, fontSize: 10, fontWeight: 500,
+              letterSpacing: "0.06em", textTransform: "uppercase",
+              color: "var(--foreground-3)", marginBottom: 6,
+            }}>
+              Agent
+            </label>
+            <div style={{ position: "relative" }}>
+              <select
+                value={selectedAgentId}
+                onChange={(e) => setSelectedAgentId(e.target.value)}
+                style={{
+                  width: "100%", appearance: "none",
+                  background: "var(--surface)", border: "1px solid var(--border)",
+                  borderRadius: 8, padding: "9px 36px 9px 12px",
+                  fontFamily: mono, fontSize: 13, color: "var(--foreground)",
+                  outline: "none", cursor: "pointer",
+                }}
+              >
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} — {a.status}{a.type ? ` (${a.type})` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} color="var(--foreground-3)" style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+            </div>
+          </div>
+          {messages.length > 0 && (
+            <button
+              onClick={handleReset}
+              title="Clear conversation"
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "9px 14px", border: "1px solid var(--border)", borderRadius: 8,
+                background: "var(--surface)", cursor: "pointer",
+                fontFamily: mono, fontSize: 11, fontWeight: 500,
+                letterSpacing: "0.04em", textTransform: "uppercase",
+                color: "var(--foreground-2)", transition: "border-color 0.15s",
+                flexShrink: 0,
+              }}
             >
-              {msg.content}
-              {msg.document && (
-                
-                 <a href={msg.document.data}
-                  download={msg.document.filename}
-                  className="mt-2 flex items-center gap-2 rounded-md border border-brand/30 bg-brand/10 px-3 py-1.5 text-xs text-white hover:bg-brand/20 active:bg-brand/30 transition-colors w-fit"
-                >
-                  <Download className="size-3.5 flex-shrink-0" />
-                  <span className="truncate max-w-[180px] sm:max-w-none">{msg.document.filename}</span>
-                </a>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {/* Thinking indicator */}
-        {sending && (
-          <div className="flex justify-start">
-            <div className="bg-white/5 border border-white/10 rounded-lg px-4 py-3">
-              <div className="flex items-center gap-1">
-                <span className="size-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="size-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="size-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="px-3 sm:px-4 py-2 text-xs text-red-400 bg-red-500/5 border-t border-red-500/10 flex-shrink-0">
-          {error}
+              <RotateCcw size={12} />
+              Reset
+            </button>
+          )}
         </div>
       )}
 
-      {/* Input */}
-      <div className="border-t border-white/10 p-2 sm:p-3 flex gap-2 items-end flex-shrink-0">
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={
-            isActive
-              ? "Type a message..."
-              : selectedAgent
-                ? `Agent is ${selectedAgent.status}`
-                : "Select an agent"
-          }
-          disabled={!isActive || sending}
-          rows={1}
-          className="flex-1 resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-brand/40 disabled:opacity-40 disabled:cursor-not-allowed max-h-32 overflow-y-auto"
-        />
-        <Button
-          size="sm"
-          onClick={handleSend}
-          disabled={!input.trim() || sending || !isActive}
-          className="bg-brand hover:bg-brand/80 active:bg-brand/60 text-white px-3 flex-shrink-0 touch-manipulation"
-        >
-          <Send className="size-4" />
-        </Button>
+      {/* Reset button when hideHeader but messages exist */}
+      {hideHeader && messages.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10, flexShrink: 0 }}>
+          <button
+            onClick={handleReset}
+            title="Clear conversation"
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "7px 12px", border: "1px solid var(--border)", borderRadius: 8,
+              background: "var(--surface)", cursor: "pointer",
+              fontFamily: mono, fontSize: 10, fontWeight: 500,
+              letterSpacing: "0.04em", textTransform: "uppercase",
+              color: "var(--foreground-2)", transition: "border-color 0.15s",
+            }}
+          >
+            <RotateCcw size={11} />
+            Reset
+          </button>
+        </div>
+      )}
+
+      {/* Chat area */}
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column",
+        border: "1px solid var(--border)", borderRadius: 12,
+        background: "var(--surface)", overflow: "hidden", minHeight: 0,
+      }}>
+        {/* Messages */}
+        <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
+          {messages.length === 0 && !sending && (
+            <p style={{
+              textAlign: "center", fontFamily: mono, fontSize: 13,
+              color: "var(--foreground-3)", marginTop: "3rem", padding: "0 1rem",
+            }}>
+              {isActive
+                ? `Send a message to ${selectedAgent?.name}`
+                : selectedAgent
+                  ? `Agent is ${selectedAgent.status} — chat unavailable`
+                  : "Select an agent to start chatting"}
+            </p>
+          )}
+
+          {messages.map((msg, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
+              <div style={{
+                maxWidth: "80%",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontSize: 13,
+                fontFamily: mono,
+                lineHeight: 1.6,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                ...(msg.role === "user"
+                  ? {
+                      background: "rgba(255,77,0,0.08)",
+                      color: "var(--foreground)",
+                      border: "1px solid rgba(255,77,0,0.15)",
+                    }
+                  : {
+                      background: "var(--surface-2)",
+                      color: "var(--foreground)",
+                      border: "1px solid var(--border)",
+                    }),
+              }}>
+                {msg.content}
+                {msg.document && (
+                  <a
+                    href={msg.document.data}
+                    download={msg.document.filename}
+                    style={{
+                      marginTop: 8, display: "flex", alignItems: "center", gap: 6,
+                      borderRadius: 6, border: "1px solid rgba(255,77,0,0.25)",
+                      background: "rgba(255,77,0,0.06)", padding: "6px 10px",
+                      fontSize: 11, color: "#FF4D00", textDecoration: "none",
+                      width: "fit-content", transition: "background 0.15s",
+                    }}
+                  >
+                    <Download size={13} />
+                    {msg.document.filename}
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {/* Thinking indicator */}
+          {sending && (
+            <div style={{ display: "flex", justifyContent: "flex-start" }}>
+              <div style={{
+                background: "var(--surface-2)", border: "1px solid var(--border)",
+                borderRadius: 10, padding: "12px 16px",
+                display: "flex", alignItems: "center", gap: 4,
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--foreground-3)", animation: "bounce 1s infinite", animationDelay: "0ms" }} />
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--foreground-3)", animation: "bounce 1s infinite", animationDelay: "150ms" }} />
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--foreground-3)", animation: "bounce 1s infinite", animationDelay: "300ms" }} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div style={{
+            padding: "8px 16px", fontFamily: mono, fontSize: 12,
+            color: "var(--error)", background: "rgba(226,61,45,0.06)",
+            borderTop: "1px solid rgba(226,61,45,0.15)", flexShrink: 0,
+          }}>
+            {error}
+          </div>
+        )}
+
+        {/* Input */}
+        <div style={{
+          borderTop: "1px solid var(--border)", padding: 12,
+          display: "flex", gap: 10, alignItems: "flex-end", flexShrink: 0,
+        }}>
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              isActive
+                ? "Type your message..."
+                : selectedAgent
+                  ? `Agent is ${selectedAgent.status}`
+                  : "Select an agent"
+            }
+            disabled={!isActive || sending}
+            rows={1}
+            style={{
+              flex: 1, resize: "none",
+              background: "var(--surface-2)", border: "1px solid var(--border)",
+              borderRadius: 8, padding: "10px 14px",
+              fontFamily: mono, fontSize: 13, color: "var(--foreground)",
+              outline: "none", maxHeight: 128, overflowY: "auto",
+              transition: "border-color 0.15s",
+              opacity: (!isActive || sending) ? 0.4 : 1,
+              cursor: (!isActive || sending) ? "not-allowed" : "text",
+            }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "#FF4D00"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || sending || !isActive}
+            style={{
+              background: (!input.trim() || sending || !isActive) ? "var(--surface-2)" : "#FF4D00",
+              color: (!input.trim() || sending || !isActive) ? "var(--foreground-3)" : "#fff",
+              border: "none", borderRadius: 8,
+              padding: "10px 14px", cursor: (!input.trim() || sending || !isActive) ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0, transition: "all 0.15s",
+            }}
+          >
+            <Send size={16} />
+          </button>
+        </div>
       </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); opacity: 0.4; }
+          50% { transform: translateY(-4px); opacity: 1; }
+        }
+      `}</style>
     </div>
-  </div>
-);
+  );
 }
