@@ -67,18 +67,9 @@ export async function DELETE(
       logger.warn({ agentId: id, err }, "Failed to delete webhook");
     }
 
-    await db
-      .update(agent)
-      .set({ status: "stopped", containerId: null })
-      .where(eq(agent.id, id));
+    await db.delete(agent).where(eq(agent.id, id));
 
-    await db.insert(agentActivity).values({
-      agentId: id,
-      type: "stop",
-      message: "Agent stopped by user",
-    });
-
-    logger.info({ agentId: id, userId: session.user.id }, "Agent stopped");
+    logger.info({ agentId: id, userId: session.user.id }, "Agent deleted");
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof Response) return err;

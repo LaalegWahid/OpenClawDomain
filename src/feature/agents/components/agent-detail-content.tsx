@@ -9,6 +9,7 @@ import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
 import { ChatPageContent } from "../../../feature/chat/components/chat-page-content";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 const TYPE_BADGE_STYLES: Record<string, string> = {
   finance: "bg-green-500/15 text-green-400 border-green-500/30",
@@ -99,6 +100,7 @@ const MCP_TEMPLATES = [
 ];
 
 export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
+  const router = useRouter();
   const [agent, setAgent] = useState<AgentRecord | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,10 +221,9 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     setError(null);
     try {
       await fetch(`/api/agents/${agentId}`, { method: "DELETE" });
-      await fetchAgent();
+      router.push("/overview");
     } catch {
       setError("We couldn't stop this bot. Please try again.");
-    } finally {
       setStopping(false);
     }
   };
@@ -537,7 +538,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                           {agent.status}
                         </span>
 
-                        {/* {agent.status === "active" && (
+                        {agent.status === "active" && (
                           <Button
                             onClick={handleStop}
                             disabled={stopping}
@@ -545,9 +546,9 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                             className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                           >
                             <Power className="size-4 mr-1" />
-                            {stopping ? "Stopping..." : "Unlink Bot"}
+                            {stopping ? "Stopping..." : "Delete agent"}
                           </Button>
-                        )} */}
+                        )}
                       </div>
                     </div>
                     {/* Container info */}
