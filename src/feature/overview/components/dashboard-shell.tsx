@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, X } from "lucide-react";
 import { authClient } from "../../../shared/lib/auth/client";
 
 const NAV = [
@@ -21,12 +20,23 @@ interface DashboardShellProps {
   isAdmin?: boolean;
 }
 
-export function DashboardShell({ children, userEmail, userName }: DashboardShellProps) {
-  const pathname     = usePathname();
-  const router       = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
+export function DashboardShell({ children }: DashboardShellProps) {
+  const pathname = usePathname();
+  const router   = useRouter();
+  const [navOpen, setNavOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
-  const initial = (userName?.[0] ?? userEmail?.[0] ?? "U").toUpperCase();
+  useEffect(() => {
+    function check() { setIsMobile(window.innerWidth < 768); }
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = navOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [navOpen]);
 
   async function handleSignOut() {
     await authClient.signOut();
@@ -39,142 +49,158 @@ export function DashboardShell({ children, userEmail, userName }: DashboardShell
   }
 
   const NAVBAR_H = 60;
-  const serif = "var(--serif), 'Cormorant Garamond', Georgia, serif";
-  const mono  = "var(--mono), 'JetBrains Mono', monospace";
+
+  const linkStyle = (active: boolean): React.CSSProperties => ({
+    fontSize: "13px",
+    color: active ? "#FF4D00" : "#8a7060",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: 0,
+    textDecoration: "none",
+    transition: "color 0.2s",
+    fontWeight: active ? 500 : 400,
+  });
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)" }}>
 
       {/* ── Navbar ─────────────────────────────────────────────── */}
-      <header style={{
-        position:     "fixed",
-        top:          0, left: 0, right: 0,
-        height:       `${NAVBAR_H}px`,
-        background:   "#fff",
-        borderBottom: "1px solid var(--border)",
-        display:      "flex",
-        alignItems:   "center",
-        padding:      "0 2rem",
-        zIndex:       100,
-        gap:          "0",
+      <nav style={{
+        position: "fixed",
+        top: 0, left: 0, right: 0,
+        zIndex: 100,
+        background: "rgba(248,242,237,0.92)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        borderBottom: "0.5px solid rgba(42,31,25,0.1)",
       }}>
-
-        {/* Logo */}
-        <Link href="/" style={{
-          display: "inline-flex", alignItems: "center", gap: "10px",
-          textDecoration: "none", flexShrink: 0, marginRight: "2.5rem",
+        <div style={{
+          height: `${NAVBAR_H}px`,
+          padding: "0 1.75rem",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
         }}>
-          <svg width="28" height="28" viewBox="0 0 56 56" fill="none">
-            <rect width="56" height="56" rx="13" fill="#FF4D00"/>
-            <line x1="15" y1="40" x2="23" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
-            <line x1="24" y1="40" x2="32" y2="12" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
-            <line x1="33" y1="40" x2="41" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square"/>
-          </svg>
-          <span style={{
-            fontFamily:    serif,
-            fontSize:      "20px",
-            fontWeight:    600,
-            letterSpacing: "-0.01em",
-            color:         "var(--foreground)",
-            lineHeight:    1,
-          }}>
-            Open<span style={{ color: "#FF4D00" }}>Claw</span>
-          </span>
-        </Link>
+          {/* Logo */}
+          <Link href="/" style={{ display: "flex", alignItems: "center", gap: "9px", textDecoration: "none", flexShrink: 0 }}>
+            <svg width="32" height="32" viewBox="0 0 56 56" fill="none">
+              <rect width="56" height="56" rx="13" fill="#FF4D00" />
+              <line x1="15" y1="40" x2="23" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square" />
+              <line x1="24" y1="40" x2="32" y2="12" stroke="white" strokeWidth="4.5" strokeLinecap="square" />
+              <line x1="33" y1="40" x2="41" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square" />
+            </svg>
+            <span style={{ fontSize: "14px", fontWeight: 500, letterSpacing: "-0.025em", color: "#2a1f19" }}>
+              <span style={{ color: "#FF4D00" }}>01.</span>OpenClaw
+            </span>
+          </Link>
 
-        {/* Desktop nav */}
-        <nav className="nav-desktop" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "2px", flex: 1 }}>
-          {NAV.map(item => {
-            const active = isActive(item.href);
-            return (
-              <Link key={item.href} href={item.href} style={{
-                fontFamily:     mono,
-                fontSize:       "11.5px",
-                fontWeight:     active ? 600 : 400,
-                letterSpacing:  "0.08em",
-                textTransform:  "uppercase" as const,
-                color:          active ? "#FF4D00" : "var(--foreground-2)",
-                textDecoration: "none",
-                padding:        "7px 14px",
-                borderRadius:   "6px",
-                background:     active ? "rgba(255,77,0,0.06)" : "transparent",
-                borderBottom:   active ? "2px solid #FF4D00" : "2px solid transparent",
-                transition:     "all 0.15s",
-              }}>
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Right: user */}
-        <div className="nav-desktop" style={{ display: "flex", alignItems: "center", gap: "12px", marginLeft: "auto", flexShrink: 0 }}>
-          <button onClick={handleSignOut} style={{
-            display: "flex", alignItems: "center", gap: "6px",
-            padding: "6px 12px",
-            border: "1px solid var(--border)",
-            borderRadius: "6px", background: "transparent",
-            cursor: "pointer",
-            fontFamily: mono, fontSize: "11px",
-            letterSpacing: "0.06em", textTransform: "uppercase" as const,
-            color: "var(--foreground-2)",
-            transition: "border-color 0.15s, color 0.15s",
-          }}>
-            <LogOut size={12} />
-            Sign out
-          </button>
-        </div>
-
-        {/* Mobile hamburger */}
-        <button
-          onClick={() => setMobileOpen(o => !o)}
-          className="nav-mobile-btn"
-          style={{
-            marginLeft: "auto", background: "transparent", border: "none",
-            color: "var(--foreground-2)", cursor: "pointer",
-            padding: "6px", display: "flex", alignItems: "center",
-          }}
-        >
-          {mobileOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
-      </header>
-
-      {/* ── Mobile drawer ─────────────────────────────────────── */}
-      {mobileOpen && (
-        <>
-          <div onClick={() => setMobileOpen(false)} style={{
-            position: "fixed", inset: 0,
-            background: "rgba(28,22,18,0.3)",
-            backdropFilter: "blur(2px)", zIndex: 98,
-          }} />
-          <div style={{
-            position: "fixed", top: `${NAVBAR_H}px`, left: 0, right: 0,
-            background: "#fff", borderBottom: "1px solid var(--border)",
-            zIndex: 99, padding: "1rem 1.5rem 1.5rem",
-          }}>
-            <nav style={{ display: "flex", flexDirection: "column", gap: "2px", marginBottom: "1rem" }}>
+          {/* Desktop nav links */}
+          {!isMobile && (
+            <div style={{ display: "flex", gap: "2rem", alignItems: "center" }}>
               {NAV.map(item => {
                 const active = isActive(item.href);
                 return (
-                  <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)} style={{
-                    fontFamily: mono, fontSize: "12px", fontWeight: active ? 600 : 400,
-                    letterSpacing: "0.08em", textTransform: "uppercase",
-                    color: active ? "#FF4D00" : "var(--foreground-2)",
-                    textDecoration: "none", padding: "11px 12px", borderRadius: "8px",
-                    background: active ? "rgba(255,77,0,0.06)" : "transparent",
-                  }}>
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    style={linkStyle(active)}
+                    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#2a1f19"; }}
+                    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#8a7060"; }}
+                  >
                     {item.label}
                   </Link>
                 );
               })}
-            </nav>
-            <div style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-              <button onClick={handleSignOut} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 12px", border: "1px solid var(--border)", borderRadius: "6px", background: "transparent", fontFamily: mono, fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--foreground-2)", cursor: "pointer" }}>
-                <LogOut size={12} /> Sign out
-              </button>
             </div>
+          )}
+
+          {/* Right side */}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+            {!isMobile && (
+              <button
+                onClick={handleSignOut}
+                style={{
+                  fontSize: "13px", color: "#8a7060", background: "none",
+                  border: "none", cursor: "pointer", padding: 0,
+                  transition: "color 0.2s",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#2a1f19"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#8a7060"; }}
+              >
+                Sign out
+              </button>
+            )}
+            {isMobile && (
+              <button
+                onClick={() => setNavOpen(o => !o)}
+                aria-label="Toggle menu"
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  padding: "8px", display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#2a1f19", width: "36px", height: "36px",
+                }}
+              >
+                {navOpen ? (
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <line x1="4" y1="4" x2="16" y2="16" stroke="#2a1f19" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="16" y1="4" x2="4" y2="16" stroke="#2a1f19" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <line x1="2" y1="5" x2="18" y2="5" stroke="#2a1f19" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="2" y1="10" x2="18" y2="10" stroke="#2a1f19" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="2" y1="15" x2="18" y2="15" stroke="#2a1f19" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                )}
+              </button>
+            )}
           </div>
-        </>
+        </div>
+      </nav>
+
+      {/* ── Mobile overlay ────────────────────────────────────── */}
+      {isMobile && navOpen && (
+        <div
+          style={{
+            position: "fixed", top: `${NAVBAR_H}px`, left: 0, right: 0, bottom: 0,
+            zIndex: 99, background: "rgba(248,242,237,0.98)", backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            display: "flex", flexDirection: "column", alignItems: "center",
+            justifyContent: "center", gap: "1.5rem",
+            overflowY: "auto",
+          }}
+          onClick={e => { if (e.target === e.currentTarget) setNavOpen(false); }}
+        >
+          {NAV.map(item => {
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setNavOpen(false)}
+                style={{
+                  fontSize: "1.4rem", color: active ? "#FF4D00" : "#2a1f19",
+                  background: "none", border: "none", textDecoration: "none",
+                  fontWeight: active ? 500 : 400, letterSpacing: "-0.02em",
+                  padding: "8px 0", transition: "color 0.2s",
+                }}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+          <button
+            onClick={() => { setNavOpen(false); handleSignOut(); }}
+            style={{
+              marginTop: "1rem", background: "none", color: "#8a7060",
+              border: "0.5px solid rgba(42,31,25,0.15)", padding: "14px 32px", borderRadius: "10px",
+              fontSize: "15px", fontWeight: 400, cursor: "pointer",
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       )}
 
       {/* ── Page content ──────────────────────────────────────── */}
@@ -188,15 +214,6 @@ export function DashboardShell({ children, userEmail, userName }: DashboardShell
       }}>
         {children}
       </main>
-
-      <style>{`
-        @media (max-width: 767px) {
-          .nav-desktop { display: none !important; }
-        }
-        @media (min-width: 768px) {
-          .nav-mobile-btn { display: none !important; }
-        }
-      `}</style>
     </div>
   );
 }

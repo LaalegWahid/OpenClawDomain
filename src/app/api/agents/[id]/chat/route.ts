@@ -227,3 +227,33 @@ export async function POST(
     return NextResponse.json({ error: "Failed to process message" }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const session = await getSessionOrThrow(req);
+    const { id } = await params;
+
+    const [found] = await db
+      .select()
+      .from(agent)
+      .where(and(eq(agent.id, id), eq(agent.userId, session.user.id)));
+
+    if (!found) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+
+    const chatId = `web_${session.user.id}`;
+    await db
+      .delete(chatSession)
+      .where(and(eq(chatSession.agentId, id), eq(chatSession.chatId, chatId)));
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    logger.error({ err }, "Failed to clear chat history");
+    return NextResponse.json({ error: "Failed to clear chat history" }, { status: 500 });
+  }
+}

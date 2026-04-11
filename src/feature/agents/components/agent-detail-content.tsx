@@ -445,7 +445,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
           <>
             <div className="flex flex-col md:flex-row gap-6">
               {/* Internal Sidebar Navigation */}
-              <div className="w-full md:w-56 shrink-0 flex flex-col gap-1 pr-4 border-r border-white/10 min-h-[400px]">
+              <div className="w-full md:w-56 shrink-0 flex flex-col gap-1 pr-4 border-r border-white/10 md:sticky md:top-25 md:self-start">
                 <button
                   onClick={() => setActiveTab("info")}
                   className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
@@ -557,22 +557,22 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                       </div>
                     </div>
                     {/* Container info */}
-            {agent.containerId && (
+            {/* {agent.containerId && (
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                 <p className="text-xs text-white/40 mb-1">Container</p>
                 <p className="text-sm text-white/70 font-mono">
                   {agent.containerId} &middot;
                 </p>
               </div>
-            )}
+            )} */}
 
             {/* Webhook URL */}
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            {/* <div className="rounded-xl border border-white/10 bg-white/5 p-4">
               <p className="text-xs text-white/40 mb-1">Webhook URL</p>
               <p className="text-sm text-white/70 font-mono break-all">
                 /api/telegram/webhook/{agent.id}
               </p>
-            </div>
+            </div> */}
 
             <Separator className="bg-white/10" />
 
@@ -753,13 +753,13 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                                 placeholder="Bot Token (from @BotFather)"
                                 value={telegramToken}
                                 onChange={(e) => setTelegramToken(e.target.value)}
-                                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                                className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
                               />
                               <Input
                                 placeholder="Bot username (without @)"
                                 value={telegramUsername}
                                 onChange={(e) => setTelegramUsername(e.target.value)}
-                                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                                className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
                               />
                               <div className="flex gap-2">
                                 <Button
@@ -786,7 +786,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                                 placeholder="Bot Token"
                                 value={discordToken}
                                 onChange={(e) => setDiscordToken(e.target.value)}
-                                className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                                className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
                               />
                               <div className="flex gap-2">
                                 <Button
@@ -942,7 +942,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                     placeholder="Server name (e.g. Notion)"
                     value={mcpName}
                     onChange={(e) => setMcpName(e.target.value)}
-                    className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                    className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
                   />
 
                   {/* Transport selector */}
@@ -967,7 +967,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                       placeholder="Server URL (https://...)"
                       value={mcpUrl}
                       onChange={(e) => setMcpUrl(e.target.value)}
-                      className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                      className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
                     />
                   ) : (
                     <div className="space-y-2">
@@ -990,7 +990,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                         placeholder="Args (e.g. @notionhq/mcp --token TOKEN)"
                         value={mcpArgs}
                         onChange={(e) => setMcpArgs(e.target.value)}
-                        className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                        className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
                       />
                     </div>
                   )}
