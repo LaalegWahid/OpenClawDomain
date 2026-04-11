@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../../shared/lib/drizzle";
-import { agent, agentActivity, chatSession } from "../../../../../shared/db/schema";
+import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
 import { logger } from "../../../../../shared/lib/logger";
 import { eq, and } from "drizzle-orm";
 import { ChatMessage, sendCommand, sendDocumentCommand } from "../../../../../shared/lib/agents/docker";
@@ -65,23 +65,38 @@ export async function POST(
   const agentType = (found.type as AgentType) || "operations";
   const docFormat = detectDocumentRequest(text);
 
-  try {
-    let responseText: string;
+  // Create log entry
+  const [logEntry] = await db.insert(agentLog).values({
+    agentId,
+    source: "whatsapp",
+    status: "running",
+    userPrompt: text,
+  }).returning();
+  const startTime = Date.now();
 
-    if (docFormat) {
-      responseText = await sendDocumentCommand(
-        found.containerId,
-        buildDocumentSystemInstruction(agentType),
-        rewriteAsContentPrompt(text),
-        history,
-      );
-    } else {
-      responseText = await sendCommand(
-        found.containerId, text,
-        history.length > 0 ? history : undefined,
-        agentType,
-      );
-    }
+  try {
+    const result = docFormat
+      ? await sendDocumentCommand(
+          found.containerId,
+          buildDocumentSystemInstruction(agentType),
+          rewriteAsContentPrompt(text),
+          history,
+        )
+      : await sendCommand(
+          found.containerId, text,
+          history.length > 0 ? history : undefined,
+          agentType,
+        );
+
+    const responseText = result.text;
+    await db.update(agentLog).set({
+      status: "completed",
+      assistantResponse: responseText,
+      inputTokens: result.usage.inputTokens,
+      outputTokens: result.usage.outputTokens,
+      durationMs: Date.now() - startTime,
+      completedAt: new Date(),
+    }).where(eq(agentLog.id, logEntry.id));
 
     const updatedHistory: ChatMessage[] = [
       ...history,
@@ -118,6 +133,12 @@ export async function POST(
       return NextResponse.json({ type: "text", text: responseText });
     }
   } catch (err) {
+    await db.update(agentLog).set({
+      status: "error",
+      durationMs: Date.now() - startTime,
+      completedAt: new Date(),
+    }).where(eq(agentLog.id, logEntry.id));
+
     logger.error({ agentId, jid, err }, "Failed to process WhatsApp message");
     const isTimeout = err instanceof Error && err.name === "TimeoutError";
     // Inner try-catch: a DB insert failure must not prevent the JSON response

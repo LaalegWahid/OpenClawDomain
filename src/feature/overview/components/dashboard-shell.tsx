@@ -8,6 +8,7 @@ import { authClient } from "../../../shared/lib/auth/client";
 
 const NAV = [
   { label: "Agents",  href: "/overview" },
+  { label: "Monitor", href: "/monitor"  },
   { label: "Skills",  href: "/skills"   },
   { label: "Profile", href: "/settings" },
 ];

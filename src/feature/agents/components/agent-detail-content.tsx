@@ -30,6 +30,7 @@ interface AgentRecord {
   status: string;
   type?: string;
   containerId: string | null;
+  profileImage?: string | null;
   createdAt: string;
 }
 
@@ -504,9 +505,13 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                     {/* Agent header */}
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-4">
-                        <div className="flex size-14 items-center justify-center rounded-xl bg-gradient-to-br from-brand-dark to-brand">
-                          <Bot className="size-7 text-white" />
-                        </div>
+                        {agent.profileImage ? (
+                          <img src={agent.profileImage} alt={agent.name} className="size-14 rounded-xl object-cover" />
+                        ) : (
+                          <div className="flex size-14 items-center justify-center rounded-xl bg-gradient-to-br from-brand-dark to-brand">
+                            <Bot className="size-7 text-white" />
+                          </div>
+                        )}
                         <div>
                           <h1 className="text-xl font-bold text-white">{agent.name}</h1>
                           <div className="flex items-center gap-2 mt-1">

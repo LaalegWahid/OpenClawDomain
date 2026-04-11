@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits, Events } from "discord.js";
 import { db } from "../../lib/drizzle";
-import { agent, agentChannel, chatSession, agentActivity } from "../../db/schema/agent";
+import { agent, agentChannel, chatSession, agentActivity, agentLog } from "../../db/schema/agent";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import type { ChatMessage } from "../../lib/agents/docker";
@@ -89,24 +89,39 @@ export async function startDiscordBot(
     const history: ChatMessage[] = (session?.history as ChatMessage[] | null) ?? [];
     const docFormat = detectDocumentRequest(text);
 
-    try {
-      let responseText: string;
+    // Create log entry
+    const [logEntry] = await db.insert(agentLog).values({
+      agentId,
+      source: "discord",
+      status: "running",
+      userPrompt: text,
+    }).returning();
+    const startTime = Date.now();
 
-      if (docFormat) {
-        responseText = await sendDocumentCommand(
-          found.containerId,
-          buildDocumentSystemInstruction(agentType),
-          rewriteAsContentPrompt(text),
-          history,
-        );
-      } else {
-        responseText = await sendCommand(
-          found.containerId,
-          text,
-          history.length > 0 ? history : undefined,
-          agentType,
-        );
-      }
+    try {
+      const result = docFormat
+        ? await sendDocumentCommand(
+            found.containerId,
+            buildDocumentSystemInstruction(agentType),
+            rewriteAsContentPrompt(text),
+            history,
+          )
+        : await sendCommand(
+            found.containerId,
+            text,
+            history.length > 0 ? history : undefined,
+            agentType,
+          );
+
+      const responseText = result.text;
+      await db.update(agentLog).set({
+        status: "completed",
+        assistantResponse: responseText,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        durationMs: Date.now() - startTime,
+        completedAt: new Date(),
+      }).where(eq(agentLog.id, logEntry.id));
 
       // Persist updated history
       const updatedHistory: ChatMessage[] = [
@@ -152,6 +167,12 @@ export async function startDiscordBot(
         });
       }
     } catch (err) {
+      await db.update(agentLog).set({
+        status: "error",
+        durationMs: Date.now() - startTime,
+        completedAt: new Date(),
+      }).where(eq(agentLog.id, logEntry.id));
+
       logger.error({ agentId, err }, "Failed to reach agent container from Discord");
       const isTimeout = err instanceof Error && err.name === "TimeoutError";
       await sendDiscordMessage(
