@@ -41,6 +41,18 @@ export async function getSkillFileUrl(key: string): Promise<string> {
   return getSignedUrl(s3, command, { expiresIn: 3600 });
 }
 
+export async function getSkillFileBuffer(key: string): Promise<Buffer> {
+  const res = await s3.send(
+    new GetObjectCommand({ Bucket: bucket(), Key: key }),
+  );
+  const body = res.Body as unknown as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
+  if (!body?.transformToByteArray) {
+    throw new Error(`S3 object ${key} returned no body`);
+  }
+  const bytes = await body.transformToByteArray();
+  return Buffer.from(bytes);
+}
+
 export async function deleteSkillFiles(
   userId: string,
   skillId: string,

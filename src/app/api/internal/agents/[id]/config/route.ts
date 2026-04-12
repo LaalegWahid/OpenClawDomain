@@ -4,7 +4,8 @@ import { agent } from "../../../../../../shared/db/schema/agent";
 import { skill, agentSkill } from "../../../../../../shared/db/schema/skill";
 import { eq } from "drizzle-orm";
 import { getDomainConfig, type AgentType } from "../../../../../../shared/lib/agents/config";
-import { getSkillFileUrl } from "../../../../../../shared/lib/s3/skills";
+import { getSkillFileBuffer } from "../../../../../../shared/lib/s3/skills";
+import { logger } from "../../../../../../shared/lib/logger";
 
 interface SkillFile {
   key: string;
@@ -57,16 +58,29 @@ export async function GET(
   const skills = await Promise.all(
     linkedSkillsRaw.map(async (s) => {
       const files = ((s.files as SkillFile[]) ?? []).filter(
-        (f) => !f.filename.includes("..") && !f.filename.startsWith("/"),
+        (f) =>
+          f &&
+          typeof f.filename === "string" &&
+          !f.filename.includes("..") &&
+          !f.filename.startsWith("/") &&
+          f.filename.toUpperCase() !== "SKILL.MD",
       );
-      const filesWithUrls = await Promise.all(
-        files.map(async (f) => ({ filename: f.filename, url: await getSkillFileUrl(f.key) })),
+      const inlined = await Promise.all(
+        files.map(async (f) => {
+          try {
+            const buf = await getSkillFileBuffer(f.key);
+            return { filename: f.filename, contentB64: buf.toString("base64") };
+          } catch (err) {
+            logger.error({ err, skill: s.name, key: f.key }, "Failed to read skill file from S3");
+            return null;
+          }
+        }),
       );
       return {
         name: s.name,
         description: s.description,
         instructions: s.instructions,
-        files: filesWithUrls,
+        files: inlined.filter((x): x is { filename: string; contentB64: string } => x !== null),
       };
     }),
   );

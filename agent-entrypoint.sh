@@ -89,7 +89,7 @@ rm -rf "${SKILLS_DIR}"
 mkdir -p "${SKILLS_DIR}"
 if [ -s "${CONFIG_JSON_FILE:-}" ]; then
   SKILLS_DIR="${SKILLS_DIR}" python3 - << 'PYEOF' "${CONFIG_JSON_FILE}" || echo "WARNING: skill materialization failed" >&2
-import json, os, re, sys, urllib.request
+import base64, json, os, re, sys
 cfg = json.load(open(sys.argv[1]))
 skills = cfg.get("skills") or []
 base = os.environ["SKILLS_DIR"]
@@ -106,25 +106,24 @@ for s in skills:
     with open(os.path.join(d, "SKILL.md"), "w") as f:
         f.write(f"---\nname: {name}\ndescription: {desc}\n---\n\n{body}\n")
     skill_root = os.path.realpath(d)
+    file_count = 0
     for finfo in s.get("files") or []:
         fname = (finfo.get("filename") or "").lstrip("/")
-        url = finfo.get("url")
-        if not fname or not url or ".." in fname.split("/"):
+        b64 = finfo.get("contentB64")
+        if not fname or b64 is None or ".." in fname.split("/"):
             continue
         dest = os.path.realpath(os.path.join(d, fname))
         if not dest.startswith(skill_root + os.sep) and dest != skill_root:
             continue
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         try:
-            with urllib.request.urlopen(url, timeout=30) as resp, open(dest, "wb") as out:
-                while True:
-                    chunk = resp.read(65536)
-                    if not chunk:
-                        break
-                    out.write(chunk)
+            with open(dest, "wb") as out:
+                out.write(base64.b64decode(b64))
+            file_count += 1
             total_files += 1
         except Exception as e:
-            print(f"WARNING: failed to download {fname} for skill {name}: {e}", file=sys.stderr)
+            print(f"WARNING: failed to write {fname} for skill {name}: {e}", file=sys.stderr)
+    print(f"DEBUG [skills] {name}: wrote SKILL.md + {file_count} file(s) at {d}")
 print(f"DEBUG [skills] Materialized {len(skills)} skill(s), {total_files} file(s) to {base}")
 PYEOF
 fi
