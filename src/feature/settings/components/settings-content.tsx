@@ -8,7 +8,7 @@ import {
 } from "../actions/settings.actions";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CreditCard, ChevronRight } from "lucide-react";
+import { CreditCard, ChevronRight, Trash2, AlertTriangle } from "lucide-react";
 
 const mono  = "var(--mono), 'JetBrains Mono', monospace";
 const serif = "var(--serif), 'Cormorant Garamond', Georgia, serif";
@@ -303,7 +303,167 @@ export function SettingsContent({ userName, userEmail }: SettingsContentProps) {
             {account.saved && <span style={{ fontFamily: mono, fontSize: "11px", color: "#2FBF71", letterSpacing: "0.04em" }}>Saved ✓</span>}
           </div>
         </form>
+
+        {/* ── Danger Zone ── */}
+        <DangerZone />
+
       </div>
+    </div>
+  );
+}
+
+// ── Danger Zone ───────────────────────────────────────────────────────────
+
+function DangerZone() {
+  const mono  = "var(--mono), 'JetBrains Mono', monospace";
+  const router = useRouter();
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const CONFIRM_PHRASE = "delete my account";
+
+  async function handleDelete() {
+    if (confirmText.trim().toLowerCase() !== CONFIRM_PHRASE) {
+      setError(`Type "${CONFIRM_PHRASE}" exactly to confirm.`);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/user/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Failed to delete account. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      // Sign out and redirect to home
+      router.push("/");
+    } catch {
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{
+      background: "#fff",
+      border: "1px solid rgba(226,61,45,0.25)",
+      borderRadius: "14px",
+      padding: "1.75rem",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+        <AlertTriangle size={16} style={{ color: "#E23D2D", flexShrink: 0 }} />
+        <span style={{ fontFamily: mono.split(",")[0], fontSize: "13px", fontWeight: 600, color: "#E23D2D", letterSpacing: "0.04em" }}>
+          Danger Zone
+        </span>
+      </div>
+      <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-2)", lineHeight: 1.6, marginBottom: "1.25rem" }}>
+        Permanently delete your account, stop all running agents, cancel billing, and erase all data.
+        This action is <strong style={{ color: "var(--foreground)" }}>irreversible</strong>.
+      </p>
+
+      {!showConfirm ? (
+        <button
+          onClick={() => setShowConfirm(true)}
+          style={{
+            display: "flex", alignItems: "center", gap: "6px",
+            background: "rgba(226,61,45,0.06)",
+            color: "#E23D2D",
+            border: "0.5px solid rgba(226,61,45,0.3)",
+            borderRadius: "8px",
+            padding: "9px 18px",
+            fontFamily: mono,
+            fontSize: "11px",
+            fontWeight: 500,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+          }}
+        >
+          <Trash2 size={13} />
+          Delete account
+        </button>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-2)" }}>
+            Type <strong style={{ color: "var(--foreground)" }}>{CONFIRM_PHRASE}</strong> to confirm:
+          </p>
+          <input
+            type="text"
+            value={confirmText}
+            onChange={e => setConfirmText(e.target.value)}
+            placeholder={CONFIRM_PHRASE}
+            style={{
+              background: "var(--surface-2)",
+              border: "1px solid rgba(226,61,45,0.3)",
+              borderRadius: "8px",
+              padding: "10px 14px",
+              fontSize: "13px",
+              fontFamily: mono,
+              color: "var(--foreground)",
+              outline: "none",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          />
+          {error && (
+            <p style={{ fontFamily: mono, fontSize: "12px", color: "#E23D2D" }}>{error}</p>
+          )}
+          <div style={{ display: "flex", gap: "10px" }}>
+            <button
+              onClick={handleDelete}
+              disabled={loading}
+              style={{
+                background: loading ? "var(--surface-2)" : "#E23D2D",
+                color: loading ? "var(--foreground-3)" : "#fff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "9px 20px",
+                fontFamily: mono,
+                fontSize: "11px",
+                fontWeight: 500,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                cursor: loading ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              {loading && <span style={{ display: "inline-block", width: "12px", height: "12px", border: "2px solid #fff4", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />}
+              {loading ? "Deleting…" : "Confirm delete"}
+            </button>
+            <button
+              onClick={() => { setShowConfirm(false); setConfirmText(""); setError(null); }}
+              disabled={loading}
+              style={{
+                background: "none",
+                color: "var(--foreground-2)",
+                border: "0.5px solid var(--border)",
+                borderRadius: "8px",
+                padding: "9px 20px",
+                fontFamily: mono,
+                fontSize: "11px",
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

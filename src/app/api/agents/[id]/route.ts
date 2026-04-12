@@ -6,6 +6,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { stopContainer } from "../../../../shared/lib/agents/docker";
 import { deleteWebhook } from "../../../../shared/lib/telegram/bot";
 import { logger } from "../../../../shared/lib/logger";
+import { syncSubscriptionTier } from "../../../../shared/lib/billing/billing.service";
 
 export async function GET(
   req: Request,
@@ -68,6 +69,9 @@ export async function DELETE(
     }
 
     await db.delete(agent).where(eq(agent.id, id));
+
+    // Re-sync tier now that agent count dropped
+    await syncSubscriptionTier(session.user.id);
 
     logger.info({ agentId: id, userId: session.user.id }, "Agent deleted");
     return NextResponse.json({ ok: true });

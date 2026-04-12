@@ -13,6 +13,13 @@ import { startDiscordBot } from "../../../shared/lib/discord/manager";
 import { logger } from "../../../shared/lib/logger";
 import { env } from "../../../shared/config/env";
 import { encryptIfPresent, decryptIfPresent } from "../../../shared/lib/crypto";
+import {
+  hasPaymentMethod,
+  initTrial,
+  syncSubscriptionTier,
+  MAX_AGENTS,
+  getTotalAgentCount,
+} from "../../../shared/lib/billing/billing.service";
 
 async function linkSkillsToAgent(agentId: string, userId: string, skillIds?: string[]) {
   if (!skillIds || skillIds.length === 0) return;
@@ -83,6 +90,28 @@ export async function POST(req: Request) {
       .limit(1);
 
     const isFirstBot = existingAgents.length === 0;
+
+    // ── Billing gate ──────────────────────────────────────────────────────────
+    if (!isFirstBot) {
+      // Additional agents require a card on file
+      const cardOnFile = await hasPaymentMethod(session.user.id);
+      if (!cardOnFile) {
+        return NextResponse.json(
+          { error: "A payment method is required to create additional agents. Please add a card in the Billing section." },
+          { status: 402 },
+        );
+      }
+
+      // Enforce max agent cap (Scale tier limit)
+      const totalAgents = await getTotalAgentCount(session.user.id);
+      if (totalAgents >= MAX_AGENTS) {
+        return NextResponse.json(
+          { error: `You have reached the maximum of ${MAX_AGENTS} agents. Please stop or delete an existing agent to create a new one.` },
+          { status: 403 },
+        );
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const tempAgentId = crypto.randomUUID();
 
@@ -178,6 +207,13 @@ export async function POST(req: Request) {
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Telegram` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
 
+        // Billing: start trial for first agent, or sync tier for subsequent
+        if (isFirstBot) {
+          await initTrial(session.user.id);
+        } else {
+          await syncSubscriptionTier(session.user.id);
+        }
+
         waitForTaskRunning(containerId)
           .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
           .catch(async (err) => {
@@ -268,6 +304,13 @@ export async function POST(req: Request) {
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Discord` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
 
+        // Billing: start trial for first agent, or sync tier for subsequent
+        if (isFirstBot) {
+          await initTrial(session.user.id);
+        } else {
+          await syncSubscriptionTier(session.user.id);
+        }
+
         startDiscordBot(newAgent.id, discordToken, type as AgentType)
           .catch((err) => logger.error({ err, agentId: newAgent.id }, "Failed to start Discord bot"));
 
@@ -329,6 +372,13 @@ export async function POST(req: Request) {
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched — link WhatsApp to activate` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
+
+        // Billing: start trial for first agent, or sync tier for subsequent
+        if (isFirstBot) {
+          await initTrial(session.user.id);
+        } else {
+          await syncSubscriptionTier(session.user.id);
+        }
 
         waitForTaskRunning(containerId)
           .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
