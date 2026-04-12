@@ -4,6 +4,14 @@ import { agent } from "../../../../../../shared/db/schema/agent";
 import { skill, agentSkill } from "../../../../../../shared/db/schema/skill";
 import { eq } from "drizzle-orm";
 import { getDomainConfig, type AgentType } from "../../../../../../shared/lib/agents/config";
+import { getSkillFileUrl } from "../../../../../../shared/lib/s3/skills";
+
+interface SkillFile {
+  key: string;
+  filename: string;
+  size: number;
+  contentType: string;
+}
 
 function verifyGatewayToken(req: Request): boolean {
   const expected = process.env.GATEWAY_TOKEN;
@@ -33,20 +41,35 @@ export async function GET(
   }
 
   const domainCfg = await getDomainConfig(agentRecord.type as AgentType);
-  let fullSystemPrompt = domainCfg.boundaryPreamble + agentRecord.systemPrompt;
+  const fullSystemPrompt = domainCfg.boundaryPreamble + agentRecord.systemPrompt;
 
-  const linkedSkills = await db
-    .select({ name: skill.name, instructions: skill.instructions })
+  const linkedSkillsRaw = await db
+    .select({
+      name: skill.name,
+      description: skill.description,
+      instructions: skill.instructions,
+      files: skill.files,
+    })
     .from(agentSkill)
     .innerJoin(skill, eq(agentSkill.skillId, skill.id))
     .where(eq(agentSkill.agentId, agentId));
 
-  if (linkedSkills.length > 0) {
-    const skillBlock = linkedSkills
-      .map((s) => `## ${s.name}\n${s.instructions}`)
-      .join("\n\n");
-    fullSystemPrompt += `\n\n[USER SKILLS]\n${skillBlock}\n[END USER SKILLS]`;
-  }
+  const skills = await Promise.all(
+    linkedSkillsRaw.map(async (s) => {
+      const files = ((s.files as SkillFile[]) ?? []).filter(
+        (f) => !f.filename.includes("..") && !f.filename.startsWith("/"),
+      );
+      const filesWithUrls = await Promise.all(
+        files.map(async (f) => ({ filename: f.filename, url: await getSkillFileUrl(f.key) })),
+      );
+      return {
+        name: s.name,
+        description: s.description,
+        instructions: s.instructions,
+        files: filesWithUrls,
+      };
+    }),
+  );
 
-  return NextResponse.json({ systemPrompt: fullSystemPrompt });
+  return NextResponse.json({ systemPrompt: fullSystemPrompt, skills });
 }

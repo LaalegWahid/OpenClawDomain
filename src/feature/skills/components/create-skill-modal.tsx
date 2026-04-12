@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { X, Sparkles, FileText, Upload, Loader2, Archive, Folder, File as FileIcon } from "lucide-react";
+import { X, Sparkles, Upload, Loader2, Archive, Folder, File as FileIcon } from "lucide-react";
 
-type Tab = "ai" | "manual" | "import";
+type Tab = "ai" | "import";
+
+interface AiDraftFile {
+  path: string;
+  content: string;
+}
 
 interface Props {
   onClose: () => void;
@@ -44,12 +49,12 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
 
   // AI tab state
   const [aiPrompt, setAiPrompt] = useState("");
-  const [aiDraft, setAiDraft] = useState<{ name: string; description: string; instructions: string } | null>(null);
-
-  // Manual tab state
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [instructions, setInstructions] = useState("");
+  const [aiDraft, setAiDraft] = useState<{
+    name: string;
+    description: string;
+    instructions: string;
+    files: AiDraftFile[];
+  } | null>(null);
 
   // Import tab state
   const [importDraft, setImportDraft] = useState<{ name: string; description: string; instructions: string } | null>(null);
@@ -71,7 +76,12 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
         setError(data.error || "Generation failed");
         return;
       }
-      setAiDraft(data.skill);
+      setAiDraft({
+        name: data.skill.name,
+        description: data.skill.description,
+        instructions: data.skill.instructions,
+        files: Array.isArray(data.skill.files) ? data.skill.files : [],
+      });
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -79,19 +89,44 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
     }
   };
 
-  const handleSave = async (draft: { name: string; description: string; instructions: string }, source: string) => {
+  const handleAiSave = async () => {
+    if (!aiDraft) return;
     setError(null);
     setSubmitting(true);
     try {
       const res = await fetch("/api/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...draft, source }),
+        body: JSON.stringify({
+          name: aiDraft.name,
+          description: aiDraft.description,
+          instructions: aiDraft.instructions,
+          source: "ai",
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Failed to save skill");
         return;
+      }
+      if (aiDraft.files.length > 0) {
+        const fileForm = new FormData();
+        const paths: string[] = [];
+        for (const f of aiDraft.files) {
+          const blob = new Blob([f.content], { type: "text/plain" });
+          fileForm.append("files", blob, f.path.split("/").pop()!);
+          paths.push(f.path);
+        }
+        fileForm.append("paths", JSON.stringify(paths));
+        const uploadRes = await fetch(`/api/skills/${data.skill.id}/files`, {
+          method: "POST",
+          body: fileForm,
+        });
+        if (!uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          setError(uploadData.error || "Skill saved but file upload failed");
+          return;
+        }
       }
       onCreated();
     } catch {
@@ -233,7 +268,6 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "ai", label: "AI Generate", icon: <Sparkles size={14} /> },
-    { key: "manual", label: "Manual", icon: <FileText size={14} /> },
     { key: "import", label: "Import", icon: <Upload size={14} /> },
   ];
 
@@ -372,7 +406,7 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                   />
                 </div>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={labelStyle}>Instructions</label>
+                  <label style={labelStyle}>SKILL.md body</label>
                   <textarea
                     value={aiDraft.instructions}
                     onChange={(e) => setAiDraft({ ...aiDraft, instructions: e.target.value })}
@@ -380,6 +414,28 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                     style={{ ...inputStyle, resize: "vertical" }}
                   />
                 </div>
+                {aiDraft.files.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={labelStyle}>Supporting Files ({aiDraft.files.length})</label>
+                    <div style={{ background: "#0A0A0A", border: "0.5px solid #1E1E1E", borderRadius: 8, padding: "8px 0", maxHeight: 140, overflowY: "auto" }}>
+                      {aiDraft.files.map((f, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", fontSize: 12 }}>
+                          {f.path.includes("/") ? (
+                            <Folder size={13} style={{ color: "#FF4D00", flexShrink: 0 }} />
+                          ) : (
+                            <FileIcon size={13} style={{ color: "#555", flexShrink: 0 }} />
+                          )}
+                          <span style={{ color: "#F0EEE8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                            {f.path}
+                          </span>
+                          <span style={{ color: "#555", flexShrink: 0 }}>
+                            {f.content.length < 1024 ? `${f.content.length} B` : `${(f.content.length / 1024).toFixed(1)} KB`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={() => setAiDraft(null)}
@@ -398,7 +454,7 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                     Regenerate
                   </button>
                   <button
-                    onClick={() => handleSave(aiDraft, "ai")}
+                    onClick={handleAiSave}
                     disabled={submitting}
                     style={{
                       flex: 1,
@@ -422,62 +478,6 @@ export function CreateSkillModal({ onClose, onCreated }: Props) {
                 </div>
               </>
             )}
-          </div>
-        )}
-
-        {/* Manual Tab */}
-        {tab === "manual" && (
-          <div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={labelStyle}>Name (slug)</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-                placeholder="e.g. sentiment-analysis"
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={labelStyle}>Description</label>
-              <input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="One sentence about what this skill does"
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Instructions</label>
-              <textarea
-                value={instructions}
-                onChange={(e) => setInstructions(e.target.value)}
-                placeholder="Detailed instructions for the agent on how to use this skill..."
-                rows={5}
-                style={{ ...inputStyle, resize: "vertical" }}
-              />
-            </div>
-            <button
-              onClick={() => handleSave({ name, description, instructions }, "manual")}
-              disabled={submitting || !name || !description || !instructions}
-              style={{
-                width: "100%",
-                padding: "10px 0",
-                background: submitting || !name || !description || !instructions ? "#333" : "#FF4D00",
-                color: "#fff",
-                border: "none",
-                borderRadius: 10,
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: submitting || !name || !description || !instructions ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              {submitting ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : null}
-              Save Skill
-            </button>
           </div>
         )}
 

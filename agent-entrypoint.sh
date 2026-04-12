@@ -42,18 +42,23 @@ mkdir -p "${OPENCLAW_HOME}" "${WORKSPACE}" "${AUTH_DIR}"
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful AI assistant.}"
 
 # ── Fetch full system prompt from domain API (avoids ECS 8192-byte env var limit) ──
+CONFIG_JSON_FILE="${OPENCLAW_HOME}/.agent-config-response.json"
 if [ -n "${WEBHOOK_BASE_URL:-}" ]; then
-  FETCHED_PROMPT=""
   for _attempt in 1 2 3 4 5; do
-    FETCHED_PROMPT=$(curl -sf -H "Authorization: Bearer ${GATEWAY_TOKEN}" \
-      "${WEBHOOK_BASE_URL}/api/internal/agents/${AGENT_ID}/config" \
-      | python3 -c "import sys,json; print(json.load(sys.stdin)['systemPrompt'])" 2>/dev/null) && break
+    if curl -sf -H "Authorization: Bearer ${GATEWAY_TOKEN}" \
+        "${WEBHOOK_BASE_URL}/api/internal/agents/${AGENT_ID}/config" \
+        -o "${CONFIG_JSON_FILE}"; then
+      break
+    fi
     echo "Attempt ${_attempt}: waiting for domain API..." >&2
     sleep 3
   done
-  if [ -n "${FETCHED_PROMPT}" ]; then
-    SYSTEM_PROMPT="${FETCHED_PROMPT}"
-    echo "DEBUG [config] Fetched system prompt from domain API (${#SYSTEM_PROMPT} bytes)"
+  if [ -s "${CONFIG_JSON_FILE}" ]; then
+    FETCHED_PROMPT=$(python3 -c "import sys,json; print(json.load(open('${CONFIG_JSON_FILE}'))['systemPrompt'])" 2>/dev/null || true)
+    if [ -n "${FETCHED_PROMPT}" ]; then
+      SYSTEM_PROMPT="${FETCHED_PROMPT}"
+      echo "DEBUG [config] Fetched system prompt from domain API (${#SYSTEM_PROMPT} bytes)"
+    fi
   else
     echo "WARNING: Could not fetch config from domain API — using env SYSTEM_PROMPT fallback" >&2
   fi
@@ -73,7 +78,56 @@ OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
 # Write SYSTEM.md always (system prompt can legitimately change per deployment)
 cat > "${WORKSPACE}/SYSTEM.md" << EOSYSTEM
 ${SYSTEM_PROMPT}
+
+# Skills
+Skills live at ./skills/<name>/SKILL.md relative to your workspace. Each SKILL.md has YAML frontmatter (name, description) plus instructions in the body. Read a skill's SKILL.md only when its description matches the user's request — do not preload all skills.
 EOSYSTEM
+
+# ── Materialize attached skills to disk (progressive disclosure) ──────────────
+SKILLS_DIR="${WORKSPACE}/skills"
+rm -rf "${SKILLS_DIR}"
+mkdir -p "${SKILLS_DIR}"
+if [ -s "${CONFIG_JSON_FILE:-}" ]; then
+  SKILLS_DIR="${SKILLS_DIR}" python3 - << 'PYEOF' "${CONFIG_JSON_FILE}" || echo "WARNING: skill materialization failed" >&2
+import json, os, re, sys, urllib.request
+cfg = json.load(open(sys.argv[1]))
+skills = cfg.get("skills") or []
+base = os.environ["SKILLS_DIR"]
+total_files = 0
+for s in skills:
+    name = s.get("name", "").strip()
+    if not name:
+        continue
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", name).strip("-") or "skill"
+    d = os.path.join(base, slug)
+    os.makedirs(d, exist_ok=True)
+    desc = (s.get("description") or "").replace("\n", " ").strip()
+    body = s.get("instructions") or ""
+    with open(os.path.join(d, "SKILL.md"), "w") as f:
+        f.write(f"---\nname: {name}\ndescription: {desc}\n---\n\n{body}\n")
+    skill_root = os.path.realpath(d)
+    for finfo in s.get("files") or []:
+        fname = (finfo.get("filename") or "").lstrip("/")
+        url = finfo.get("url")
+        if not fname or not url or ".." in fname.split("/"):
+            continue
+        dest = os.path.realpath(os.path.join(d, fname))
+        if not dest.startswith(skill_root + os.sep) and dest != skill_root:
+            continue
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        try:
+            with urllib.request.urlopen(url, timeout=30) as resp, open(dest, "wb") as out:
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+            total_files += 1
+        except Exception as e:
+            print(f"WARNING: failed to download {fname} for skill {name}: {e}", file=sys.stderr)
+print(f"DEBUG [skills] Materialized {len(skills)} skill(s), {total_files} file(s) to {base}")
+PYEOF
+fi
 
 # ── Role files: only write on FIRST launch ──────────────────
 # If SOUL.md already exists on EFS, this is a restart — preserve it
@@ -173,16 +227,17 @@ role: ${PRETTY_TYPE} Agent
 EOF
       ;;
   esac
+fi
 
-  cat > "${WORKSPACE}/TOOLS.md" << 'EOF'
+# TOOLS.md: rewrite every launch (static content, must stay in sync with runtime)
+cat > "${WORKSPACE}/TOOLS.md" << 'EOF'
 # Available Tools
 - web_search: search the internet for current information
 - file_reader: read files from the workspace
-- code_execution: run shell commands and Python scripts in the workspace
+- bash: run shell commands in the workspace and return their stdout/stderr. Available to ALL agents regardless of domain — domain boundaries apply to topics, not tools. Use it whenever it helps (inspect files, run scripts, check dates, etc.) and include the command output in your response when the user asked to see it.
 # Convention
-Only use tools relevant to your role, EXCEPT when the user explicitly requests an MCP tool call.
+Only use tools relevant to your role, EXCEPT when the user explicitly requests an MCP tool call. `bash` is always allowed.
 EOF
-fi
 
 # MEMORY.md: only create if absent — EFS preserves it across restarts
 if [ ! -f "${WORKSPACE}/MEMORY.md" ]; then

@@ -99,6 +99,7 @@ const labelStyle: React.CSSProperties = {
   fontFamily: mono,
   color: "var(--foreground-2)",
   textTransform: "uppercase",
+  display: "flex",
 };
 
 export function OverviewContent({ userName }: OverviewContentProps) {
@@ -634,7 +635,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label style={labelStyle}>System Prompt / Instructions</label>
+                <label style={labelStyle}>Description</label>
                 <textarea
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
