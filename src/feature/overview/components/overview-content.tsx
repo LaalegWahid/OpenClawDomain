@@ -138,6 +138,9 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   // Profile image
   const [profileImage, setProfileImage] = useState<string | null>(null);
 
+  // Wizard step
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+
   // Skills selection
   const [userSkills, setUserSkills] = useState<UserSkill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
@@ -177,7 +180,15 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     setSelectedSkillIds([]);
     setError(null);
     setWaStep("form"); setWaAgentId(null); setWaQrData(null); setWaQrError(null);
+    setCurrentStep(1);
   };
+
+  const step1Valid = botName.trim().length > 0 && customType.trim().length > 0 && systemPrompt.trim().length > 0;
+  const step2Valid = apiProvider.trim().length > 0 && agentModel.trim().length > 0;
+  const step3Valid =
+    platform === "telegram" ? botToken.trim().length > 0 && botUsername.trim().length > 0 :
+    platform === "discord" ? discordToken.trim().length > 0 :
+    true;
 
   const fetchUserSkills = useCallback(async () => {
     try {
@@ -435,49 +446,43 @@ export function OverviewContent({ userName }: OverviewContentProps) {
               </button>
             </div>
 
-            {/* Platform selector */}
-            <div style={{ marginBottom: "20px" }}>
-              <p style={{ ...labelStyle, marginBottom: "10px", display: "block" }}>Choose Platform</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
-                {PLATFORM_OPTIONS.map((p) => {
-                  const ACTIVE_COLORS: Record<Platform, { border: string; bg: string; label: string }> = {
-                    telegram: { border: "rgba(42,171,238,0.5)", bg: "rgba(42,171,238,0.08)", label: "#2AABEE" },
-                    discord:  { border: "rgba(88,101,242,0.5)", bg: "rgba(88,101,242,0.08)", label: "#5865F2" },
-                    whatsapp: { border: "rgba(37,211,102,0.5)", bg: "rgba(37,211,102,0.08)", label: "#25D366" },
-                  };
-                  const isWhatsAppOption = p.value === "whatsapp";
-                  const active = platform === p.value;
-                  const ac = ACTIVE_COLORS[p.value];
+            {/* Step indicator */}
+            {waStep === "form" && (
+              <div style={{ marginBottom: "20px", display: "flex", alignItems: "center", gap: "8px" }}>
+                {[
+                  { n: 1, label: "Agent Info" },
+                  { n: 2, label: "AI Provider" },
+                  { n: 3, label: "Platform" },
+                ].map((s, i) => {
+                  const active = currentStep === s.n;
+                  const done = currentStep > s.n;
                   return (
-                    <button
-                      key={p.value}
-                      type="button"
-                      onClick={() => setPlatform(p.value)}
-                      style={{
-                        background: active ? ac.bg : "var(--surface-2)",
-                        border: active ? `1px solid ${ac.border}` : "1px solid var(--border)",
-                        borderRadius: "10px",
-                        padding: "12px 8px",
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: "6px",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      <PlatformSvg platform={p.value} size={22} />
-                      <span style={{ fontFamily: mono, fontSize: "10px", fontWeight: 500, color: active ? ac.label : "var(--foreground-2)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                        {p.label}
-                      </span>
-                    </button>
+                    <div key={s.n} style={{ display: "flex", alignItems: "center", gap: "8px", flex: i === 2 ? "0 0 auto" : 1 }}>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: "8px",
+                        opacity: active || done ? 1 : 0.5,
+                      }}>
+                        <div style={{
+                          width: 24, height: 24, borderRadius: "50%",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          background: active || done ? "#FF4D00" : "var(--surface-2)",
+                          color: active || done ? "#fff" : "var(--foreground-3)",
+                          fontFamily: mono, fontSize: 11, fontWeight: 600,
+                          border: active || done ? "none" : "1px solid var(--border)",
+                          flexShrink: 0,
+                        }}>
+                          {s.n}
+                        </div>
+                        <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase", color: active ? "var(--foreground)" : "var(--foreground-3)" }}>
+                          {s.label}
+                        </span>
+                      </div>
+                      {i < 2 && <div style={{ flex: 1, height: 1, background: done ? "#FF4D00" : "var(--border)" }} />}
+                    </div>
                   );
                 })}
               </div>
-              <p style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", marginTop: "8px", letterSpacing: "0.02em" }}>
-                {PLATFORM_OPTIONS.find(p => p.value === platform)?.description}
-              </p>
-            </div>
+            )}
 
             {/* ── WhatsApp QR step ──────────────────────────────────────── */}
             {waStep === "qr" && (
@@ -550,32 +555,9 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 
             <form onSubmit={handleAddBot} style={{ display: waStep !== "form" ? "none" : "flex", flexDirection: "column", gap: "14px" }}>
 
-              {/* Platform-specific credential fields */}
-              {platform === "telegram" && (
-                <>
-                  <ModalField label="Bot API Token" value={botToken} onChange={setBotToken} placeholder="Paste token from BotFather" />
-                  <ModalField label="Bot Username" value={botUsername} onChange={setBotUsername} placeholder="e.g. my_cool_bot" />
-                </>
-              )}
-
-              {platform === "discord" && (
-                <ModalField label="Discord Bot Token" value={discordToken} onChange={setDiscordToken} placeholder="Paste token from Discord Developer Portal" />
-              )}
-
-              {platform === "whatsapp" && (
-                <div style={{ background: "rgba(37,211,102,0.06)", border: "0.5px solid rgba(37,211,102,0.25)", borderRadius: "10px", padding: "14px 16px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
-                  <div style={{ flexShrink: 0, marginTop: "1px" }}>
-                    <PlatformSvg platform="whatsapp" size={20} />
-                  </div>
-                  <div>
-                    <p style={{ fontFamily: mono, fontSize: "12px", fontWeight: 500, color: "#25D366", marginBottom: "4px", letterSpacing: "0.04em" }}>No credentials needed</p>
-                    <p style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", lineHeight: 1.6 }}>
-                      Your agent will be created immediately. Then open the agent page and tap <strong style={{ color: "var(--foreground-2)" }}>Link WhatsApp</strong> to scan a QR code with your phone.
-                    </p>
-                  </div>
-                </div>
-              )}
-
+              {/* ── Step 1: Agent Info ── */}
+              {currentStep === 1 && (
+              <>
               {/* Profile image */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <label style={labelStyle}>Profile Image</label>
@@ -648,46 +630,12 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   onChange={(e) => setCustomType(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
                   placeholder="e.g. education, cybersecurity, agriculture"
                   style={inputStyle}
-                  required
                 />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label style={labelStyle}>Provider</label>
-                  <select
-                    value={apiProvider}
-                    onChange={(e) => { setApiProvider(e.target.value); setAgentModel(""); }}
-                    style={{ ...inputStyle, cursor: "pointer" }}
-                  >
-                    <option value="">Select provider...</option>
-                    {providerNames.map((p) => (
-                      <option key={p} value={p}>{p.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
-                    ))}
-                  </select>
-                </div>
-                <ModalField label="API Key" value={apiKey} onChange={setApiKey} placeholder="sk-..." required={false} />
-              </div>
-              <div style={{ display: "grid", gap: "12px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label style={labelStyle}>Agent Model</label>
-                  <select
-                    value={agentModel}
-                    onChange={(e) => setAgentModel(e.target.value)}
-                    style={{ ...inputStyle, cursor: "pointer" }}
-                    disabled={!apiProvider}
-                  >
-                    <option value="">{apiProvider ? "Select model..." : "Select a provider first"}</option>
-                    {availableModels.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <label style={labelStyle}>System Prompt / Instructions</label>
                 <textarea
-                  required
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
                   rows={4}
@@ -695,8 +643,6 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   style={{ ...inputStyle, resize: "none", fontFamily: "inherit" }}
                 />
               </div>
-
-             
 
               {/* Skills Selection */}
               {userSkills.length > 0 && (
@@ -756,27 +702,178 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                   )}
                 </div>
               )}
+              </>
+              )}
 
-              <button
-                type="submit"
-                disabled={submitting}
-                style={{
-                  marginTop: "4px",
-                  background: submitting ? "var(--surface-2)" : "#FF4D00",
-                  color: submitting ? "var(--foreground-3)" : "#fff",
-                  border: "none", borderRadius: "8px", padding: "11px",
-                  fontFamily: mono, fontSize: "12px", fontWeight: 500,
-                  letterSpacing: "0.06em", textTransform: "uppercase",
-                  cursor: submitting ? "wait" : "pointer",
-                  width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-                }}
-              >
-                {submitting ? (
-                  <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Adding Bot…</>
-                ) : (
-                  `Add ${PLATFORM_OPTIONS.find(p => p.value === platform)?.label} Bot`
+              {/* ── Step 2: AI Provider ── */}
+              {currentStep === 2 && (
+              <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={labelStyle}>Provider</label>
+                  <select
+                    value={apiProvider}
+                    onChange={(e) => { setApiProvider(e.target.value); setAgentModel(""); }}
+                    style={{ ...inputStyle, cursor: "pointer" }}
+                  >
+                    <option value="">Select provider...</option>
+                    {providerNames.map((p) => (
+                      <option key={p} value={p}>{p.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
+                    ))}
+                  </select>
+                </div>
+                <ModalField label="API Key" value={apiKey} onChange={setApiKey} placeholder="sk-..." required={false} />
+              </div>
+              <div style={{ display: "grid", gap: "12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <label style={labelStyle}>Agent Model</label>
+                  <select
+                    value={agentModel}
+                    onChange={(e) => setAgentModel(e.target.value)}
+                    style={{ ...inputStyle, cursor: "pointer" }}
+                    disabled={!apiProvider}
+                  >
+                    <option value="">{apiProvider ? "Select model..." : "Select a provider first"}</option>
+                    {availableModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              </>
+              )}
+
+              {/* ── Step 3: Platform ── */}
+              {currentStep === 3 && (
+              <>
+                <div>
+                  <p style={{ ...labelStyle, marginBottom: "10px", display: "block" }}>Choose Platform</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                    {PLATFORM_OPTIONS.map((p) => {
+                      const ACTIVE_COLORS: Record<Platform, { border: string; bg: string; label: string }> = {
+                        telegram: { border: "rgba(42,171,238,0.5)", bg: "rgba(42,171,238,0.08)", label: "#2AABEE" },
+                        discord:  { border: "rgba(88,101,242,0.5)", bg: "rgba(88,101,242,0.08)", label: "#5865F2" },
+                        whatsapp: { border: "rgba(37,211,102,0.5)", bg: "rgba(37,211,102,0.08)", label: "#25D366" },
+                      };
+                      const active = platform === p.value;
+                      const ac = ACTIVE_COLORS[p.value];
+                      return (
+                        <button
+                          key={p.value}
+                          type="button"
+                          onClick={() => setPlatform(p.value)}
+                          style={{
+                            background: active ? ac.bg : "var(--surface-2)",
+                            border: active ? `1px solid ${ac.border}` : "1px solid var(--border)",
+                            borderRadius: "10px",
+                            padding: "12px 8px",
+                            cursor: "pointer",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "6px",
+                            transition: "all 0.15s",
+                          }}
+                        >
+                          <PlatformSvg platform={p.value} size={22} />
+                          <span style={{ fontFamily: mono, fontSize: "10px", fontWeight: 500, color: active ? ac.label : "var(--foreground-2)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                            {p.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", marginTop: "8px", letterSpacing: "0.02em" }}>
+                    {PLATFORM_OPTIONS.find(p => p.value === platform)?.description}
+                  </p>
+                </div>
+
+                {platform === "telegram" && (
+                  <>
+                    <ModalField label="Bot API Token" value={botToken} onChange={setBotToken} placeholder="Paste token from BotFather" />
+                    <ModalField label="Bot Username" value={botUsername} onChange={setBotUsername} placeholder="e.g. my_cool_bot" />
+                  </>
                 )}
-              </button>
+
+                {platform === "discord" && (
+                  <ModalField label="Discord Bot Token" value={discordToken} onChange={setDiscordToken} placeholder="Paste token from Discord Developer Portal" />
+                )}
+
+                {platform === "whatsapp" && (
+                  <div style={{ background: "rgba(37,211,102,0.06)", border: "0.5px solid rgba(37,211,102,0.25)", borderRadius: "10px", padding: "14px 16px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                    <div style={{ flexShrink: 0, marginTop: "1px" }}>
+                      <PlatformSvg platform="whatsapp" size={20} />
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: mono, fontSize: "12px", fontWeight: 500, color: "#25D366", marginBottom: "4px", letterSpacing: "0.04em" }}>No credentials needed</p>
+                      <p style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", lineHeight: 1.6 }}>
+                        Your agent will be created immediately. Then scan a QR code with your phone to link WhatsApp.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+              )}
+
+              {/* Navigation buttons */}
+              <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+                {currentStep > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep((s) => (s - 1) as 1 | 2 | 3)}
+                    style={{
+                      flex: 1, background: "transparent", color: "var(--foreground-2)",
+                      border: "1px solid var(--border)", borderRadius: "8px", padding: "11px",
+                      fontFamily: mono, fontSize: "12px", fontWeight: 500,
+                      letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer",
+                    }}
+                  >
+                    Back
+                  </button>
+                )}
+                {currentStep < 3 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (currentStep === 1 && !step1Valid) { setError("Fill in name, type, and system prompt."); return; }
+                      if (currentStep === 2 && !step2Valid) { setError("Select a provider and a model."); return; }
+                      setError(null);
+                      setCurrentStep((s) => (s + 1) as 1 | 2 | 3);
+                    }}
+                    style={{
+                      flex: 2, background: "#FF4D00", color: "#fff",
+                      border: "none", borderRadius: "8px", padding: "11px",
+                      fontFamily: mono, fontSize: "12px", fontWeight: 500,
+                      letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer",
+                    }}
+                  >
+                    Next
+                  </button>
+                )}
+                {currentStep === 3 && (
+                  <button
+                    type="submit"
+                    disabled={submitting || !step3Valid}
+                    style={{
+                      flex: 2,
+                      background: submitting || !step3Valid ? "var(--surface-2)" : "#FF4D00",
+                      color: submitting || !step3Valid ? "var(--foreground-3)" : "#fff",
+                      border: "none", borderRadius: "8px", padding: "11px",
+                      fontFamily: mono, fontSize: "12px", fontWeight: 500,
+                      letterSpacing: "0.06em", textTransform: "uppercase",
+                      cursor: submitting ? "wait" : !step3Valid ? "not-allowed" : "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                    }}
+                  >
+                    {submitting ? (
+                      <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Creating…</>
+                    ) : (
+                      `Create ${PLATFORM_OPTIONS.find(p => p.value === platform)?.label} Agent`
+                    )}
+                  </button>
+                )}
+              </div>
             </form>
           </div>
         </div>
