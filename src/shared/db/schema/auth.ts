@@ -38,6 +38,14 @@ export const user = pgTable("user", {
   pricing: decimal("pricing", { precision: 10, scale: 2 }),
   lastLoginAt: timestamp("last_login_at"),
   deletedAt: timestamp("deleted_at"),
+
+  // ── Free-trial tracking ───────────────────────────────────────
+  // Set when the user creates their very first agent.
+  trialStartedAt: timestamp("trial_started_at"),
+  // trialStartedAt + 15 days, computed on write and stored for cheap queries.
+  trialEndsAt: timestamp("trial_ends_at"),
+  // Flipped to true once the trial window has been consumed (even if canceled early).
+  trialUsed: boolean("trial_used").default(false).notNull(),
 });
 
 export const userProfile = pgTable("user_profile", {
