@@ -9,7 +9,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       status: sub?.status ?? null,
-      currentPeriodEnd: sub?.currentPeriodEnd ?? null,
+      currentPeriodEnd: sub?.nextBilledAt ?? null,
       cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false,
       stripePriceId: sub?.stripePriceId ?? null,
     });

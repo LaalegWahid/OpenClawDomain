@@ -259,8 +259,7 @@ async function wasSentToday(
       and(
         eq(billingAlert.userId, userId),
         eq(billingAlert.type, type as never),
-        lte(startOfDay, billingAlert.createdAt),
-      ),
+lte(billingAlert.createdAt, startOfDay),      ),
     )
     .limit(1);
   return !!row;
