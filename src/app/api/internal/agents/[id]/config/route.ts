@@ -4,14 +4,12 @@ import { agent } from "../../../../../../shared/db/schema/agent";
 import { skill, agentSkill } from "../../../../../../shared/db/schema/skill";
 import { eq } from "drizzle-orm";
 import { getDomainConfig, type AgentType } from "../../../../../../shared/lib/agents/config";
-import { getSkillFileBuffer } from "../../../../../../shared/lib/s3/skills";
-import { logger } from "../../../../../../shared/lib/logger";
 
 interface SkillFile {
-  key: string;
   filename: string;
   size: number;
   contentType: string;
+  contentB64: string;
 }
 
 function verifyGatewayToken(req: Request): boolean {
@@ -55,35 +53,25 @@ export async function GET(
     .innerJoin(skill, eq(agentSkill.skillId, skill.id))
     .where(eq(agentSkill.agentId, agentId));
 
-  const skills = await Promise.all(
-    linkedSkillsRaw.map(async (s) => {
-      const files = ((s.files as SkillFile[]) ?? []).filter(
+  const skills = linkedSkillsRaw.map((s) => {
+    const files = ((s.files as SkillFile[]) ?? [])
+      .filter(
         (f) =>
           f &&
           typeof f.filename === "string" &&
+          typeof f.contentB64 === "string" &&
           !f.filename.includes("..") &&
           !f.filename.startsWith("/") &&
           f.filename.toUpperCase() !== "SKILL.MD",
-      );
-      const inlined = await Promise.all(
-        files.map(async (f) => {
-          try {
-            const buf = await getSkillFileBuffer(f.key);
-            return { filename: f.filename, contentB64: buf.toString("base64") };
-          } catch (err) {
-            logger.error({ err, skill: s.name, key: f.key }, "Failed to read skill file from S3");
-            return null;
-          }
-        }),
-      );
-      return {
-        name: s.name,
-        description: s.description,
-        instructions: s.instructions,
-        files: inlined.filter((x): x is { filename: string; contentB64: string } => x !== null),
-      };
-    }),
-  );
+      )
+      .map((f) => ({ filename: f.filename, contentB64: f.contentB64 }));
+    return {
+      name: s.name,
+      description: s.description,
+      instructions: s.instructions,
+      files,
+    };
+  });
 
   return NextResponse.json({ systemPrompt: fullSystemPrompt, skills });
 }

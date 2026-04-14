@@ -3,17 +3,16 @@ import { getSessionOrThrow } from "../../../../../shared/lib/auth/getSessionOrTh
 import { db } from "../../../../../shared/lib/drizzle";
 import { eq, and } from "drizzle-orm";
 import { skill } from "../../../../../shared/db/schema/skill";
-import { uploadSkillFile, getSkillFileUrl } from "../../../../../shared/lib/s3/skills";
 import { logger } from "../../../../../shared/lib/logger";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_FILES = 20;
 
 interface SkillFile {
-  key: string;
   filename: string;
   size: number;
   contentType: string;
+  contentB64: string;
 }
 
 async function getOwnedSkill(req: Request, skillId: string) {
@@ -36,14 +35,13 @@ export async function GET(
     const { skill: found } = await getOwnedSkill(req, id);
     const files = (found.files as SkillFile[]) ?? [];
 
-    const filesWithUrls = await Promise.all(
-      files.map(async (f) => ({
-        ...f,
-        url: await getSkillFileUrl(f.key),
-      })),
-    );
+    const fileMeta = files.map(({ filename, size, contentType }) => ({
+      filename,
+      size,
+      contentType,
+    }));
 
-    return NextResponse.json({ files: filesWithUrls });
+    return NextResponse.json({ files: fileMeta });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     if (msg === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -59,7 +57,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { session, skill: found } = await getOwnedSkill(req, id);
+    const { skill: found } = await getOwnedSkill(req, id);
     const existingFiles = (found.files as SkillFile[]) ?? [];
 
     const formData = await req.formData();
@@ -107,19 +105,12 @@ export async function POST(
 
       const filename = pathList && pathList[i] ? pathList[i] : f.name;
       const buffer = Buffer.from(await f.arrayBuffer());
-      const key = await uploadSkillFile(
-        session.user.id,
-        found.id,
-        filename,
-        buffer,
-        f.type || "application/octet-stream",
-      );
 
       newFiles.push({
-        key,
         filename,
         size: f.size,
         contentType: f.type || "application/octet-stream",
+        contentB64: buffer.toString("base64"),
       });
     }
 
@@ -130,7 +121,12 @@ export async function POST(
       .set({ files: allFiles })
       .where(eq(skill.id, found.id));
 
-    return NextResponse.json({ files: allFiles }, { status: 201 });
+    const responseFiles = allFiles.map(({ filename, size, contentType }) => ({
+      filename,
+      size,
+      contentType,
+    }));
+    return NextResponse.json({ files: responseFiles }, { status: 201 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     if (msg === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

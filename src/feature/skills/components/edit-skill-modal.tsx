@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Loader2, Upload, Download } from "lucide-react";
+import { X, Loader2, Upload } from "lucide-react";
 
 const mono  = "var(--mono), 'JetBrains Mono', monospace";
 const serif = "var(--serif), 'Cormorant Garamond', Georgia, serif";
 
-interface SkillFile { key: string; filename: string; size: number; contentType: string; url?: string; }
+interface SkillFile { filename: string; size: number; contentType: string; }
 interface SkillRecord { id: string; name: string; description: string; instructions: string; source: string; files: SkillFile[]; }
 interface Props { skill: SkillRecord; onClose: () => void; onUpdated: () => void; }
 
@@ -101,7 +101,6 @@ export function EditSkillModal({ skill: initialSkill, onClose, onUpdated }: Prop
                     <p style={{ fontFamily: mono, fontSize: 12, color: "var(--foreground)", margin: 0, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>{f.filename}</p>
                     <p style={{ fontFamily: mono, fontSize: 10, color: "var(--foreground-3)", margin: 0 }}>{formatSize(f.size)}</p>
                   </div>
-                  {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ color: "#FF4D00", padding: 4 }}><Download size={14} /></a>}
                 </div>
               ))}
             </div>

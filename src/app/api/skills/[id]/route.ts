@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionOrThrow } from "../../../../shared/lib/auth/getSessionOrThrow";
 import { db } from "../../../../shared/lib/drizzle";
 import { eq, and } from "drizzle-orm";
-import { skill, agentSkill } from "../../../../shared/db/schema/skill";
-import { deleteSkillFiles } from "../../../../shared/lib/s3/skills";
+import { skill } from "../../../../shared/db/schema/skill";
 import { logger } from "../../../../shared/lib/logger";
 
 async function getOwnedSkill(req: Request, skillId: string) {
@@ -82,16 +81,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { session, skill: found } = await getOwnedSkill(req, id);
+    const { skill: found } = await getOwnedSkill(req, id);
 
-    // Delete S3 files
-    try {
-      await deleteSkillFiles(session.user.id, found.id);
-    } catch {
-      // S3 deletion is best-effort
-    }
-
-    // Delete agent_skill links and the skill itself (cascade handles agent_skill)
     await db.delete(skill).where(eq(skill.id, found.id));
 
     return NextResponse.json({ ok: true });
