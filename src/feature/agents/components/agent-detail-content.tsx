@@ -1,27 +1,60 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Power, RefreshCw, Bot, Brain, Trash2, Plus, X, Plug, Server } from "lucide-react";
-// Note: Plus is still used in MCP Servers section
-import { SidebarInset } from "../../../shared/components/ui/sidebar";
-import { Separator } from "../../../shared/components/ui/separator";
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  ArrowLeft,
+  Power,
+  RefreshCw,
+  Bot,
+  Brain,
+  Trash2,
+  Plus,
+  X,
+  Plug,
+  Server,
+  Camera,
+  Activity as ActivityIcon,
+} from "lucide-react";
 import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
 import { ChatPageContent } from "../../../feature/chat/components/chat-page-content";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const TYPE_BADGE_STYLES: Record<string, string> = {
-  finance: "bg-green-500/15 text-green-400 border-green-500/30",
-  marketing: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  operations: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-};
+// ── Landing palette ──────────────────────────────────────────────────────────
+const BG = "#f8f2ed";
+const INK = "#2a1f19";
+const MUTED = "#6b5d52";
+const CARD = "#fbf6f1";
+const BORDER = "rgba(42,31,25,0.12)";
+const ACCENT = "#FF4D00";
+const ACCENT_SOFT = "rgba(255,77,0,0.08)";
+const ACCENT_GLOW = "0 8px 25px rgba(255,77,0,0.18)";
 
-const FALLBACK_BADGE_STYLE = "bg-purple-500/15 text-purple-400 border-purple-500/30";
-
-function getBadgeStyle(type?: string): string {
-  return (type && TYPE_BADGE_STYLES[type]) || FALLBACK_BADGE_STYLE;
+function typeColor(_type?: string) {
+  return "#2a1f19";
 }
+
+const pageStyles = `
+  @keyframes oc-fade-up { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes oc-shimmer-anim { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+  .oc-page-section { animation: oc-fade-up 0.5s ease both; }
+  .oc-card { transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+  .oc-card-hover:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(42,31,25,0.08); }
+  .oc-btn-primary { transition: transform 0.18s ease, box-shadow 0.18s ease; }
+  .oc-btn-primary:hover { transform: translateY(-1px); box-shadow: ${ACCENT_GLOW}; }
+  .oc-avatar-wrap:hover .oc-avatar-overlay { opacity: 1; }
+  .oc-shimmer-text {
+    background:linear-gradient(90deg,#FF4D00 0%,#FF8C42 40%,#FFB88C 50%,#FF8C42 60%,#FF4D00 100%);
+    background-size:200% 100%;
+    -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent;
+    animation: oc-shimmer-anim 4s ease-in-out infinite;
+    font-style: italic;
+  }
+  .oc-tab-btn { transition: color 0.18s ease, border-color 0.18s ease; }
+  .oc-stat:hover { transform: translateY(-2px); border-color: rgba(255,77,0,0.35); }
+`;
 
 interface AgentRecord {
   id: string;
@@ -31,6 +64,7 @@ interface AgentRecord {
   type?: string;
   containerId: string | null;
   profileImage?: string | null;
+  systemPrompt?: string | null;
   createdAt: string;
 }
 
@@ -85,7 +119,6 @@ function PlatformIcon({ platform }: { platform: "telegram" | "discord" | "whatsa
       </svg>
     );
   }
-  // Telegram
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.9l-2.965-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.963.659z" fill="#2AABEE"/>
@@ -100,6 +133,8 @@ const MCP_TEMPLATES = [
   { name: "Filesystem", transport: "stdio" as const, configPlaceholder: { command: "npx", args: ["@modelcontextprotocol/server-filesystem", "/workspace"] } },
 ];
 
+type Tab = "info" | "playground" | "platforms" | "skills" | "mcp" | "activity";
+
 export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const router = useRouter();
   const [agent, setAgent] = useState<AgentRecord | null>(null);
@@ -108,12 +143,10 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Memory
   const [memoryStats, setMemoryStats] = useState<MemoryStats | null>(null);
   const [clearingContext, setClearingContext] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  // Channels
   const [channels, setChannels] = useState<Channel[]>([]);
   const [expandedPlatform, setExpandedPlatform] = useState<"telegram" | "discord" | "whatsapp" | null>(null);
   const [telegramToken, setTelegramToken] = useState("");
@@ -121,13 +154,11 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [discordToken, setDiscordToken] = useState("");
   const [addingChannel, setAddingChannel] = useState(false);
 
-  // WhatsApp QR linking
   const [showWaModal, setShowWaModal] = useState(false);
   const [waLinkStatus, setWaLinkStatus] = useState<"idle" | "starting" | "qr_ready" | "linked" | "failed">("idle");
   const [waQrData, setWaQrData] = useState<string | null>(null);
   const [waError, setWaError] = useState<string | null>(null);
 
-  // MCP
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [showAddMcp, setShowAddMcp] = useState(false);
   const [mcpName, setMcpName] = useState("");
@@ -137,14 +168,16 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [mcpArgs, setMcpArgs] = useState("");
   const [addingMcp, setAddingMcp] = useState(false);
 
-  // Skills
-  const [agentSkills, setAgentSkills] = useState<{id: string; name: string; description: string; linkId: string}[]>([]);
-  const [availableSkills, setAvailableSkills] = useState<{id: string; name: string; description: string}[]>([]);
+  const [agentSkills, setAgentSkills] = useState<{ id: string; name: string; description: string; linkId: string }[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<{ id: string; name: string; description: string }[]>([]);
   const [showAddSkill, setShowAddSkill] = useState(false);
   const [addingSkill, setAddingSkill] = useState(false);
 
-  // Tabs
-  const [activeTab, setActiveTab] = useState<"info" | "playground" | "config" | "skills" | "mcp">("info");
+  const [activeTab, setActiveTab] = useState<Tab>("info");
+
+  // Avatar upload
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const fetchAgent = useCallback(async () => {
     try {
@@ -251,13 +284,11 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ platform, credentials }),
       });
-
       if (!res.ok) {
         const data = await res.json();
         setError(data.error ?? "Failed to connect platform");
         return;
       }
-
       setTelegramToken(""); setTelegramUsername("");
       setDiscordToken("");
       setExpandedPlatform(null);
@@ -298,19 +329,16 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
         mcpTransport === "http"
           ? { url: mcpUrl }
           : { command: mcpCommand, args: mcpArgs.split(" ").filter(Boolean) };
-
       const res = await fetch(`/api/agents/${agentId}/mcp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ serverName: mcpName, transport: mcpTransport, config }),
       });
-
       if (!res.ok) {
         const data = await res.json();
         setError(data.error ?? "Failed to add MCP server");
         return;
       }
-
       setMcpName(""); setMcpUrl(""); setMcpArgs(""); setMcpCommand("npx");
       setShowAddMcp(false);
       await fetchMcp();
@@ -335,7 +363,6 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
       return;
     }
 
-    // Poll for QR / success
     const poll = setInterval(async () => {
       const r = await fetch(`/api/agents/${agentId}/whatsapp/link`);
       if (!r.ok) return;
@@ -354,7 +381,6 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
       }
     }, 3000);
 
-    // Stop polling after 5 minutes
     setTimeout(() => {
       clearInterval(poll);
       setWaLinkStatus((s) => (s === "qr_ready" || s === "starting" ? "failed" : s));
@@ -424,767 +450,1064 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     }
   };
 
+  // ── Avatar upload ──────────────────────────────────────────────────────────
+  const handleAvatarPick = () => avatarInputRef.current?.click();
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file.");
+      return;
+    }
+    setUploadingAvatar(true);
+    setError(null);
+    try {
+      const dataUri = await resizeToDataUri(file, 256);
+      const res = await fetch(`/api/agents/${agentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileImage: dataUri }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Failed to update profile picture");
+        return;
+      }
+      const data = await res.json();
+      setAgent(data.agent);
+    } catch {
+      setError("Failed to upload profile picture");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  const connectedPlatformCount = (() => {
+    const username = agent?.botUsername ?? "";
+    const primary = username.startsWith("discord_") ? "discord" : username.startsWith("whatsapp_") ? "whatsapp" : username ? "telegram" : null;
+    const extras = channels.map((c) => c.platform);
+    const all = new Set<string>([...(primary ? [primary] : []), ...extras]);
+    return all.size;
+  })();
+
+  const stats = [
+    { label: "Sessions", value: memoryStats?.sessionCount ?? 0, tab: "info" as Tab },
+    { label: "Messages", value: memoryStats?.totalMessages ?? 0, tab: "info" as Tab },
+    { label: "Tokens", value: memoryStats ? (memoryStats.estimatedTokens >= 1000 ? `${(memoryStats.estimatedTokens / 1000).toFixed(1)}k` : memoryStats.estimatedTokens) : 0, tab: "info" as Tab },
+    { label: "Channels", value: connectedPlatformCount, tab: "platforms" as Tab },
+    { label: "Skills", value: agentSkills.length, tab: "skills" as Tab },
+    { label: "MCP Servers", value: mcpServers.length, tab: "mcp" as Tab },
+  ];
+
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: "info", label: "Info", icon: <Brain size={14} /> },
+    { key: "playground", label: "Playground", icon: <Bot size={14} /> },
+    { key: "platforms", label: "Platforms", icon: <Plug size={14} /> },
+    { key: "skills", label: "Skills", icon: <Brain size={14} /> },
+    { key: "mcp", label: "MCP", icon: <Server size={14} /> },
+    { key: "activity", label: "Activity", icon: <ActivityIcon size={14} /> },
+  ];
+
   return (
-      <>
-      <main className="flex flex-1 flex-col gap-6">
+    <>
+      <style>{pageStyles}</style>
+      <div style={{ background: BG, color: INK, minHeight: "100vh", padding: "0 0 80px", margin: "-100px -2.5rem -3rem", }}>
+        {/* Cover band */}
+        <div
+          style={{
+            position: "relative",
+            height: 160,
+          }}
+        >
+          <Link
+            href="/overview"
+            style={{
+              position: "absolute",
+              top: 20,
+              left: 24,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 13,
+              color: MUTED,
+              textDecoration: "none",
+              padding: "6px 12px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.55)",
+              border: `1px solid ${BORDER}`,
+            }}
+          >
+            <ArrowLeft size={14} /> Overview
+          </Link>
+        </div>
 
-
-        {error && (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <RefreshCw className="size-6 animate-spin text-white/40" />
-          </div>
-        ) : !agent ? (
-          <p className="text-white/50">Agent not found.</p>
-        ) : (
-          <>
-            <div className="flex flex-col md:flex-row gap-6">
-              {/* Internal Sidebar Navigation */}
-              <div className="w-full md:w-56 shrink-0 flex flex-col gap-1 pr-4 border-r border-white/10 md:sticky md:top-25 md:self-start">
-                <button
-                  onClick={() => setActiveTab("info")}
-                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
-                    activeTab === "info" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Brain className="size-4" /> Info & Memory
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab("playground")}
-                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
-                    activeTab === "playground" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Bot className="size-4" /> Playground
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab("config")}
-                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
-                    activeTab === "config" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Plug className="size-4" /> Connected Platforms
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab("skills")}
-                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
-                    activeTab === "skills" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Brain className="size-4" /> Skills
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab("mcp")}
-                  className={`text-left px-4 py-2.5 rounded-lg transition-colors text-sm font-medium ${
-                    activeTab === "mcp" ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Server className="size-4" /> MCP Servers
-                  </div>
-                </button>
-              </div>
-
-              {/* Main Content Area */}
-              <div className="flex-1 min-w-0 pb-10">
-                {activeTab === "info" && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    {/* Agent header */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-4">
-                        {agent.profileImage ? (
-                          <img src={agent.profileImage} alt={agent.name} className="size-14 rounded-xl object-cover" />
-                        ) : (
-                          <div className="flex size-14 items-center justify-center rounded-xl bg-gradient-to-br from-brand-dark to-brand">
-                            <Bot className="size-7 text-white" />
-                          </div>
-                        )}
-                        <div>
-                          <h1 className="text-xl font-bold text-white">{agent.name}</h1>
-                          <div className="flex items-center gap-2 mt-1">
-                            <p className="text-sm text-white/50">
-                              @{agent.botUsername} &middot; Created{" "}
-                              {new Date(agent.createdAt).toLocaleDateString()}
-                            </p>
-                            {agent.type && (
-                              <span className={`rounded-full px-3 py-0.5 text-xs font-medium border ${getBadgeStyle(agent.type)}`}>
-                                {agent.type.charAt(0).toUpperCase() + agent.type.slice(1)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-medium ${
-                            agent.status === "active"
-                              ? "bg-success/15 text-success"
-                              : agent.status === "error"
-                                ? "bg-red-500/15 text-red-400"
-                                : agent.status === "starting"
-                                  ? "bg-yellow-500/15 text-yellow-400"
-                                  : "bg-white/10 text-white/50"
-                          }`}
-                        >
-                          {agent.status}
-                        </span>
-
-                        {agent.status === "active" && (
-                          <Button
-                            onClick={handleStop}
-                            disabled={stopping}
-                            variant="ghost"
-                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                          >
-                            <Power className="size-4 mr-1" />
-                            {stopping ? "Stopping..." : "Delete agent"}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                    {/* Container info */}
-            {/* {agent.containerId && (
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="text-xs text-white/40 mb-1">Container</p>
-                <p className="text-sm text-white/70 font-mono">
-                  {agent.containerId} &middot;
-                </p>
-              </div>
-            )} */}
-
-            {/* Webhook URL */}
-            {/* <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-xs text-white/40 mb-1">Webhook URL</p>
-              <p className="text-sm text-white/70 font-mono break-all">
-                /api/telegram/webhook/{agent.id}
-              </p>
-            </div> */}
-
-            <Separator className="bg-white/10" />
-
-            {/* Memory / Context */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Brain className="size-5 text-white/60" />
-                  <h2 className="text-lg font-semibold text-white">Context Memory</h2>
-                </div>
-                {!showClearConfirm ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowClearConfirm(true)}
-                    disabled={clearingContext || !memoryStats || memoryStats.totalMessages === 0}
-                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                  >
-                    <Trash2 className="size-4 mr-1" />
-                    Clear Context
-                  </Button>
+        <div style={{ maxWidth: 1040, margin: "0 auto", padding: "0 2rem" }}>
+          {/* Profile header */}
+          <div
+            className="oc-page-section"
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 24,
+              marginTop: -64,
+              marginBottom: 28,
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              className="oc-avatar-wrap"
+              style={{ position: "relative", cursor: "pointer" }}
+              onClick={handleAvatarPick}
+            >
+              <div
+                style={{
+                  width: 128,
+                  height: 128,
+                  borderRadius: "50%",
+                  background: agent?.profileImage ? "transparent" : `linear-gradient(135deg,${ACCENT} 0%,#FF8C42 100%)`,
+                  border: `4px solid ${BG}`,
+                  boxShadow: "0 10px 30px rgba(42,31,25,0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                }}
+              >
+                {agent?.profileImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={agent.profileImage} alt={agent.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-white/50">Erase all conversation history?</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleClearContext}
-                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                    >
-                      Yes, clear
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowClearConfirm(false)}
-                      className="text-white/50 hover:text-white"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
+                  <Bot size={56} color="#fff" />
                 )}
               </div>
-
-              {memoryStats ? (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs text-white/40 mb-1">Sessions</p>
-                    <p className="text-2xl font-bold text-white">{memoryStats.sessionCount}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs text-white/40 mb-1">Messages</p>
-                    <p className="text-2xl font-bold text-white">{memoryStats.totalMessages}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs text-white/40 mb-1">Est. Tokens</p>
-                    <p className="text-2xl font-bold text-white">
-                      {memoryStats.estimatedTokens >= 1000
-                        ? `${(memoryStats.estimatedTokens / 1000).toFixed(1)}k`
-                        : memoryStats.estimatedTokens}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="h-20 rounded-xl border border-white/10 bg-white/5 animate-pulse" />
-              )}
+              <div
+                className="oc-avatar-overlay"
+                style={{
+                  position: "absolute",
+                  inset: 4,
+                  borderRadius: "50%",
+                  background: "rgba(42,31,25,0.55)",
+                  opacity: uploadingAvatar ? 1 : 0,
+                  transition: "opacity 0.2s ease",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {uploadingAvatar ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" /> Uploading
+                  </>
+                ) : (
+                  <>
+                    <Camera size={18} /> Change photo
+                  </>
+                )}
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                style={{ display: "none" }}
+              />
             </div>
 
-          </div>
-        )}
+            <div style={{ flex: 1, minWidth: 260, paddingBottom: 4 }}>
+              <h1
+                style={{
+                  fontFamily: "var(--serif)",
+                  fontSize: 36,
+                  fontWeight: 600,
+                  margin: 0,
+                  lineHeight: 1.1,
+                }}
+              >
+                <span className="oc-shimmer-text">{agent?.name ?? " "}</span>
+              </h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap", color: MUTED, fontSize: 14 }}>
+                <span style={{ fontFamily: "var(--mono), monospace" }}>@{agent?.botUsername}</span>
+                {agent?.type && (
+                  <span
+                    style={{
+                      padding: "2px 10px",
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: typeColor(agent.type),
+                      background: `${typeColor(agent.type)}14`,
+                      border: `1px solid ${typeColor(agent.type)}33`,
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {agent.type}
+                  </span>
+                )}
+                {agent && <StatusPill status={agent.status} />}
+                {agent && (
+                  <span style={{ fontSize: 12, color: MUTED }}>
+                    · Created {new Date(agent.createdAt).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+            </div>
 
-        {/* PLAYGROUND TAB */}
-        {activeTab === "playground" && (
-          <div className="h-[600px] rounded-xl border border-white/10 bg-black/20 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <ChatPageContent defaultAgentId={agentId} hideHeader={true} />
+            {agent?.status === "active" && (
+              <button
+                onClick={handleStop}
+                disabled={stopping}
+                className="oc-btn-primary"
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 10,
+                  border: `1px solid rgba(226,61,45,0.35)`,
+                  background: "rgba(226,61,45,0.08)",
+                  color: "#c83426",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: stopping ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Power size={14} /> {stopping ? "Stopping..." : "Delete agent"}
+              </button>
+            )}
           </div>
-        )}
 
-        {/* CONFIG TAB */}
-        {activeTab === "config" && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {/* Connected Platforms */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Plug className="size-5 text-white/60" />
-                <h2 className="text-lg font-semibold text-white">Connected Platforms</h2>
+          {error && (
+            <div
+              style={{
+                background: "rgba(226,61,45,0.08)",
+                border: "1px solid rgba(226,61,45,0.25)",
+                borderRadius: 10,
+                padding: "10px 14px",
+                color: "#c83426",
+                fontSize: 13,
+                marginBottom: 20,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: "80px 0", color: MUTED }}>
+              <RefreshCw size={24} className="animate-spin" />
+            </div>
+          ) : !agent ? (
+            <p style={{ color: MUTED }}>Agent not found.</p>
+          ) : (
+            <>
+              {/* Stats row */}
+              <div
+                className="oc-page-section"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
+                  gap: 12,
+                  marginBottom: 28,
+                }}
+              >
+                {stats.map((s) => (
+                  <button
+                    key={s.label}
+                    onClick={() => setActiveTab(s.tab)}
+                    className="oc-stat oc-card"
+                    style={{
+                      background: CARD,
+                      border: `1px solid ${BORDER}`,
+                      borderRadius: 14,
+                      padding: "16px 18px",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      color: INK,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                      {s.label}
+                    </div>
+                    <div style={{ fontFamily: "var(--serif)", fontSize: 28, fontWeight: 600, marginTop: 4 }}>
+                      {s.value}
+                    </div>
+                  </button>
+                ))}
               </div>
 
-              <div className="space-y-2">
-                {(["telegram", "discord", "whatsapp"] as const).map((platform) => {
-                  const username = agent.botUsername ?? "";
-                  const primaryPlatform = username.startsWith("discord_")
-                    ? "discord"
-                    : username.startsWith("whatsapp_")
-                      ? "whatsapp"
-                      : "telegram";
-
-                  const isPrimary = primaryPlatform === platform;
-                  const channelRecord = channels.find((c) => c.platform === platform);
-                  const isConnected = isPrimary || !!channelRecord;
-                  const isExpanded = expandedPlatform === platform;
-
-                  const handle = isPrimary
-                    ? platform === "telegram"
-                      ? `@${username}`
-                      : username.replace(/^(discord_|whatsapp_)/, "")
-                    : channelRecord
-                      ? `Added ${new Date(channelRecord.createdAt).toLocaleDateString()}`
-                      : null;
-
-                  const PLATFORM_COLORS = {
-                    telegram: { ring: "border-[#2AABEE]/20", bg: "bg-[#2AABEE]/5" },
-                    discord:  { ring: "border-[#5865F2]/20", bg: "bg-[#5865F2]/5" },
-                    whatsapp: { ring: "border-[#25D366]/20", bg: "bg-[#25D366]/5" },
-                  };
-                  const isWhatsApp = platform === "whatsapp";
-                  const colors = isConnected
-                    ? PLATFORM_COLORS[platform]
-                    : isWhatsApp
-                      ? PLATFORM_COLORS.whatsapp
-                      : { ring: "border-white/5", bg: "bg-white/[0.02]" };
-
+              {/* Tab bar */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  borderBottom: `1px solid ${BORDER}`,
+                  marginBottom: 24,
+                  overflowX: "auto",
+                }}
+              >
+                {tabs.map((t) => {
+                  const active = activeTab === t.key;
                   return (
-                    <div key={platform}>
-                      {/* Row */}
-                      <div
-                        className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${colors.ring} ${colors.bg} ${!isConnected ? "cursor-pointer hover:border-white/10 hover:bg-white/5" : ""}`}
-                        onClick={() => {
-                          if (!isConnected) {
-                            if (isWhatsApp) { setShowWaModal(true); startWhatsappLink(); }
-                            else setExpandedPlatform(isExpanded ? null : platform);
-                          }
-                        }}
-                      >
-                        <div className="flex items-center gap-3">
-                          <PlatformIcon platform={platform} />
-                          <div>
-                            <p className="text-sm text-white font-medium capitalize">
-                              {platform === "whatsapp" ? "WhatsApp" : platform.charAt(0).toUpperCase() + platform.slice(1)}
-                            </p>
-                            {isConnected && handle ? (
-                              <p className="text-xs text-white/40">{handle}</p>
-                            ) : (
-                              <p className="text-xs text-white/30">
-                                Not connected · click to connect
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {isConnected && agent.status === "active" && (
-                            <span className="text-xs text-success bg-success/10 px-2 py-0.5 rounded-full">Active</span>
-                          )}
-                          {isConnected && channelRecord && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleDeleteChannel(channelRecord.id); }}
-                              className="text-white/20 hover:text-red-400 transition-colors"
-                            >
-                              <X className="size-4" />
-                            </button>
-                          )}
-                          {!isConnected && (
-                            <span className="text-xs text-white/30">{isWhatsApp ? "→" : isExpanded ? "▲" : "▼"}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Inline connect form */}
-                      {isExpanded && !isConnected && (
-                        <div className="mt-1 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-4 space-y-3">
-                          {platform === "telegram" && (
-                            <>
-                              <p className="text-xs text-white/40">
-                                Create a bot via @BotFather on Telegram, copy the token and username.
-                              </p>
-                              <Input
-                                placeholder="Bot Token (from @BotFather)"
-                                value={telegramToken}
-                                onChange={(e) => setTelegramToken(e.target.value)}
-                                className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
-                              />
-                              <Input
-                                placeholder="Bot username (without @)"
-                                value={telegramUsername}
-                                onChange={(e) => setTelegramUsername(e.target.value)}
-                                className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
-                              />
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  disabled={addingChannel || !telegramToken || !telegramUsername}
-                                  onClick={() => handleAddChannel("telegram", { botToken: telegramToken, botUsername: telegramUsername })}
-                                  className="bg-[#2AABEE] hover:bg-[#1e9ad4] text-white"
-                                >
-                                  {addingChannel ? "Connecting…" : "Connect Telegram"}
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => setExpandedPlatform(null)} className="text-white/40 hover:text-white">
-                                  Cancel
-                                </Button>
-                              </div>
-                            </>
-                          )}
-
-                          {platform === "discord" && (
-                            <>
-                              <p className="text-xs text-white/40">
-                                Create a bot at discord.com/developers, copy the bot token, then invite the bot to your server.
-                              </p>
-                              <Input
-                                placeholder="Bot Token"
-                                value={discordToken}
-                                onChange={(e) => setDiscordToken(e.target.value)}
-                                className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
-                              />
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  disabled={addingChannel || !discordToken}
-                                  onClick={() => handleAddChannel("discord", { botToken: discordToken })}
-                                  className="bg-[#5865F2] hover:bg-[#4752c4] text-white"
-                                >
-                                  {addingChannel ? "Connecting…" : "Connect Discord"}
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => setExpandedPlatform(null)} className="text-white/40 hover:text-white">
-                                  Cancel
-                                </Button>
-                              </div>
-                            </>
-                          )}
-
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      key={t.key}
+                      onClick={() => setActiveTab(t.key)}
+                      className="oc-tab-btn"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "10px 16px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: active ? ACCENT : MUTED,
+                        background: "transparent",
+                        border: "none",
+                        borderBottom: `2px solid ${active ? ACCENT : "transparent"}`,
+                        marginBottom: -1,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {t.icon} {t.label}
+                    </button>
                   );
                 })}
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* SKILLS TAB */}
-        {activeTab === "skills" && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {/* Skills */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Brain className="size-5 text-white/60" />
-                  <h2 className="text-lg font-semibold text-white">Skills</h2>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowAddSkill(!showAddSkill)}
-                  className="text-white/60 hover:text-white"
-                >
-                  <Plus className="size-4 mr-1" />
-                  Add Skill
-                </Button>
-              </div>
-
-              {showAddSkill && (
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 mb-4 space-y-2">
-                  <p className="text-xs text-white/40 mb-2">Select a skill to attach</p>
-                  {availableSkills
-                    .filter((s) => !agentSkills.some((as_) => as_.id === s.id))
-                    .map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => handleAddSkill(s.id)}
-                        disabled={addingSkill}
-                        className="w-full flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3 hover:bg-white/[0.06] transition-colors text-left"
-                      >
-                        <div>
-                          <p className="text-sm text-white font-medium">{s.name}</p>
-                          {s.description && (
-                            <p className="text-xs text-white/40 mt-0.5">{s.description}</p>
-                          )}
-                        </div>
-                        <Plus className="size-4 text-white/40" />
-                      </button>
-                    ))}
-                  {availableSkills.filter((s) => !agentSkills.some((as_) => as_.id === s.id)).length === 0 && (
-                    <p className="text-sm text-white/30 py-2">No available skills to add.</p>
+              {activeTab === "info" && (
+                <div className="oc-page-section" style={{ display: "grid", gap: 20 }}>
+                  {agent.systemPrompt && (
+                    <Card title="Bio" icon={<Brain size={16} />}>
+                      <p style={{ margin: 0, fontSize: 14, color: INK, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+                        {agent.systemPrompt}
+                      </p>
+                    </Card>
                   )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setShowAddSkill(false)}
-                    className="text-white/50 hover:text-white mt-2"
+                  <Card
+                    title="Context Memory"
+                    icon={<Brain size={16} />}
+                    action={
+                      !showClearConfirm ? (
+                        <button
+                          onClick={() => setShowClearConfirm(true)}
+                          disabled={clearingContext || !memoryStats || memoryStats.totalMessages === 0}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#c83426",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: clearingContext ? "not-allowed" : "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <Trash2 size={14} /> Clear
+                        </button>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 11, color: MUTED }}>Erase all history?</span>
+                          <button
+                            onClick={handleClearContext}
+                            style={{ background: "transparent", border: "none", color: "#c83426", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setShowClearConfirm(false)}
+                            style={{ background: "transparent", border: "none", color: MUTED, fontSize: 12, cursor: "pointer" }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )
+                    }
                   >
-                    Cancel
-                  </Button>
+                    {memoryStats ? (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+                        <Stat small label="Sessions" value={memoryStats.sessionCount} />
+                        <Stat small label="Messages" value={memoryStats.totalMessages} />
+                        <Stat
+                          small
+                          label="Est. Tokens"
+                          value={
+                            memoryStats.estimatedTokens >= 1000
+                              ? `${(memoryStats.estimatedTokens / 1000).toFixed(1)}k`
+                              : memoryStats.estimatedTokens
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <div style={{ height: 80, background: "rgba(42,31,25,0.05)", borderRadius: 10 }} />
+                    )}
+                  </Card>
                 </div>
               )}
 
-              <div className="space-y-2">
-                {agentSkills.map((s) => (
-                  <div key={s.linkId} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Brain className="size-4 text-white/40" />
-                      <div>
-                        <p className="text-sm text-white font-medium">{s.name}</p>
-                        {s.description && (
-                          <p className="text-xs text-white/40">{s.description}</p>
+              {activeTab === "playground" && (
+                <div
+                  className="oc-page-section"
+                  style={{
+                    height: 620,
+                    borderRadius: 16,
+                    border: `1px solid ${BORDER}`,
+                    background: "#111111",
+                    overflow: "hidden",
+                  }}
+                >
+                  <ChatPageContent defaultAgentId={agentId} hideHeader={true} />
+                </div>
+              )}
+
+              {activeTab === "platforms" && (
+                <div className="oc-page-section" style={{ display: "grid", gap: 12 }}>
+                  {(["telegram", "discord", "whatsapp"] as const).map((platform) => {
+                    const username = agent.botUsername ?? "";
+                    const primaryPlatform = username.startsWith("discord_")
+                      ? "discord"
+                      : username.startsWith("whatsapp_")
+                        ? "whatsapp"
+                        : "telegram";
+                    const isPrimary = primaryPlatform === platform;
+                    const channelRecord = channels.find((c) => c.platform === platform);
+                    const isConnected = isPrimary || !!channelRecord;
+                    const isExpanded = expandedPlatform === platform;
+                    const isWhatsApp = platform === "whatsapp";
+                    const handle = isPrimary
+                      ? platform === "telegram"
+                        ? `@${username}`
+                        : username.replace(/^(discord_|whatsapp_)/, "")
+                      : channelRecord
+                        ? `Added ${new Date(channelRecord.createdAt).toLocaleDateString()}`
+                        : null;
+
+                    return (
+                      <div key={platform}>
+                        <div
+                          className="oc-card oc-card-hover"
+                          onClick={() => {
+                            if (!isConnected) {
+                              if (isWhatsApp) { setShowWaModal(true); startWhatsappLink(); }
+                              else setExpandedPlatform(isExpanded ? null : platform);
+                            }
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "14px 18px",
+                            background: CARD,
+                            border: `1px solid ${BORDER}`,
+                            borderRadius: 12,
+                            cursor: isConnected ? "default" : "pointer",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <PlatformIcon platform={platform} />
+                            <div>
+                              <p style={{ margin: 0, fontSize: 14, fontWeight: 600, textTransform: "capitalize" }}>
+                                {platform === "whatsapp" ? "WhatsApp" : platform}
+                              </p>
+                              <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
+                                {isConnected && handle ? handle : "Not connected · click to connect"}
+                              </p>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            {isConnected && agent.status === "active" && (
+                              <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, color: "#2f9e5e", background: "rgba(47,158,94,0.12)" }}>
+                                Active
+                              </span>
+                            )}
+                            {isConnected && channelRecord && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteChannel(channelRecord.id); }}
+                                style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}
+                              >
+                                <X size={16} />
+                              </button>
+                            )}
+                            {!isConnected && (
+                              <span style={{ fontSize: 11, color: MUTED }}>{isWhatsApp ? "→" : isExpanded ? "▲" : "▼"}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {isExpanded && !isConnected && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              padding: 16,
+                              background: CARD,
+                              border: `1px solid ${BORDER}`,
+                              borderRadius: 12,
+                              display: "grid",
+                              gap: 10,
+                            }}
+                          >
+                            {platform === "telegram" && (
+                              <>
+                                <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>
+                                  Create a bot via @BotFather on Telegram, copy the token and username.
+                                </p>
+                                <Input
+                                  placeholder="Bot Token (from @BotFather)"
+                                  value={telegramToken}
+                                  onChange={(e) => setTelegramToken(e.target.value)}
+                                />
+                                <Input
+                                  placeholder="Bot username (without @)"
+                                  value={telegramUsername}
+                                  onChange={(e) => setTelegramUsername(e.target.value)}
+                                />
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <Button
+                                    size="sm"
+                                    disabled={addingChannel || !telegramToken || !telegramUsername}
+                                    onClick={() => handleAddChannel("telegram", { botToken: telegramToken, botUsername: telegramUsername })}
+                                    style={{ background: "#2AABEE", color: "#fff" }}
+                                  >
+                                    {addingChannel ? "Connecting…" : "Connect Telegram"}
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => setExpandedPlatform(null)}>
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </>
+                            )}
+
+                            {platform === "discord" && (
+                              <>
+                                <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>
+                                  Create a bot at discord.com/developers, copy the bot token, then invite the bot to your server.
+                                </p>
+                                <Input
+                                  placeholder="Bot Token"
+                                  value={discordToken}
+                                  onChange={(e) => setDiscordToken(e.target.value)}
+                                />
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <Button
+                                    size="sm"
+                                    disabled={addingChannel || !discordToken}
+                                    onClick={() => handleAddChannel("discord", { botToken: discordToken })}
+                                    style={{ background: "#5865F2", color: "#fff" }}
+                                  >
+                                    {addingChannel ? "Connecting…" : "Connect Discord"}
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => setExpandedPlatform(null)}>
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
-                    </div>
-                    <button
-                      onClick={() => handleRemoveSkill(s.id)}
-                      className="text-white/30 hover:text-red-400 transition-colors"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  </div>
-                ))}
-
-                {agentSkills.length === 0 && (
-                  <p className="text-sm text-white/30 py-2">No skills attached.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MCP TAB */}
-        {activeTab === "mcp" && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {/* MCP Servers */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Server className="size-5 text-white/60" />
-                  <h2 className="text-lg font-semibold text-white">MCP Servers</h2>
+                    );
+                  })}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowAddMcp(!showAddMcp)}
-                  className="text-white/60 hover:text-white"
-                >
-                  <Plus className="size-4 mr-1" />
-                  Add Server
-                </Button>
-              </div>
+              )}
 
-              {showAddMcp && (
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 mb-4 space-y-4">
-                  {/* Templates */}
-                  <div>
-                    <p className="text-xs text-white/40 mb-2">Quick templates</p>
-                    <div className="flex flex-wrap gap-2">
-                      {MCP_TEMPLATES.map((tpl) => (
-                        <button
-                          key={tpl.name}
-                          onClick={() => applyMcpTemplate(tpl)}
-                          className="px-2 py-1 rounded text-xs bg-white/10 text-white/60 hover:text-white hover:bg-white/15 transition-colors"
-                        >
-                          {tpl.name}
-                        </button>
-                      ))}
-                    </div>
+              {activeTab === "skills" && (
+                <div className="oc-page-section" style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <h2 style={{ fontFamily: "var(--serif)", fontSize: 20, margin: 0 }}>
+                      <em>Skills</em>
+                    </h2>
+                    <AccentButton onClick={() => setShowAddSkill(!showAddSkill)}>
+                      <Plus size={14} /> Add Skill
+                    </AccentButton>
                   </div>
 
-                  <Input
-                    placeholder="Server name (e.g. Notion)"
-                    value={mcpName}
-                    onChange={(e) => setMcpName(e.target.value)}
-                    className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
-                  />
-
-                  {/* Transport selector */}
-                  <div className="flex gap-2">
-                    {(["http", "stdio"] as const).map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => setMcpTransport(t)}
-                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                          mcpTransport === t
-                            ? "bg-brand text-white"
-                            : "bg-white/10 text-white/50 hover:text-white"
-                        }`}
-                      >
-                        {t === "http" ? "HTTP / SSE" : "Stdio (local)"}
-                      </button>
-                    ))}
-                  </div>
-
-                  {mcpTransport === "http" ? (
-                    <Input
-                      placeholder="Server URL (https://...)"
-                      value={mcpUrl}
-                      onChange={(e) => setMcpUrl(e.target.value)}
-                      className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
-                    />
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        {["npx", "node", "python3"].map((cmd) => (
+                  {showAddSkill && (
+                    <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 14, display: "grid", gap: 8 }}>
+                      <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>Select a skill to attach</p>
+                      {availableSkills
+                        .filter((s) => !agentSkills.some((as_) => as_.id === s.id))
+                        .map((s) => (
                           <button
-                            key={cmd}
-                            onClick={() => setMcpCommand(cmd)}
-                            className={`px-2 py-0.5 rounded text-xs transition-colors ${
-                              mcpCommand === cmd
-                                ? "bg-brand/30 text-brand border border-brand/30"
-                                : "bg-white/10 text-white/50 hover:text-white"
-                            }`}
+                            key={s.id}
+                            onClick={() => handleAddSkill(s.id)}
+                            disabled={addingSkill}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              background: "rgba(255,255,255,0.55)",
+                              border: `1px solid ${BORDER}`,
+                              borderRadius: 10,
+                              padding: "10px 14px",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
                           >
-                            {cmd}
+                            <div>
+                              <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: INK }}>{s.name}</p>
+                              {s.description && (
+                                <p style={{ margin: 0, fontSize: 12, color: MUTED }}>{s.description}</p>
+                              )}
+                            </div>
+                            <Plus size={16} color={MUTED} />
+                          </button>
+                        ))}
+                      {availableSkills.filter((s) => !agentSkills.some((as_) => as_.id === s.id)).length === 0 && (
+                        <p style={{ fontSize: 13, color: MUTED, margin: "6px 0" }}>No available skills to add.</p>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => setShowAddSkill(false)}>Cancel</Button>
+                    </div>
+                  )}
+
+                  {agentSkills.length === 0 ? (
+                    <p style={{ fontSize: 13, color: MUTED }}>No skills attached.</p>
+                  ) : (
+                    agentSkills.map((s) => (
+                      <div
+                        key={s.linkId}
+                        className="oc-card oc-card-hover"
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "12px 16px",
+                          background: CARD,
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 12,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Brain size={16} color={MUTED} />
+                          <div>
+                            <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{s.name}</p>
+                            {s.description && (
+                              <p style={{ margin: 0, fontSize: 12, color: MUTED }}>{s.description}</p>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveSkill(s.id)}
+                          style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeTab === "mcp" && (
+                <div className="oc-page-section" style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <h2 style={{ fontFamily: "var(--serif)", fontSize: 20, margin: 0 }}>
+                      <em>MCP Servers</em>
+                    </h2>
+                    <AccentButton onClick={() => setShowAddMcp(!showAddMcp)}>
+                      <Plus size={14} /> Add Server
+                    </AccentButton>
+                  </div>
+
+                  {showAddMcp && (
+                    <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 14, display: "grid", gap: 12 }}>
+                      <div>
+                        <p style={{ fontSize: 12, color: MUTED, margin: "0 0 6px" }}>Quick templates</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {MCP_TEMPLATES.map((tpl) => (
+                            <button
+                              key={tpl.name}
+                              onClick={() => applyMcpTemplate(tpl)}
+                              style={{
+                                padding: "4px 10px",
+                                fontSize: 11,
+                                borderRadius: 999,
+                                background: "rgba(42,31,25,0.05)",
+                                color: INK,
+                                border: `1px solid ${BORDER}`,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {tpl.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <Input
+                        placeholder="Server name (e.g. Notion)"
+                        value={mcpName}
+                        onChange={(e) => setMcpName(e.target.value)}
+                      />
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {(["http", "stdio"] as const).map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => setMcpTransport(t)}
+                            style={{
+                              padding: "4px 12px",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              borderRadius: 999,
+                              border: `1px solid ${mcpTransport === t ? ACCENT : BORDER}`,
+                              background: mcpTransport === t ? ACCENT_SOFT : "transparent",
+                              color: mcpTransport === t ? ACCENT : MUTED,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {t === "http" ? "HTTP / SSE" : "Stdio"}
                           </button>
                         ))}
                       </div>
-                      <Input
-                        placeholder="Args (e.g. @notionhq/mcp --token TOKEN)"
-                        value={mcpArgs}
-                        onChange={(e) => setMcpArgs(e.target.value)}
-                        className="bg-(--surface-2) border-(--border) text-foreground placeholder:text-(--foreground-3)"
-                      />
+                      {mcpTransport === "http" ? (
+                        <Input
+                          placeholder="Server URL (https://...)"
+                          value={mcpUrl}
+                          onChange={(e) => setMcpUrl(e.target.value)}
+                        />
+                      ) : (
+                        <>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {["npx", "node", "python3"].map((cmd) => (
+                              <button
+                                key={cmd}
+                                onClick={() => setMcpCommand(cmd)}
+                                style={{
+                                  padding: "2px 10px",
+                                  fontSize: 11,
+                                  borderRadius: 6,
+                                  background: mcpCommand === cmd ? ACCENT_SOFT : "rgba(42,31,25,0.05)",
+                                  border: `1px solid ${mcpCommand === cmd ? ACCENT : BORDER}`,
+                                  color: mcpCommand === cmd ? ACCENT : INK,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {cmd}
+                              </button>
+                            ))}
+                          </div>
+                          <Input
+                            placeholder="Args (e.g. @notionhq/mcp --token TOKEN)"
+                            value={mcpArgs}
+                            onChange={(e) => setMcpArgs(e.target.value)}
+                          />
+                        </>
+                      )}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Button
+                          size="sm"
+                          onClick={handleAddMcp}
+                          disabled={addingMcp || !mcpName}
+                          style={{ background: ACCENT, color: "#fff" }}
+                        >
+                          {addingMcp ? "Adding..." : "Add Server"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowAddMcp(false)}>
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
                   )}
 
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={handleAddMcp}
-                      disabled={addingMcp || !mcpName}
-                      className="bg-brand hover:bg-brand/90 text-white"
-                    >
-                      {addingMcp ? "Adding..." : "Add Server"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setShowAddMcp(false)}
-                      className="text-white/50 hover:text-white"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Existing MCP servers */}
-              <div className="space-y-2">
-                {mcpServers.map((srv) => (
-                  <div key={srv.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Server className="size-4 text-white/40" />
-                      <div>
-                        <p className="text-sm text-white font-medium">{srv.serverName}</p>
-                        <p className="text-xs text-white/40 font-mono">{srv.transport}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handleToggleMcp(srv.id, !srv.enabled)}
-                        className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
-                          srv.enabled
-                            ? "bg-success/10 text-success hover:bg-red-500/10 hover:text-red-400"
-                            : "bg-white/10 text-white/40 hover:bg-success/10 hover:text-success"
-                        }`}
-                      >
-                        {srv.enabled ? "Enabled" : "Disabled"}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMcp(srv.id)}
-                        className="text-white/30 hover:text-red-400 transition-colors"
-                      >
-                        <X className="size-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                {mcpServers.length === 0 && (
-                  <p className="text-sm text-white/30 py-2">No MCP servers configured.</p>
-                )}
-              </div>
-            </div>
-            
-            <Separator className="bg-white/10" />
-
-            {/* Activity log */}
-            <div>
-              <h2 className="text-lg font-semibold text-white mb-4">
-                Activity Log
-              </h2>
-
-              {activities.length === 0 ? (
-                <p className="text-sm text-white/40">No activity yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {activities.map((activity) => (
-                    <div
-                      key={activity.id}
-                      className="flex items-start gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3"
-                    >
+                  {mcpServers.length === 0 ? (
+                    <p style={{ fontSize: 13, color: MUTED }}>No MCP servers configured.</p>
+                  ) : (
+                    mcpServers.map((srv) => (
                       <div
-                        className={`mt-0.5 size-2 rounded-full shrink-0 ${
-                          activity.type === "error"
-                            ? "bg-red-400"
-                            : activity.type === "launch"
-                              ? "bg-success"
-                              : activity.type === "stop"
-                                ? "bg-white/30"
-                                : "bg-brand"
-                        }`}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white/70">
-                          {activity.message}
-                        </p>
-                        <p className="text-xs text-white/30 mt-1">
-                          {new Date(activity.createdAt).toLocaleString()}
-                        </p>
+                        key={srv.id}
+                        className="oc-card oc-card-hover"
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "12px 16px",
+                          background: CARD,
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 12,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <Server size={16} color={MUTED} />
+                          <div>
+                            <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{srv.serverName}</p>
+                            <p style={{ margin: 0, fontSize: 11, color: MUTED, fontFamily: "var(--mono), monospace" }}>{srv.transport}</p>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <button
+                            onClick={() => handleToggleMcp(srv.id, !srv.enabled)}
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 600,
+                              padding: "2px 10px",
+                              borderRadius: 999,
+                              border: "none",
+                              cursor: "pointer",
+                              background: srv.enabled ? "rgba(47,158,94,0.12)" : "rgba(42,31,25,0.06)",
+                              color: srv.enabled ? "#2f9e5e" : MUTED,
+                            }}
+                          >
+                            {srv.enabled ? "Enabled" : "Disabled"}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMcp(srv.id)}
+                            style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               )}
-            </div>
-          </div>
-        )}
-              </div>
-            </div>
-          </>
-        )}
-      </main>
 
-      {/* WhatsApp QR linking modal */}
+              {activeTab === "activity" && (
+                <div className="oc-page-section" style={{ display: "grid", gap: 10 }}>
+                  <h2 style={{ fontFamily: "var(--serif)", fontSize: 20, margin: 0 }}>
+                    <em>Activity</em>
+                  </h2>
+                  {activities.length === 0 ? (
+                    <p style={{ fontSize: 13, color: MUTED }}>No activity yet.</p>
+                  ) : (
+                    activities.map((a) => (
+                      <div
+                        key={a.id}
+                        style={{
+                          display: "flex",
+                          gap: 12,
+                          padding: "12px 16px",
+                          background: CARD,
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            marginTop: 7,
+                            flexShrink: 0,
+                            background:
+                              a.type === "error"
+                                ? "#c83426"
+                                : a.type === "launch"
+                                  ? "#2f9e5e"
+                                  : a.type === "stop"
+                                    ? "rgba(42,31,25,0.35)"
+                                    : ACCENT,
+                          }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: 14, color: INK }}>{a.message}</p>
+                          <p style={{ margin: 0, fontSize: 11, color: MUTED, marginTop: 2 }}>
+                            {new Date(a.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
       {showWaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm" style={{ background: "rgba(42,31,25,0.35)" }}>
-          <div className="relative w-full max-w-sm rounded-2xl p-6 shadow-2xl" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(42,31,25,0.45)", backdropFilter: "blur(4px)" }}>
+          <div style={{ position: "relative", width: "100%", maxWidth: 400, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 24, boxShadow: "0 20px 60px rgba(42,31,25,0.25)" }}>
             <button
               onClick={cancelWhatsappLink}
-              className="absolute right-4 top-4 text-white/40 hover:text-white transition-colors"
+              style={{ position: "absolute", right: 14, top: 14, background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}
             >
-              <X className="size-5" />
+              <X size={18} />
             </button>
-
-            <div className="flex items-center gap-3 mb-5">
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
               <PlatformIcon platform="whatsapp" />
-              <h2 className="text-lg font-semibold text-white">Link WhatsApp</h2>
+              <h2 style={{ fontSize: 17, fontWeight: 600, margin: 0, color: INK }}>Link WhatsApp</h2>
             </div>
 
             {waLinkStatus === "starting" && (
-              <div className="flex flex-col items-center gap-4 py-8">
-                <RefreshCw className="size-8 animate-spin text-[#25D366]" />
-                <p className="text-sm text-white/60 text-center">
-                  Starting WhatsApp pairing session…
-                </p>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "24px 0" }}>
+                <RefreshCw size={28} color="#25D366" className="animate-spin" />
+                <p style={{ fontSize: 13, color: MUTED, textAlign: "center", margin: 0 }}>Starting WhatsApp pairing session…</p>
               </div>
             )}
 
             {waLinkStatus === "qr_ready" && waQrData && (
-              <div className="flex flex-col items-center gap-4">
-                <p className="text-xs text-white/50 text-center">
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                <p style={{ fontSize: 12, color: MUTED, textAlign: "center", margin: 0 }}>
                   Open WhatsApp on your phone → Linked Devices → Link a Device → scan this QR code
                 </p>
-                <div className="rounded-xl bg-white p-3">
+                <div style={{ background: "#fff", padding: 12, borderRadius: 12 }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(waQrData)}`}
                     alt="WhatsApp QR code"
                     width={220}
                     height={220}
-                    className="block"
                   />
                 </div>
-                <p className="text-xs text-white/30 text-center">QR code refreshes every ~60 seconds</p>
-                <div className="flex items-center gap-2 text-xs text-white/40">
-                  <RefreshCw className="size-3 animate-spin" />
-                  Waiting for scan…
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
+                  <RefreshCw size={12} className="animate-spin" /> Waiting for scan…
                 </div>
               </div>
             )}
 
             {waLinkStatus === "linked" && (
-              <div className="flex flex-col items-center gap-4 py-6">
-                <div className="flex size-16 items-center justify-center rounded-full bg-[#25D366]/15">
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "16px 0" }}>
+                <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(37,211,102,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <PlatformIcon platform="whatsapp" />
                 </div>
-                <p className="text-base font-semibold text-white">WhatsApp Linked!</p>
-                <p className="text-sm text-white/50 text-center">
-                  Your agent can now receive and send WhatsApp messages.
-                </p>
-                <Button
-                  size="sm"
-                  onClick={() => { setShowWaModal(false); setWaLinkStatus("idle"); }}
-                  className="bg-[#25D366] hover:bg-[#20bd5a] text-white"
-                >
+                <p style={{ fontSize: 15, fontWeight: 600, margin: 0, color: INK }}>WhatsApp Linked!</p>
+                <Button size="sm" onClick={() => { setShowWaModal(false); setWaLinkStatus("idle"); }} style={{ background: "#25D366", color: "#fff" }}>
                   Done
                 </Button>
               </div>
             )}
 
             {waLinkStatus === "failed" && (
-              <div className="flex flex-col items-center gap-4 py-6">
-                <p className="text-sm text-red-400 text-center">{waError ?? "Linking failed"}</p>
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={startWhatsappLink} className="bg-brand hover:bg-brand/90 text-white">
-                    Retry
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={cancelWhatsappLink} className="text-white/50 hover:text-white">
-                    Cancel
-                  </Button>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "16px 0" }}>
+                <p style={{ fontSize: 13, color: "#c83426", textAlign: "center", margin: 0 }}>{waError ?? "Linking failed"}</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button size="sm" onClick={startWhatsappLink} style={{ background: ACCENT, color: "#fff" }}>Retry</Button>
+                  <Button size="sm" variant="ghost" onClick={cancelWhatsappLink}>Cancel</Button>
                 </div>
               </div>
             )}
           </div>
         </div>
       )}
-</>  );
+    </>
+  );
+}
+
+// ── Subcomponents ────────────────────────────────────────────────────────────
+
+function StatusPill({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string }> = {
+    active: { bg: "rgba(42,31,25,0.08)", color: "#2a1f19" },
+    error: { bg: "rgba(42,31,25,0.08)", color: "#2a1f19" },
+    starting: { bg: "rgba(42,31,25,0.08)", color: "#6b5a4d" },
+  };
+  const style = map[status] ?? { bg: "rgba(42,31,25,0.08)", color: MUTED };
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "2px 10px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 600,
+        background: style.bg,
+        color: style.color,
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: style.color }} />
+      {status}
+    </span>
+  );
+}
+
+function Card({
+  title,
+  icon,
+  action,
+  children,
+}: {
+  title: string;
+  icon?: React.ReactNode;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="oc-card"
+      style={{
+        background: CARD,
+        border: `1px solid ${BORDER}`,
+        borderRadius: 14,
+        padding: 18,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: INK }}>
+          {icon}
+          <h3 style={{ fontFamily: "var(--serif)", fontSize: 16, margin: 0, fontWeight: 600 }}>
+            <em>{title}</em>
+          </h3>
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Stat({ label, value, small }: { label: string; value: React.ReactNode; small?: boolean }) {
+  return (
+    <div style={{ background: "rgba(42,31,25,0.04)", border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: "var(--serif)", fontSize: small ? 22 : 28, fontWeight: 600, marginTop: 2 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function AccentButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="oc-btn-primary"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "8px 14px",
+        background: ACCENT,
+        color: "#fff",
+        border: "none",
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+async function resizeToDataUri(file: File, maxDim: number): Promise<string> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const el = new Image();
+    el.onload = () => { URL.revokeObjectURL(url); resolve(el); };
+    el.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Failed to load image")); };
+    el.src = url;
+  });
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2D not supported");
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", 0.85);
 }
