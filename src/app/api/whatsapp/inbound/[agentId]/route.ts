@@ -150,8 +150,10 @@ export async function POST(
   } catch (err) {
     const isAbort = err instanceof Error && err.name === "AbortError";
     if (isAbort) {
+      // The /cancel webhook already replied "✋ Cancelled." — stay silent here
+      // so the user doesn't receive a duplicate message.
       cleanupChatAbort(agentId, jid, logEntry.id);
-      return NextResponse.json({ type: "text", text: "✋ Cancelled." });
+      return NextResponse.json({ ok: true });
     }
     await db.update(agentLog).set({
       status: "error",
@@ -161,6 +163,11 @@ export async function POST(
 
     logger.error({ agentId, jid, err }, "Failed to process WhatsApp message");
     const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    if (isTimeout) {
+      // Suppress timeout messages — let the user retry on their own.
+      cleanupChatAbort(agentId, jid, logEntry.id);
+      return NextResponse.json({ ok: true });
+    }
     // Inner try-catch: a DB insert failure must not prevent the JSON response
     try {
       await db.insert(agentActivity).values({
@@ -173,9 +180,7 @@ export async function POST(
     cleanupChatAbort(agentId, jid, logEntry.id);
     return NextResponse.json({
       type: "text",
-      text: isTimeout
-        ? "⏳ Your request is taking longer than expected. Please try again in a moment."
-        : "🚀 The agent is warming up. Please send your message again in a few seconds!",
+      text: "🚀 The agent is warming up. Please send your message again in a few seconds!",
     });
   }
 }

@@ -192,13 +192,13 @@ export async function POST(
 
       logger.error({ agentId, err }, "Failed to reach agent container");
       const isTimeout = err instanceof Error && err.name === "TimeoutError";
-      await sendMessage(
-        found.botToken,
-        chatId,
-        isTimeout
-          ? "⏳ Your request is taking longer than expected."
-          : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!"
-      ).catch(() => {});
+      if (!isTimeout) {
+        await sendMessage(
+          found.botToken,
+          chatId,
+          "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!"
+        ).catch(() => {});
+      }
     }
   } finally {
     cleanupChatAbort(agentId, chatId, logEntry.id);

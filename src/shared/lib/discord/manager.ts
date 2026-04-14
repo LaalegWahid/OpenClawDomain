@@ -192,13 +192,13 @@ export async function startDiscordBot(
 
         logger.error({ agentId, err }, "Failed to reach agent container from Discord");
         const isTimeout = err instanceof Error && err.name === "TimeoutError";
-        await sendDiscordMessage(
-          token,
-          channelId,
-          isTimeout
-            ? "⏳ Your request is taking longer than expected. Please try again in a moment."
-            : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!",
-        ).catch(() => {});
+        if (!isTimeout) {
+          await sendDiscordMessage(
+            token,
+            channelId,
+            "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!",
+          ).catch(() => {});
+        }
       }
     } finally {
       cleanupChatAbort(agentId, channelId, logEntry.id);
