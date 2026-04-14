@@ -141,6 +141,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [stopping, setStopping] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [memoryStats, setMemoryStats] = useState<MemoryStats | null>(null);
@@ -259,6 +260,24 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     } catch {
       setError("We couldn't stop this bot. Please try again.");
       setStopping(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    setRestarting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/restart`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "We couldn't restart this agent. Please try again.");
+        return;
+      }
+      await fetchAgent();
+    } catch {
+      setError("We couldn't restart this agent. Please try again.");
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -660,26 +679,50 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
             </div>
 
             {agent?.status === "active" && (
-              <button
-                onClick={handleStop}
-                disabled={stopping}
-                className="oc-btn-primary"
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: 10,
-                  border: `1px solid rgba(226,61,45,0.35)`,
-                  background: "rgba(226,61,45,0.08)",
-                  color: "#c83426",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: stopping ? "not-allowed" : "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <Power size={14} /> {stopping ? "Stopping..." : "Delete agent"}
-              </button>
+              <div style={{ display: "inline-flex", gap: 8 }}>
+                <button
+                  onClick={handleRestart}
+                  disabled={restarting || stopping}
+                  className="oc-btn-primary"
+                  title="Stop and relaunch the agent task (preserves memory)"
+                  style={{
+                    padding: "10px 18px",
+                    borderRadius: 10,
+                    border: `1px solid ${BORDER}`,
+                    background: CARD,
+                    color: INK,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: restarting || stopping ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <RefreshCw size={14} className={restarting ? "oc-spin" : undefined} />
+                  {restarting ? "Restarting..." : "Restart agent"}
+                </button>
+                <button
+                  onClick={handleStop}
+                  disabled={stopping || restarting}
+                  className="oc-btn-primary"
+                  style={{
+                    padding: "10px 18px",
+                    borderRadius: 10,
+                    border: `1px solid rgba(226,61,45,0.35)`,
+                    background: "rgba(226,61,45,0.08)",
+                    color: "#c83426",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: stopping || restarting ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <Power size={14} /> {stopping ? "Stopping..." : "Delete agent"}
+                </button>
+              </div>
             )}
           </div>
 

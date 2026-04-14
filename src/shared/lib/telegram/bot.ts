@@ -77,6 +77,21 @@ export async function sendDocument(
   return res.json();
 }
 
+export async function sendChatAction(
+  token: string,
+  chatId: string,
+  action: "typing" | "upload_document" = "typing",
+): Promise<void> {
+  const res = await fetch(`${TELEGRAM_API}${token}/sendChatAction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, action }),
+  });
+  if (!res.ok) {
+    throw new Error(`Telegram sendChatAction failed: ${res.status}`);
+  }
+}
+
 const TELEGRAM_MAX_LENGTH = 4096;
 
 export async function sendMessage(token: string, chatId: string, text: string) {

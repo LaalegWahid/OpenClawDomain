@@ -28,7 +28,7 @@ const sharedFeatures = [
 const tiers: PricingTier[] = [
   {
     name: 'Starter',
-    price: '$20',
+    price: '$30',
     period: 'agent / mo',
     desc: 'Up to 5 agents.',
     features: sharedFeatures,
@@ -37,7 +37,7 @@ const tiers: PricingTier[] = [
   },
   {
     name: 'Growth',
-    price: '$18',
+    price: '$29',
     period: 'agent / mo',
     desc: 'Up to 10 agents.',
     features: sharedFeatures,
@@ -46,7 +46,7 @@ const tiers: PricingTier[] = [
   },
   {
     name: 'Scale',
-    price: '$15',
+    price: '$28',
     period: 'agent / mo',
     desc: 'Up to 20 agents.',
     features: sharedFeatures,

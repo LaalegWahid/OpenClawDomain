@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../../shared/lib/drizzle";
 import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
 import { logger } from "../../../../../shared/lib/logger";
-import { sendDocument, sendMessage } from "../../../../../shared/lib/telegram/bot";
+import { sendChatAction, sendDocument, sendMessage } from "../../../../../shared/lib/telegram/bot";
 import { eq, and } from "drizzle-orm";
 import { ChatMessage, sendCommand, sendDocumentCommand } from "../../../../../shared/lib/agents/docker";
 import { AgentType } from "../../../../../shared/lib/agents/config";
@@ -82,6 +82,14 @@ export async function POST(
   }).returning();
   const startTime = Date.now();
 
+  // Show "typing..." in Telegram while the agent is generating. The action
+  // expires after ~5s, so refresh it every 4s until the response is ready.
+  const typingAction: "typing" | "upload_document" = docFormat ? "upload_document" : "typing";
+  sendChatAction(found.botToken, chatId, typingAction).catch(() => {});
+  const typingInterval = setInterval(() => {
+    sendChatAction(found.botToken, chatId, typingAction).catch(() => {});
+  }, 4000);
+
   try {
     const result = docFormat
       ? await sendDocumentCommand(
@@ -96,6 +104,7 @@ export async function POST(
           history.length > 0 ? history : undefined,
           agentType,
         );
+    clearInterval(typingInterval);
 
     const responseText = result.text;
     await db.update(agentLog).set({
@@ -156,6 +165,7 @@ export async function POST(
       }
     }
   } catch (err) {
+    clearInterval(typingInterval);
     await db.update(agentLog).set({
       status: "error",
       durationMs: Date.now() - startTime,

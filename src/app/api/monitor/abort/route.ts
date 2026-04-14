@@ -37,15 +37,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Task is not running" }, { status: 400 });
     }
 
-    const aborted = abortTask(logId);
-    if (aborted) {
-      await db.update(agentLog).set({
-        status: "aborted",
-        completedAt: new Date(),
-      }).where(eq(agentLog.id, logId));
-    }
+    // Try to cancel the in-flight fetch if the request is being handled by this
+    // Node process. Non-chat_ui sources (telegram/discord/whatsapp) never
+    // register a controller, and in multi-instance deploys the controller may
+    // live on a different worker — so this may return false even for genuinely
+    // running tasks.
+    const signalled = abortTask(logId);
 
-    return NextResponse.json({ ok: true, aborted });
+    // Regardless, mark the log aborted so the UI reflects the user's intent.
+    // The container-side request may still complete, but we treat the user's
+    // click as authoritative for the log status.
+    await db.update(agentLog).set({
+      status: "aborted",
+      completedAt: new Date(),
+    }).where(eq(agentLog.id, logId));
+
+    return NextResponse.json({ ok: true, signalled });
   } catch (err) {
     if (err instanceof Response) return err;
     return NextResponse.json({ error: "Failed to abort task" }, { status: 500 });
