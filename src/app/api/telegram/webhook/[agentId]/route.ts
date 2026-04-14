@@ -4,7 +4,8 @@ import { agent, agentActivity, agentLog, chatSession } from "../../../../../shar
 import { logger } from "../../../../../shared/lib/logger";
 import { sendChatAction, sendDocument, sendMessage } from "../../../../../shared/lib/telegram/bot";
 import { eq, and } from "drizzle-orm";
-import { ChatMessage, sendCommand, sendDocumentCommand } from "../../../../../shared/lib/agents/docker";
+import { ChatMessage, sendCommand, sendDocumentCommand, registerChatAbort, cleanupChatAbort } from "../../../../../shared/lib/agents/docker";
+import { isCancelCommand, cancelChatRequest } from "../../../../../shared/lib/agents/cancel";
 import { AgentType } from "../../../../../shared/lib/agents/config";
 import {
   detectDocumentRequest,
@@ -50,6 +51,17 @@ export async function POST(
 
   logger.info({ agentId, chatId, text }, "Webhook message received");
 
+  // Intercept /cancel or /stop — do NOT forward to the agent.
+  if (isCancelCommand(text)) {
+    const cancelled = await cancelChatRequest(agentId, chatId);
+    await sendMessage(
+      found.botToken,
+      chatId,
+      cancelled ? "✋ Cancelled." : "Nothing to cancel.",
+    ).catch(() => {});
+    return NextResponse.json({ ok: true });
+  }
+
   if (found.status === "stopped") {
     await sendMessage(found.botToken, chatId, "This agent has been stopped. Please restart it from the dashboard.").catch(() => {});
     return NextResponse.json({ ok: true });
@@ -81,6 +93,7 @@ export async function POST(
     userPrompt: text,
   }).returning();
   const startTime = Date.now();
+  const abortController = registerChatAbort(agentId, chatId, logEntry.id);
 
   // Show "typing..." in Telegram while the agent is generating. The action
   // expires after ~5s, so refresh it every 4s until the response is ready.
@@ -97,12 +110,14 @@ export async function POST(
           buildDocumentSystemInstruction(agentType),
           rewriteAsContentPrompt(text),
           history,
+          abortController.signal,
         )
       : await sendCommand(
           found.containerId,
           text,
           history.length > 0 ? history : undefined,
           agentType,
+          abortController.signal,
         );
     clearInterval(typingInterval);
 
@@ -166,21 +181,27 @@ export async function POST(
     }
   } catch (err) {
     clearInterval(typingInterval);
-    await db.update(agentLog).set({
-      status: "error",
-      durationMs: Date.now() - startTime,
-      completedAt: new Date(),
-    }).where(eq(agentLog.id, logEntry.id));
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    // If aborted, cancelChatRequest already marked the log; don't clobber it.
+    if (!isAbort) {
+      await db.update(agentLog).set({
+        status: "error",
+        durationMs: Date.now() - startTime,
+        completedAt: new Date(),
+      }).where(eq(agentLog.id, logEntry.id));
 
-    logger.error({ agentId, err }, "Failed to reach agent container");
-    const isTimeout = err instanceof Error && err.name === "TimeoutError";
-    await sendMessage(
-      found.botToken,
-      chatId,
-      isTimeout
-        ? "⏳ Your request is taking longer than expected."
-        : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!"
-    ).catch(() => {});
+      logger.error({ agentId, err }, "Failed to reach agent container");
+      const isTimeout = err instanceof Error && err.name === "TimeoutError";
+      await sendMessage(
+        found.botToken,
+        chatId,
+        isTimeout
+          ? "⏳ Your request is taking longer than expected."
+          : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!"
+      ).catch(() => {});
+    }
+  } finally {
+    cleanupChatAbort(agentId, chatId, logEntry.id);
   }
 
   return NextResponse.json({ ok: true });

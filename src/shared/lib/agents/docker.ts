@@ -321,13 +321,41 @@ async function getContainerBaseUrl(taskArn: string): Promise<string> {
   return `http://${privateIp}:18789`;
 }
 
-// ─── Abort registry (per-log) ────────────────────────────────────────────────
+// ─── Abort registry (per-log + per-chat) ─────────────────────────────────────
 
 const activeAbortControllers = new Map<string, AbortController>();
+// chat key ("agentId:chatId") → { controller, logId } for cancel-by-chat lookups.
+const chatAbortControllers = new Map<string, { controller: AbortController; logId: string }>();
+
+function chatKey(agentId: string, chatId: string): string {
+  return `${agentId}:${chatId}`;
+}
 
 export function registerAbort(logId: string): AbortController {
   const controller = new AbortController();
   activeAbortControllers.set(logId, controller);
+  return controller;
+}
+
+/**
+ * Register an abort controller that can be looked up by either logId OR the
+ * (agentId, chatId) pair. Used so a user-typed /cancel command can find the
+ * in-flight request without knowing the logId.
+ *
+ * If a prior request for the same chat is still registered, it's aborted first
+ * so only one in-flight request per chat is tracked.
+ */
+export function registerChatAbort(agentId: string, chatId: string, logId: string): AbortController {
+  const key = chatKey(agentId, chatId);
+  const prior = chatAbortControllers.get(key);
+  if (prior) {
+    prior.controller.abort();
+    activeAbortControllers.delete(prior.logId);
+    chatAbortControllers.delete(key);
+  }
+  const controller = new AbortController();
+  activeAbortControllers.set(logId, controller);
+  chatAbortControllers.set(key, { controller, logId });
   return controller;
 }
 
@@ -341,8 +369,27 @@ export function abortTask(logId: string): boolean {
   return false;
 }
 
+export function abortChat(agentId: string, chatId: string): { aborted: boolean; logId?: string } {
+  const key = chatKey(agentId, chatId);
+  const entry = chatAbortControllers.get(key);
+  if (!entry) return { aborted: false };
+  entry.controller.abort();
+  activeAbortControllers.delete(entry.logId);
+  chatAbortControllers.delete(key);
+  return { aborted: true, logId: entry.logId };
+}
+
 export function cleanupAbort(logId: string) {
   activeAbortControllers.delete(logId);
+}
+
+export function cleanupChatAbort(agentId: string, chatId: string, logId: string) {
+  activeAbortControllers.delete(logId);
+  const key = chatKey(agentId, chatId);
+  const entry = chatAbortControllers.get(key);
+  if (entry && entry.logId === logId) {
+    chatAbortControllers.delete(key);
+  }
 }
 
 // ─── Core gateway caller ──────────────────────────────────────────────────────

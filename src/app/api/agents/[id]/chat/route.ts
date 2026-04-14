@@ -4,7 +4,8 @@ import { db } from "../../../../../shared/lib/drizzle";
 import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../../../../../shared/lib/logger";
-import { ChatMessage, sendCommand, sendDocumentCommand, registerAbort, cleanupAbort } from "../../../../../shared/lib/agents/docker";
+import { ChatMessage, sendCommand, sendDocumentCommand, registerChatAbort, cleanupChatAbort } from "../../../../../shared/lib/agents/docker";
+import { isCancelCommand, cancelChatRequest } from "../../../../../shared/lib/agents/cancel";
 import { AgentType } from "../../../../../shared/lib/agents/config";
 import {
   detectDocumentRequest,
@@ -81,6 +82,16 @@ export async function POST(
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
+    const chatKeyForAbort = `web_${session.user.id}`;
+
+    // Intercept /cancel or /stop — do NOT forward to the agent.
+    if (isCancelCommand(text)) {
+      const cancelled = await cancelChatRequest(id, chatKeyForAbort);
+      return NextResponse.json({
+        reply: cancelled ? "✋ Cancelled." : "Nothing to cancel.",
+      });
+    }
+
     if (found.status === "stopped") {
       return NextResponse.json({ error: "Agent has been stopped. Restart it from the dashboard." }, { status: 400 });
     }
@@ -111,7 +122,7 @@ export async function POST(
       status: "running",
       userPrompt: text,
     }).returning();
-    const abortController = registerAbort(logEntry.id);
+    const abortController = registerChatAbort(id, chatKeyForAbort, logEntry.id);
     const startTime = Date.now();
 
     let responseText: string;
@@ -159,7 +170,7 @@ export async function POST(
         durationMs: Date.now() - startTime,
         completedAt: new Date(),
       }).where(eq(agentLog.id, logEntry.id));
-      cleanupAbort(logEntry.id);
+      cleanupChatAbort(id, chatKeyForAbort, logEntry.id);
 
       logger.error({ agentId: id, err }, "Failed to reach agent container");
       const isTimeout = err instanceof Error && err.name === "TimeoutError";
@@ -168,7 +179,7 @@ export async function POST(
         { status: isAbort ? 499 : 502 },
       );
     } finally {
-      cleanupAbort(logEntry.id);
+      cleanupChatAbort(id, chatKeyForAbort, logEntry.id);
     }
 
     // Save history

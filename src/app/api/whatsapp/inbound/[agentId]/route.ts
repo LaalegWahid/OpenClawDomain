@@ -3,7 +3,8 @@ import { db } from "../../../../../shared/lib/drizzle";
 import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
 import { logger } from "../../../../../shared/lib/logger";
 import { eq, and } from "drizzle-orm";
-import { ChatMessage, sendCommand, sendDocumentCommand } from "../../../../../shared/lib/agents/docker";
+import { ChatMessage, sendCommand, sendDocumentCommand, registerChatAbort, cleanupChatAbort } from "../../../../../shared/lib/agents/docker";
+import { isCancelCommand, cancelChatRequest } from "../../../../../shared/lib/agents/cancel";
 import { AgentType } from "../../../../../shared/lib/agents/config";
 import {
   detectDocumentRequest, extractFilename, generatePdf,
@@ -46,6 +47,15 @@ export async function POST(
 
   logger.info({ agentId, jid, text }, "WhatsApp inbound message received");
 
+  // Intercept /cancel or /stop — do NOT forward to the agent.
+  if (isCancelCommand(text)) {
+    const cancelled = await cancelChatRequest(agentId, jid);
+    return NextResponse.json({
+      type: "text",
+      text: cancelled ? "✋ Cancelled." : "Nothing to cancel.",
+    });
+  }
+
   const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
   if (!found) return NextResponse.json({ type: "text", text: "Agent not found." });
 
@@ -73,6 +83,7 @@ export async function POST(
     userPrompt: text,
   }).returning();
   const startTime = Date.now();
+  const abortController = registerChatAbort(agentId, jid, logEntry.id);
 
   try {
     const result = docFormat
@@ -81,11 +92,13 @@ export async function POST(
           buildDocumentSystemInstruction(agentType),
           rewriteAsContentPrompt(text),
           history,
+          abortController.signal,
         )
       : await sendCommand(
           found.containerId, text,
           history.length > 0 ? history : undefined,
           agentType,
+          abortController.signal,
         );
 
     const responseText = result.text;
@@ -122,6 +135,7 @@ export async function POST(
       logger.info({ agentId, jid, filename, contentLength: contentSource.length }, "Generating WhatsApp PDF");
       const pdfBuffer = await generatePdf(contentSource, pdfTitle, agentType);
       logger.info({ agentId, jid, filename }, "WhatsApp PDF generated");
+      cleanupChatAbort(agentId, jid, logEntry.id);
       return NextResponse.json({
         type: "document",
         document: pdfBuffer.toString("base64"),
@@ -130,9 +144,15 @@ export async function POST(
         caption: "📄 Here is your document.",
       });
     } else {
+      cleanupChatAbort(agentId, jid, logEntry.id);
       return NextResponse.json({ type: "text", text: responseText });
     }
   } catch (err) {
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    if (isAbort) {
+      cleanupChatAbort(agentId, jid, logEntry.id);
+      return NextResponse.json({ type: "text", text: "✋ Cancelled." });
+    }
     await db.update(agentLog).set({
       status: "error",
       durationMs: Date.now() - startTime,
@@ -150,6 +170,7 @@ export async function POST(
     } catch (dbErr) {
       logger.error({ agentId, jid, dbErr }, "Failed to record WhatsApp error activity");
     }
+    cleanupChatAbort(agentId, jid, logEntry.id);
     return NextResponse.json({
       type: "text",
       text: isTimeout

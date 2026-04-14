@@ -4,7 +4,8 @@ import { agent, agentChannel, chatSession, agentActivity, agentLog } from "../..
 import { eq, and } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import type { ChatMessage } from "../../lib/agents/docker";
-import { sendCommand, sendDocumentCommand } from "../../lib/agents/docker";
+import { sendCommand, sendDocumentCommand, registerChatAbort, cleanupChatAbort } from "../../lib/agents/docker";
+import { isCancelCommand, cancelChatRequest } from "../../lib/agents/cancel";
 import type { AgentType } from "../../lib/agents/config";
 import {
   detectDocumentRequest,
@@ -63,6 +64,17 @@ export async function startDiscordBot(
 
     logger.info({ agentId, channelId, text }, "Discord message received");
 
+    // Intercept /cancel or /stop — do NOT forward to the agent.
+    if (isCancelCommand(text)) {
+      const cancelled = await cancelChatRequest(agentId, channelId);
+      await sendDiscordMessage(
+        token,
+        channelId,
+        cancelled ? "✋ Cancelled." : "Nothing to cancel.",
+      ).catch(() => {});
+      return;
+    }
+
     const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
     if (!found) return;
 
@@ -97,6 +109,7 @@ export async function startDiscordBot(
       userPrompt: text,
     }).returning();
     const startTime = Date.now();
+    const abortController = registerChatAbort(agentId, channelId, logEntry.id);
 
     try {
       const result = docFormat
@@ -105,12 +118,14 @@ export async function startDiscordBot(
             buildDocumentSystemInstruction(agentType),
             rewriteAsContentPrompt(text),
             history,
+            abortController.signal,
           )
         : await sendCommand(
             found.containerId,
             text,
             history.length > 0 ? history : undefined,
             agentType,
+            abortController.signal,
           );
 
       const responseText = result.text;
@@ -167,21 +182,26 @@ export async function startDiscordBot(
         });
       }
     } catch (err) {
-      await db.update(agentLog).set({
-        status: "error",
-        durationMs: Date.now() - startTime,
-        completedAt: new Date(),
-      }).where(eq(agentLog.id, logEntry.id));
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      if (!isAbort) {
+        await db.update(agentLog).set({
+          status: "error",
+          durationMs: Date.now() - startTime,
+          completedAt: new Date(),
+        }).where(eq(agentLog.id, logEntry.id));
 
-      logger.error({ agentId, err }, "Failed to reach agent container from Discord");
-      const isTimeout = err instanceof Error && err.name === "TimeoutError";
-      await sendDiscordMessage(
-        token,
-        channelId,
-        isTimeout
-          ? "⏳ Your request is taking longer than expected. Please try again in a moment."
-          : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!",
-      ).catch(() => {});
+        logger.error({ agentId, err }, "Failed to reach agent container from Discord");
+        const isTimeout = err instanceof Error && err.name === "TimeoutError";
+        await sendDiscordMessage(
+          token,
+          channelId,
+          isTimeout
+            ? "⏳ Your request is taking longer than expected. Please try again in a moment."
+            : "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!",
+        ).catch(() => {});
+      }
+    } finally {
+      cleanupChatAbort(agentId, channelId, logEntry.id);
     }
   });
 
