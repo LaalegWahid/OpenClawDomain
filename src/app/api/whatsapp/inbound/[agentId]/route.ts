@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../../shared/lib/drizzle";
 import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
+import { agentChannel } from "../../../../../shared/db/schema/agent";
 import { logger } from "../../../../../shared/lib/logger";
 import { eq, and } from "drizzle-orm";
 import { ChatMessage, sendCommand, sendDocumentCommand, registerChatAbort, cleanupChatAbort } from "../../../../../shared/lib/agents/docker";
@@ -44,6 +45,16 @@ export async function POST(
   }
 
   if (!jid || !text?.trim()) return NextResponse.json({ ok: true });
+
+  // Check allowed sender filter
+  const [waChannel] = await db.select().from(agentChannel)
+    .where(and(eq(agentChannel.agentId, agentId), eq(agentChannel.platform, "whatsapp")))
+    .limit(1);
+  const allowedJid = (waChannel?.credentials as { allowedJid?: string } | null)?.allowedJid;
+  if (allowedJid && jid !== allowedJid) {
+    logger.info({ agentId, jid }, "WhatsApp message ignored — sender not in allowed list");
+    return NextResponse.json({ ok: true });
+  }
 
   logger.info({ agentId, jid, text }, "WhatsApp inbound message received");
 

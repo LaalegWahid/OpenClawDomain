@@ -159,6 +159,8 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [waLinkStatus, setWaLinkStatus] = useState<"idle" | "starting" | "qr_ready" | "linked" | "failed">("idle");
   const [waQrData, setWaQrData] = useState<string | null>(null);
   const [waError, setWaError] = useState<string | null>(null);
+  const [waAllowedNumber, setWaAllowedNumber] = useState("");
+  const [waSavingNumber, setWaSavingNumber] = useState(false);
 
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [showAddMcp, setShowAddMcp] = useState(false);
@@ -208,6 +210,14 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
       if (res.ok) {
         const data = await res.json();
         setChannels(data.channels ?? []);
+      }
+    } catch { /* non-critical */ }
+    try {
+      const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`);
+      if (res.ok) {
+        const data = await res.json();
+        const jid: string | null = data.allowedJid ?? null;
+        setWaAllowedNumber(jid ? jid.replace("@s.whatsapp.net", "") : "");
       }
     } catch { /* non-critical */ }
   }, [agentId]);
@@ -983,6 +993,51 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                             )}
                           </div>
                         </div>
+
+                        {isConnected && isWhatsApp && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              padding: 16,
+                              background: CARD,
+                              border: `1px solid ${BORDER}`,
+                              borderRadius: 12,
+                              display: "grid",
+                              gap: 8,
+                            }}
+                          >
+                            <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
+                              Restrict this agent to only respond to your own number. Leave blank to allow any sender.
+                            </p>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <Input
+                                placeholder="Your WhatsApp number (e.g. 1234567890)"
+                                value={waAllowedNumber}
+                                onChange={(e) => setWaAllowedNumber(e.target.value)}
+                                style={{ flex: 1, fontSize: 13 }}
+                              />
+                              <Button
+                                size="sm"
+                                disabled={waSavingNumber}
+                                onClick={async () => {
+                                  setWaSavingNumber(true);
+                                  try {
+                                    await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ phoneNumber: waAllowedNumber }),
+                                    });
+                                  } finally {
+                                    setWaSavingNumber(false);
+                                  }
+                                }}
+                                style={{ background: "#25D366", color: "#fff", whiteSpace: "nowrap" }}
+                              >
+                                {waSavingNumber ? "Saving…" : "Save"}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
 
                         {isExpanded && !isConnected && (
                           <div
