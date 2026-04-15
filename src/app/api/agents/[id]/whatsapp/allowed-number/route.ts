@@ -6,6 +6,7 @@ import { agent, agentChannel } from "../../../../../../shared/db/schema/agent";
 import { logger } from "../../../../../../shared/lib/logger";
 
 type Ctx = { params: Promise<{ id: string }> };
+type Creds = { allowedJid?: string | null; discoveredOwnerJid?: string };
 
 async function getOwnedAgent(req: Request, agentId: string) {
   const session = await getSessionOrThrow(req);
@@ -28,8 +29,11 @@ export async function GET(req: Request, ctx: Ctx) {
       .where(and(eq(agentChannel.agentId, id), eq(agentChannel.platform, "whatsapp")))
       .limit(1);
 
-    const allowedJid = (waChannel?.credentials as { allowedJid?: string } | null)?.allowedJid ?? null;
-    return NextResponse.json({ allowedJid });
+    const creds = (waChannel?.credentials ?? {}) as Creds;
+    return NextResponse.json({
+      allowedJid: creds.allowedJid ?? null,
+      discoveredOwnerJid: creds.discoveredOwnerJid ?? null,
+    });
   } catch (err) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to get WhatsApp allowed number");
@@ -43,9 +47,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const found = await getOwnedAgent(req, id);
     if (!found) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
-    const body = await req.json() as { phoneNumber: string };
-    const normalized = (body.phoneNumber ?? "").replace(/[^\d]/g, "");
-    const allowedJid = normalized ? `${normalized}@s.whatsapp.net` : null;
+    // Accept a raw JID string (e.g. "266962416451807@lid") or null/empty to clear
+    const body = await req.json() as { jid?: string | null };
+    const allowedJid = body.jid || null;
 
     const [waChannel] = await db
       .select()
@@ -58,20 +62,16 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
 
     const existingCredentials = (waChannel.credentials as Record<string, unknown>) ?? {};
-    const updatedCredentials = allowedJid
-      ? { ...existingCredentials, allowedJid }
-      : { ...existingCredentials, allowedJid: null };
-
     await db
       .update(agentChannel)
-      .set({ credentials: updatedCredentials })
+      .set({ credentials: { ...existingCredentials, allowedJid } })
       .where(eq(agentChannel.id, waChannel.id));
 
-    logger.info({ agentId: id, allowedJid }, "WhatsApp allowed number updated");
+    logger.info({ agentId: id, allowedJid }, "WhatsApp allowed JID updated");
     return NextResponse.json({ ok: true, allowedJid });
   } catch (err) {
     if (err instanceof Response) return err;
-    logger.error({ err }, "Failed to update WhatsApp allowed number");
-    return NextResponse.json({ error: "Failed to update allowed number" }, { status: 500 });
+    logger.error({ err }, "Failed to update WhatsApp allowed JID");
+    return NextResponse.json({ error: "Failed to update allowed JID" }, { status: 500 });
   }
 }

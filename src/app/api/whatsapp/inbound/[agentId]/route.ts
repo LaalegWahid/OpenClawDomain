@@ -50,10 +50,19 @@ export async function POST(
   const [waChannel] = await db.select().from(agentChannel)
     .where(and(eq(agentChannel.agentId, agentId), eq(agentChannel.platform, "whatsapp")))
     .limit(1);
-  const allowedJid = (waChannel?.credentials as { allowedJid?: string } | null)?.allowedJid;
+  const creds = (waChannel?.credentials ?? {}) as { allowedJid?: string; discoveredOwnerJid?: string };
+  const allowedJid = creds.allowedJid;
   if (allowedJid && jid !== allowedJid) {
     logger.info({ agentId, jid }, "WhatsApp message ignored — sender not in allowed list");
     return NextResponse.json({ ok: true });
+  }
+
+  // Auto-capture the first incoming JID so the UI can offer "Restrict to me"
+  if (waChannel && !allowedJid && !creds.discoveredOwnerJid) {
+    db.update(agentChannel)
+      .set({ credentials: { ...creds, discoveredOwnerJid: jid } })
+      .where(eq(agentChannel.id, waChannel.id))
+      .catch(() => {});
   }
 
   logger.info({ agentId, jid, text }, "WhatsApp inbound message received");

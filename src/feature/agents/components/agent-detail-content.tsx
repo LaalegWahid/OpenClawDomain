@@ -159,7 +159,8 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [waLinkStatus, setWaLinkStatus] = useState<"idle" | "starting" | "qr_ready" | "linked" | "failed">("idle");
   const [waQrData, setWaQrData] = useState<string | null>(null);
   const [waError, setWaError] = useState<string | null>(null);
-  const [waAllowedNumber, setWaAllowedNumber] = useState("");
+  const [waAllowedJid, setWaAllowedJid] = useState<string | null>(null);
+  const [waDiscoveredJid, setWaDiscoveredJid] = useState<string | null>(null);
   const [waSavingNumber, setWaSavingNumber] = useState(false);
 
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
@@ -216,8 +217,8 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
       const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`);
       if (res.ok) {
         const data = await res.json();
-        const jid: string | null = data.allowedJid ?? null;
-        setWaAllowedNumber(jid ? jid.replace("@s.whatsapp.net", "") : "");
+        setWaAllowedJid(data.allowedJid ?? null);
+        setWaDiscoveredJid(data.discoveredOwnerJid ?? null);
       }
     } catch { /* non-critical */ }
   }, [agentId]);
@@ -1006,36 +1007,66 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                               gap: 8,
                             }}
                           >
-                            <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
-                              Restrict this agent to only respond to your own number. Leave blank to allow any sender.
-                            </p>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <Input
-                                placeholder="Your WhatsApp number (e.g. 1234567890)"
-                                value={waAllowedNumber}
-                                onChange={(e) => setWaAllowedNumber(e.target.value)}
-                                style={{ flex: 1, fontSize: 13 }}
-                              />
-                              <Button
-                                size="sm"
-                                disabled={waSavingNumber}
-                                onClick={async () => {
-                                  setWaSavingNumber(true);
-                                  try {
-                                    await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`, {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ phoneNumber: waAllowedNumber }),
-                                    });
-                                  } finally {
-                                    setWaSavingNumber(false);
-                                  }
-                                }}
-                                style={{ background: "#25D366", color: "#fff", whiteSpace: "nowrap" }}
-                              >
-                                {waSavingNumber ? "Saving…" : "Save"}
-                              </Button>
-                            </div>
+                            {waAllowedJid ? (
+                              <>
+                                <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
+                                  Private mode: only responding to <strong style={{ color: INK }}>{waAllowedJid}</strong>
+                                </p>
+                                <Button
+                                  size="sm"
+                                  disabled={waSavingNumber}
+                                  onClick={async () => {
+                                    setWaSavingNumber(true);
+                                    try {
+                                      const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`, {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ jid: null }),
+                                      });
+                                      if (res.ok) { setWaAllowedJid(null); await fetchChannels(); }
+                                    } finally {
+                                      setWaSavingNumber(false);
+                                    }
+                                  }}
+                                  style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, justifySelf: "start" }}
+                                >
+                                  {waSavingNumber ? "Clearing…" : "Remove restriction"}
+                                </Button>
+                              </>
+                            ) : waDiscoveredJid ? (
+                              <>
+                                <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
+                                  Detected sender: <strong style={{ color: INK }}>{waDiscoveredJid}</strong>
+                                </p>
+                                <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
+                                  Click below to make this agent respond only to you.
+                                </p>
+                                <Button
+                                  size="sm"
+                                  disabled={waSavingNumber}
+                                  onClick={async () => {
+                                    setWaSavingNumber(true);
+                                    try {
+                                      const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`, {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ jid: waDiscoveredJid }),
+                                      });
+                                      if (res.ok) { setWaAllowedJid(waDiscoveredJid); }
+                                    } finally {
+                                      setWaSavingNumber(false);
+                                    }
+                                  }}
+                                  style={{ background: "#25D366", color: "#fff", justifySelf: "start" }}
+                                >
+                                  {waSavingNumber ? "Saving…" : "Restrict to me"}
+                                </Button>
+                              </>
+                            ) : (
+                              <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
+                                Send a WhatsApp message to this agent, then return here to restrict it to your number only.
+                              </p>
+                            )}
                           </div>
                         )}
 
