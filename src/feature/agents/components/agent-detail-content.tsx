@@ -195,8 +195,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [waLinkStatus, setWaLinkStatus] = useState<"idle" | "starting" | "qr_ready" | "linked" | "failed">("idle");
   const [waQrData, setWaQrData] = useState<string | null>(null);
   const [waError, setWaError] = useState<string | null>(null);
-  const [waAllowedJids, setWaAllowedJids] = useState<string[]>([]);
-  const [waDiscoveredJid, setWaDiscoveredJid] = useState<string | null>(null);
+  const [waAllowedNumbers, setWaAllowedNumbers] = useState<string[]>([]);
   const [waSavingNumber, setWaSavingNumber] = useState(false);
   const [waNewNumber, setWaNewNumber] = useState("");
 
@@ -254,8 +253,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
       const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`);
       if (res.ok) {
         const data = await res.json();
-        setWaAllowedJids(data.allowedJids ?? []);
-        setWaDiscoveredJid(data.discoveredOwnerJid ?? null);
+        setWaAllowedNumbers(data.allowedNumbers ?? []);
       }
     } catch { /* non-critical */ }
   }, [agentId]);
@@ -1058,26 +1056,27 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                         </div>
 
                         {isConnected && isWhatsApp && (() => {
-                          const saveJids = async (jids: string[]) => {
+                          const saveNumbers = async (numbers: string[]) => {
                             setWaSavingNumber(true);
                             try {
                               const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`, {
                                 method: "PATCH",
                                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ allowedJids: jids }),
+                                body: JSON.stringify({ phoneNumbers: numbers }),
                               });
-                              if (res.ok) setWaAllowedJids(jids);
+                              if (res.ok) setWaAllowedNumbers(numbers);
                             } finally {
                               setWaSavingNumber(false);
                             }
                           };
-                          const addEntry = async (raw: string) => {
-                            const entry = raw.includes("@") ? raw : `${raw.replace(/[^\d]/g, "")}@s.whatsapp.net`;
-                            if (!entry || waAllowedJids.includes(entry)) return;
-                            await saveJids([...waAllowedJids, entry]);
+                          const addNumber = async (raw: string) => {
+                            const digits = raw.replace(/[^\d]/g, "");
+                            const entry = digits ? `+${digits}` : "";
+                            if (!entry || waAllowedNumbers.includes(entry)) return;
+                            await saveNumbers([...waAllowedNumbers, entry]);
                             setWaNewNumber("");
                           };
-                          const removeEntry = (jid: string) => saveJids(waAllowedJids.filter((j) => j !== jid));
+                          const removeNumber = (num: string) => saveNumbers(waAllowedNumbers.filter((n) => n !== num));
                           return (
                             <div style={{ marginTop: 4, padding: 16, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, display: "grid", gap: 10 }}>
                               <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: INK }}>
@@ -1085,12 +1084,19 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                                 <span style={{ fontWeight: 400, color: MUTED }}> — leave empty to respond to everyone</span>
                               </p>
 
+                              {waAllowedNumbers.length > 0 && (
+                                <p style={{ margin: 0, fontSize: 10, color: MUTED }}>
+                                  The agent will restart automatically when you save changes.
+                                </p>
+                              )}
+
                               {/* Current allowed list */}
-                              {waAllowedJids.map((jid) => (
-                                <div key={jid} style={{ display: "flex", alignItems: "center", gap: 8, background: BG, borderRadius: 8, padding: "6px 10px" }}>
-                                  <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--mono, monospace)", color: INK, wordBreak: "break-all" }}>{jid}</span>
+                              {waAllowedNumbers.map((num) => (
+                                <div key={num} style={{ display: "flex", alignItems: "center", gap: 8, background: BG, borderRadius: 8, padding: "6px 10px" }}>
+                                  <span style={{ flex: 1, fontSize: 13, fontFamily: "var(--mono, monospace)", color: INK }}>{num}</span>
                                   <button
-                                    onClick={() => removeEntry(jid)}
+                                    onClick={() => removeNumber(num)}
+                                    disabled={waSavingNumber}
                                     style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, padding: 2, lineHeight: 0 }}
                                   >
                                     <X size={14} />
@@ -1098,65 +1104,23 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                                 </div>
                               ))}
 
-                              {/* Step 1 — Add yourself via auto-detected device ID */}
-                              <div style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, background: BG }}>
-                                <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 600, color: INK }}>
-                                  Step 1 — Add yourself
-                                </p>
-                                {waDiscoveredJid ? (
-                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                    <div style={{ flex: 1 }}>
-                                      <p style={{ margin: 0, fontSize: 10, color: MUTED }}>Your WhatsApp device ID (auto-detected):</p>
-                                      <p style={{ margin: 0, fontSize: 11, fontFamily: "var(--mono, monospace)", color: INK, wordBreak: "break-all" }}>
-                                        {waDiscoveredJid}
-                                      </p>
-                                    </div>
-                                    {waAllowedJids.includes(waDiscoveredJid) ? (
-                                      <span style={{ fontSize: 11, color: "#25D366", fontWeight: 600, whiteSpace: "nowrap" }}>✓ Added</span>
-                                    ) : (
-                                      <button
-                                        onClick={() => addEntry(waDiscoveredJid)}
-                                        disabled={waSavingNumber}
-                                        style={{ background: "#25D366", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
-                                      >
-                                        Add me
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
-                                    Send any message to this agent from your WhatsApp — your device ID will appear here automatically.
-                                    <br />
-                                    <span style={{ fontSize: 10 }}>WhatsApp uses an internal device ID, not your phone number — that&apos;s why <code>212...</code> won&apos;t work for yourself.</span>
-                                  </p>
-                                )}
-                              </div>
-
-                              {/* Step 2 — Add other people by phone number */}
-                              <div style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, background: BG }}>
-                                <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 600, color: INK }}>
-                                  Step 2 — Add other allowed numbers <span style={{ fontWeight: 400, color: MUTED }}>(optional)</span>
-                                </p>
-                                <p style={{ margin: "0 0 6px", fontSize: 10, color: MUTED }}>
-                                  Other people&apos;s messages arrive as standard phone numbers. Enter digits only, e.g. <code>212612345678</code>.
-                                </p>
-                                <div style={{ display: "flex", gap: 8 }}>
-                                  <Input
-                                    placeholder="Phone number, digits only"
-                                    value={waNewNumber}
-                                    onChange={(e) => setWaNewNumber(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === "Enter" && waNewNumber.trim()) addEntry(waNewNumber.trim()); }}
-                                    style={{ flex: 1, fontSize: 13 }}
-                                  />
-                                  <Button
-                                    size="sm"
-                                    disabled={waSavingNumber || !waNewNumber.trim()}
-                                    onClick={() => addEntry(waNewNumber.trim())}
-                                    style={{ background: "#25D366", color: "#fff", whiteSpace: "nowrap" }}
-                                  >
-                                    {waSavingNumber ? "…" : "Add"}
-                                  </Button>
-                                </div>
+                              {/* Add phone number */}
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <Input
+                                  placeholder="Phone number with country code, e.g. 212612345678"
+                                  value={waNewNumber}
+                                  onChange={(e) => setWaNewNumber(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === "Enter" && waNewNumber.trim()) addNumber(waNewNumber.trim()); }}
+                                  style={{ flex: 1, fontSize: 13 }}
+                                />
+                                <Button
+                                  size="sm"
+                                  disabled={waSavingNumber || !waNewNumber.trim()}
+                                  onClick={() => addNumber(waNewNumber.trim())}
+                                  style={{ background: "#25D366", color: "#fff", whiteSpace: "nowrap" }}
+                                >
+                                  {waSavingNumber ? "…" : "Add"}
+                                </Button>
                               </div>
                             </div>
                           );

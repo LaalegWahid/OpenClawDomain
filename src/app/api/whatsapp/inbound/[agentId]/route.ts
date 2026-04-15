@@ -50,19 +50,10 @@ export async function POST(
   const [waChannel] = await db.select().from(agentChannel)
     .where(and(eq(agentChannel.agentId, agentId), eq(agentChannel.platform, "whatsapp")))
     .limit(1);
-  type WaCreds = { allowedJid?: string | null; allowedJids?: string[]; discoveredOwnerJid?: string };
+  type WaCreds = { allowedJid?: string | null; allowedJids?: string[]; allowedNumbers?: string[]; discoveredOwnerJid?: string };
   const creds = (waChannel?.credentials ?? {}) as WaCreds;
 
-  // Always capture the first-ever incoming JID BEFORE filtering so the UI can
-  // show the real JID even when the message gets blocked by a wrong filter entry.
-  if (waChannel && !creds.discoveredOwnerJid) {
-    db.update(agentChannel)
-      .set({ credentials: { ...creds, discoveredOwnerJid: jid } })
-      .where(eq(agentChannel.id, waChannel.id))
-      .catch(() => {});
-  }
-
-  // Support both legacy single allowedJid and new allowedJids array
+  // Support both legacy single allowedJid and new allowedJids array (populated from E.164 phone numbers)
   const allowedJids: string[] = Array.isArray(creds.allowedJids)
     ? creds.allowedJids
     : creds.allowedJid ? [creds.allowedJid] : [];

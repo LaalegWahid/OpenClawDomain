@@ -80,7 +80,7 @@ export async function waitForTaskRunning(
 export interface ChannelConfig {
   discord?: { botToken: string };
   /** Baileys/QR-based WhatsApp — credentials live on EFS, we just enable the channel */
-  whatsapp?: { enabled: true };
+  whatsapp?: { enabled: true; allowFrom?: string[] };
 }
 
 export interface McpServerConfig {
@@ -150,6 +150,9 @@ export async function launchContainer(
       name: "WHATSAPP_INBOUND_WEBHOOK_URL",
       value: `${webhookBaseUrl}/api/whatsapp/inbound/${agentId}`,
     });
+    if (channels.whatsapp.allowFrom?.length) {
+      extraEnv.push({ name: "WHATSAPP_ALLOW_FROM", value: channels.whatsapp.allowFrom.join(",") });
+    }
   }
 
   if (channels?.discord?.botToken) {
