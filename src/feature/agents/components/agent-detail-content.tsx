@@ -16,6 +16,7 @@ import {
   Activity as ActivityIcon,
   Star,
   MessageSquare,
+  Sliders,
 } from "lucide-react";
 import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
@@ -68,6 +69,9 @@ interface AgentRecord {
   profileImage?: string | null;
   systemPrompt?: string | null;
   createdAt: string;
+  apiProvider?: string | null;
+  agentModel?: string | null;
+  hasApiKey?: boolean;
 }
 
 interface Activity {
@@ -135,7 +139,7 @@ const MCP_TEMPLATES = [
   { name: "Filesystem", transport: "stdio" as const, configPlaceholder: { command: "npx", args: ["@modelcontextprotocol/server-filesystem", "/workspace"] } },
 ];
 
-type Tab = "info" | "playground" | "platforms" | "skills" | "mcp" | "activity";
+type Tab = "info" | "playground" | "aiSettings" | "platforms" | "skills" | "mcp" | "activity";
 
 export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const router = useRouter();
@@ -214,6 +218,54 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [addingSkill, setAddingSkill] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>("info");
+
+  // AI settings
+  const [modelsCatalog, setModelsCatalog] = useState<Record<string, string[]>>({});
+  const [aiProvider, setAiProvider] = useState("");
+  const [aiModel, setAiModel] = useState("");
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiMessage, setAiMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/models.json").then((r) => r.json()).then(setModelsCatalog).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (agent) {
+      setAiProvider(agent.apiProvider ?? "");
+      setAiModel(agent.agentModel ?? "");
+    }
+  }, [agent]);
+
+  const saveAiSettings = async () => {
+    setAiSaving(true);
+    setAiMessage(null);
+    try {
+      const payload: Record<string, string | null> = {
+        apiProvider: aiProvider || null,
+        agentModel: aiModel || null,
+      };
+      if (aiApiKey.trim()) payload.apiKey = aiApiKey.trim();
+      const res = await fetch(`/api/agents/${agentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAiMessage({ kind: "err", text: data.error ?? "Failed to save AI settings." });
+        return;
+      }
+      setAgent(data.agent);
+      setAiApiKey("");
+      setAiMessage({ kind: "ok", text: "AI settings saved. Restart the agent to apply." });
+    } catch {
+      setAiMessage({ kind: "err", text: "Network error. Please try again." });
+    } finally {
+      setAiSaving(false);
+    }
+  };
 
   // Avatar upload
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -570,6 +622,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "info", label: "Info", icon: <Brain size={14} /> },
     { key: "playground", label: "Playground", icon: <Bot size={14} /> },
+    { key: "aiSettings", label: "AI Settings", icon: <Sliders size={14} /> },
     { key: "platforms", label: "Platforms", icon: <Plug size={14} /> },
     { key: "skills", label: "Skills", icon: <Brain size={14} /> },
     { key: "mcp", label: "MCP", icon: <Server size={14} /> },
@@ -962,6 +1015,118 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                     ) : (
                       <div style={{ height: 80, background: "rgba(42,31,25,0.05)", borderRadius: 10 }} />
                     )}
+                  </Card>
+                </div>
+              )}
+
+              {activeTab === "aiSettings" && (
+                <div className="oc-page-section" style={{ display: "grid", gap: 20 }}>
+                  <Card title="AI Provider & Model" icon={<Sliders size={16} />}>
+                    <div style={{ display: "grid", gap: 14 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                            Provider
+                          </label>
+                          <select
+                            value={aiProvider}
+                            onChange={(e) => { setAiProvider(e.target.value); setAiModel(""); }}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 8,
+                              border: `1px solid ${BORDER}`,
+                              background: "#fff",
+                              color: INK,
+                              fontSize: 13,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <option value="">Select provider...</option>
+                            {Object.keys(modelsCatalog).map((p) => (
+                              <option key={p} value={p}>
+                                {p.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                            Model
+                          </label>
+                          <select
+                            value={aiModel}
+                            onChange={(e) => setAiModel(e.target.value)}
+                            disabled={!aiProvider}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 8,
+                              border: `1px solid ${BORDER}`,
+                              background: "#fff",
+                              color: INK,
+                              fontSize: 13,
+                              cursor: aiProvider ? "pointer" : "not-allowed",
+                            }}
+                          >
+                            <option value="">
+                              {aiProvider ? "Select model..." : "Select a provider first"}
+                            </option>
+                            {(modelsCatalog[aiProvider] ?? []).map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: MUTED, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                          API Key {agent.hasApiKey && <span style={{ color: "#2f9e5e", textTransform: "none", letterSpacing: 0, marginLeft: 6 }}>· key on file</span>}
+                        </label>
+                        <Input
+                          type="password"
+                          value={aiApiKey}
+                          onChange={(e) => setAiApiKey(e.target.value)}
+                          placeholder={agent.hasApiKey ? "•••••••••••••  (leave blank to keep current)" : "sk-..."}
+                          autoComplete="off"
+                        />
+                        <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
+                          Keys are encrypted at rest. Leave blank to keep the existing key.
+                        </p>
+                      </div>
+
+                      {aiMessage && (
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            fontSize: 12,
+                            background: aiMessage.kind === "ok" ? "rgba(47,158,94,0.10)" : "rgba(200,52,38,0.08)",
+                            color: aiMessage.kind === "ok" ? "#2f9e5e" : "#c83426",
+                            border: `1px solid ${aiMessage.kind === "ok" ? "rgba(47,158,94,0.3)" : "rgba(200,52,38,0.25)"}`,
+                          }}
+                        >
+                          {aiMessage.text}
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                        <Button
+                          onClick={saveAiSettings}
+                          disabled={aiSaving}
+                          style={{
+                            background: ACCENT,
+                            color: "#fff",
+                            border: "none",
+                            padding: "10px 20px",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: aiSaving ? "wait" : "pointer",
+                          }}
+                        >
+                          {aiSaving ? "Saving..." : "Save AI Settings"}
+                        </Button>
+                      </div>
+                    </div>
                   </Card>
                 </div>
               )}
