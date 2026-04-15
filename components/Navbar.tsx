@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { authClient } from '../src/shared/lib/auth/client'
 
 interface NavLink {
   label: string
@@ -32,6 +33,21 @@ const Logo = ({ onClick }: { onClick?: () => void }) => (
 export default function Navbar({ links = [] }: NavbarProps) {
   const [isMobile, setIsMobile] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
+  const { data: session } = authClient.useSession()
+  const isAuthed = !!session?.user
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'admin'
+
+  const ctaButtonStyle: React.CSSProperties = {
+    background: '#FF4D00', color: '#FFFFFF', border: 'none',
+    padding: '8px 18px', borderRadius: '8px', fontSize: '13px',
+    fontWeight: 500, cursor: 'pointer',
+  }
+  const adminButtonStyle: React.CSSProperties = {
+    background: 'transparent', color: '#2a1f19',
+    border: '1px solid rgba(42,31,25,0.2)',
+    padding: '7px 16px', borderRadius: '8px', fontSize: '13px',
+    fontWeight: 500, cursor: 'pointer',
+  }
 
   useEffect(() => {
     function check() { setIsMobile(window.innerWidth < 768) }
@@ -94,13 +110,25 @@ export default function Navbar({ links = [] }: NavbarProps) {
 
           {/* Right */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {!isMobile && (
+            {!isMobile && isAuthed && isAdmin && (
               <button
-                style={{
-                  background: '#FF4D00', color: '#FFFFFF', border: 'none',
-                  padding: '8px 18px', borderRadius: '8px', fontSize: '13px',
-                  fontWeight: 500, cursor: 'pointer',
-                }}
+                style={adminButtonStyle}
+                onClick={() => window.location.href = '/admin'}
+              >
+                Admin
+              </button>
+            )}
+            {!isMobile && isAuthed && (
+              <button
+                style={ctaButtonStyle}
+                onClick={() => window.location.href = '/overview'}
+              >
+                Dashboard
+              </button>
+            )}
+            {!isMobile && !isAuthed && (
+              <button
+                style={ctaButtonStyle}
                 onClick={() => window.location.href = '/register'}
               >
                 Get Started
@@ -159,15 +187,31 @@ export default function Navbar({ links = [] }: NavbarProps) {
               {link.label}
             </button>
           ))}
+          {isAuthed && isAdmin && (
+            <button
+              style={{
+                marginTop: '1rem', background: 'transparent', color: '#2a1f19',
+                border: '1px solid rgba(42,31,25,0.2)', padding: '14px 32px', borderRadius: '10px',
+                fontSize: '15px', fontWeight: 500, cursor: 'pointer',
+              }}
+              onClick={() => { setNavOpen(false); window.location.href = '/admin' }}
+            >
+              Admin
+            </button>
+          )}
           <button
             style={{
-              marginTop: '1rem', background: '#FF4D00', color: '#FFFFFF',
+              marginTop: isAuthed && isAdmin ? '0.5rem' : '1rem',
+              background: '#FF4D00', color: '#FFFFFF',
               border: 'none', padding: '14px 32px', borderRadius: '10px',
               fontSize: '15px', fontWeight: 500, cursor: 'pointer',
             }}
-            onClick={() => { setNavOpen(false); window.location.href = '/register' }}
+            onClick={() => {
+              setNavOpen(false)
+              window.location.href = isAuthed ? '/overview' : '/register'
+            }}
           >
-            Get Started
+            {isAuthed ? 'Dashboard' : 'Get Started'}
           </button>
         </div>
       )}

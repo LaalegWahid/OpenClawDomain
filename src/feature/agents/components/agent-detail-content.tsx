@@ -14,6 +14,8 @@ import {
   Server,
   Camera,
   Activity as ActivityIcon,
+  Star,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
@@ -142,6 +144,40 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [loading, setLoading] = useState(true);
   const [stopping, setStopping] = useState(false);
   const [restarting, setRestarting] = useState(false);
+
+  // Feedback modal
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [fbRating, setFbRating] = useState(0);
+  const [fbHover, setFbHover] = useState(0);
+  const [fbComment, setFbComment] = useState("");
+  const [fbSubmitting, setFbSubmitting] = useState(false);
+  const [fbDone, setFbDone] = useState(false);
+
+  const closeFeedback = () => {
+    setShowFeedback(false);
+    setFbRating(0);
+    setFbHover(0);
+    setFbComment("");
+    setFbDone(false);
+  };
+
+  const submitFeedback = async () => {
+    if (!fbRating || fbSubmitting) return;
+    setFbSubmitting(true);
+    try {
+      await fetch("/api/feedback/agent-creation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating: fbRating, comment: fbComment, agentId }),
+      });
+      setFbDone(true);
+      setTimeout(closeFeedback, 1200);
+    } catch {
+      closeFeedback();
+    } finally {
+      setFbSubmitting(false);
+    }
+  };
   const [error, setError] = useState<string | null>(null);
 
   const [memoryStats, setMemoryStats] = useState<MemoryStats | null>(null);
@@ -688,6 +724,31 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                 )}
               </div>
             </div>
+
+            {agent && (
+              <div style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={() => setShowFeedback(true)}
+                  className="oc-btn-primary"
+                  title="Share feedback about this agent"
+                  style={{
+                    padding: "10px 18px",
+                    borderRadius: 10,
+                    border: `1px solid ${BORDER}`,
+                    background: CARD,
+                    color: INK,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <MessageSquare size={14} /> Feedback
+                </button>
+              </div>
+            )}
 
             {agent?.status === "active" && (
               <div style={{ display: "inline-flex", gap: 8 }}>
@@ -1510,6 +1571,127 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                   <Button size="sm" variant="ghost" onClick={cancelWhatsappLink}>Cancel</Button>
                 </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedback && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(28,22,18,0.4)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }}
+          onClick={(e) => { if (e.target === e.currentTarget && !fbSubmitting) closeFeedback(); }}
+        >
+          <div
+            style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: "1.75rem", width: "100%", maxWidth: 440, margin: "1rem", boxShadow: "0 20px 50px rgba(42,31,25,0.18)" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+              <div>
+                <h2 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 600, margin: 0, color: INK }}>
+                  <em>Share feedback</em>
+                </h2>
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: MUTED }}>
+                  How has {agent?.name ?? "this agent"} worked out for you?
+                </p>
+              </div>
+              {!fbSubmitting && (
+                <button
+                  onClick={closeFeedback}
+                  aria-label="Close"
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: MUTED }}
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            {fbDone ? (
+              <div style={{ padding: "24px 0", textAlign: "center", color: "#2f8a33", fontSize: 14, fontWeight: 500 }}>
+                Thanks for your feedback!
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "center", gap: 6, margin: "16px 0 18px" }}>
+                  {[1, 2, 3, 4, 5].map((n) => {
+                    const active = (fbHover || fbRating) >= n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setFbRating(n)}
+                        onMouseEnter={() => setFbHover(n)}
+                        onMouseLeave={() => setFbHover(0)}
+                        aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0 }}
+                      >
+                        <Star
+                          size={32}
+                          fill={active ? "#FFB400" : "transparent"}
+                          stroke={active ? "#FFB400" : MUTED}
+                          strokeWidth={1.5}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                  Optional comment
+                </div>
+                <textarea
+                  value={fbComment}
+                  onChange={(e) => setFbComment(e.target.value)}
+                  placeholder="Anything that felt great or frustrating?"
+                  rows={3}
+                  maxLength={2000}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    background: BG,
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    fontSize: 13,
+                    color: INK,
+                    outline: "none",
+                    resize: "vertical",
+                    fontFamily: "inherit",
+                  }}
+                />
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+                  <button
+                    type="button"
+                    onClick={closeFeedback}
+                    disabled={fbSubmitting}
+                    style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 500, cursor: fbSubmitting ? "not-allowed" : "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitFeedback}
+                    disabled={!fbRating || fbSubmitting}
+                    className="oc-btn-primary"
+                    style={{
+                      background: fbRating ? ACCENT : "rgba(255,77,0,0.4)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "9px 18px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: !fbRating || fbSubmitting ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {fbSubmitting && <RefreshCw size={14} className="oc-spin" />}
+                    Submit
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>

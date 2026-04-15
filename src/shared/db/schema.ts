@@ -4,3 +4,4 @@ export * from './schema/subscription';
 export * from './schema/config';
 export * from './schema/domain-config';
 export * from './schema/skill';
+export * from './schema/feedback';

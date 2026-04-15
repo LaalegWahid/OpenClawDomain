@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Bot, Loader2, X, Sparkles } from "lucide-react";
+import { Bot, Loader2, X, Sparkles, Star } from "lucide-react";
 import Link from "next/link";
 
 interface UserSkill {
@@ -146,6 +146,53 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   const [userSkills, setUserSkills] = useState<UserSkill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
 
+  // Feedback modal
+  const [feedbackAgentId, setFeedbackAgentId] = useState<string | null>(null);
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackHover, setFeedbackHover] = useState(0);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackDone, setFeedbackDone] = useState(false);
+
+  const openFeedback = (agentId: string) => {
+    setFeedbackAgentId(agentId);
+    setFeedbackRating(0);
+    setFeedbackHover(0);
+    setFeedbackComment("");
+    setFeedbackDone(false);
+  };
+
+  const closeFeedback = () => {
+    setFeedbackAgentId(null);
+    setFeedbackRating(0);
+    setFeedbackHover(0);
+    setFeedbackComment("");
+    setFeedbackDone(false);
+  };
+
+  const submitFeedback = async () => {
+    if (!feedbackRating || feedbackSubmitting) return;
+    setFeedbackSubmitting(true);
+    try {
+      await fetch("/api/feedback/agent-creation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating: feedbackRating,
+          comment: feedbackComment,
+          agentId: feedbackAgentId,
+        }),
+      });
+      setFeedbackDone(true);
+      setTimeout(closeFeedback, 1200);
+    } catch {
+      // best-effort; still close
+      closeFeedback();
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
+
   const fetchAgents = useCallback(async () => {
     setLoading(true);
     try {
@@ -266,6 +313,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
             clearInterval(poll);
             setWaStep("linked");
             await fetchAgents();
+            openFeedback(agentId);
           }
           if (d.status === "failed") {
             clearInterval(poll);
@@ -282,8 +330,10 @@ export function OverviewContent({ userName }: OverviewContentProps) {
         return;
       }
 
+      const createdId: string | undefined = data.agent?.id;
       resetForm();
       setShowModal(false);
+      if (createdId) openFeedback(createdId);
     } catch {
       setError("Unable to connect. Please check your internet and try again.");
     } finally {
@@ -876,6 +926,115 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 )}
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {feedbackAgentId && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(28,22,18,0.4)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }}
+          onClick={(e) => { if (e.target === e.currentTarget && !feedbackSubmitting) closeFeedback(); }}
+        >
+          <div
+            style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "16px", padding: "1.75rem", width: "100%", maxWidth: "440px", margin: "1rem", boxShadow: "0 8px 40px rgba(28,22,18,0.12)" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
+              <div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 9px", borderRadius: 999, background: "rgba(76,175,80,0.12)", color: "#2f8a33", fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 10 }}>
+                  <Sparkles size={11} /> Agent created
+                </div>
+                <h2 style={{ fontFamily: serif, fontSize: 22, fontWeight: 600, margin: 0, color: "var(--foreground)" }}>
+                  How was your experience?
+                </h2>
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--foreground-2)" }}>
+                  Your feedback helps us refine the flow for everyone.
+                </p>
+              </div>
+              {!feedbackSubmitting && (
+                <button
+                  onClick={closeFeedback}
+                  aria-label="Close"
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "var(--foreground-2)" }}
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            {feedbackDone ? (
+              <div style={{ padding: "24px 0", textAlign: "center", color: "#2f8a33", fontSize: 14, fontWeight: 500 }}>
+                Thanks for your feedback!
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "center", gap: 6, margin: "14px 0 18px" }}>
+                  {[1, 2, 3, 4, 5].map((n) => {
+                    const active = (feedbackHover || feedbackRating) >= n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setFeedbackRating(n)}
+                        onMouseEnter={() => setFeedbackHover(n)}
+                        onMouseLeave={() => setFeedbackHover(0)}
+                        aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 4, lineHeight: 0, transition: "transform 0.12s" }}
+                      >
+                        <Star
+                          size={32}
+                          fill={active ? "#FFB400" : "transparent"}
+                          stroke={active ? "#FFB400" : "var(--foreground-2)"}
+                          strokeWidth={1.5}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <label style={{ ...labelStyle, marginBottom: 6 }}>Optional comment</label>
+                <textarea
+                  value={feedbackComment}
+                  onChange={(e) => setFeedbackComment(e.target.value)}
+                  placeholder="Anything that felt great or frustrating?"
+                  rows={3}
+                  maxLength={2000}
+                  style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+                />
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+                  <button
+                    type="button"
+                    onClick={closeFeedback}
+                    disabled={feedbackSubmitting}
+                    style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--foreground-2)", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 500, cursor: feedbackSubmitting ? "not-allowed" : "pointer" }}
+                  >
+                    Skip
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitFeedback}
+                    disabled={!feedbackRating || feedbackSubmitting}
+                    style={{
+                      background: feedbackRating ? "#FF4D00" : "rgba(255,77,0,0.4)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "9px 18px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: !feedbackRating || feedbackSubmitting ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {feedbackSubmitting && <Loader2 size={14} className="animate-spin" style={{ animation: "spin 0.8s linear infinite" }} />}
+                    Submit
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
