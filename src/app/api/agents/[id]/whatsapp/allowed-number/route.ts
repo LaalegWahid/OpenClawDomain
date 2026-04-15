@@ -11,12 +11,12 @@ type Creds = {
   allowedJid?: string | null;
   allowedJids?: string[];
   allowedNumbers?: string[];
-  discoveredOwnerJid?: string;
+  allowOwnerChat?: boolean;
 };
 
 function getAllowedNumbers(creds: Creds): string[] {
   if (Array.isArray(creds.allowedNumbers)) return creds.allowedNumbers;
-  // Migrate from legacy allowedJids: extract E.164 from "@s.whatsapp.net" JIDs only (not @lid)
+  // Migrate from legacy allowedJids: extract phone numbers from @s.whatsapp.net JIDs only
   const jids = Array.isArray(creds.allowedJids)
     ? creds.allowedJids
     : creds.allowedJid ? [creds.allowedJid] : [];
@@ -49,6 +49,7 @@ export async function GET(req: Request, ctx: Ctx) {
     const creds = (waChannel?.credentials ?? {}) as Creds;
     return NextResponse.json({
       allowedNumbers: getAllowedNumbers(creds),
+      allowOwnerChat: creds.allowOwnerChat ?? false,
     });
   } catch (err) {
     if (err instanceof Response) return err;
@@ -63,15 +64,17 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const found = await getOwnedAgent(req, id);
     if (!found) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
-    // Accept { phoneNumbers: string[] } — E.164 or raw digits, full replacement list.
-    const body = await req.json() as { phoneNumbers: (string | null)[] };
+    const body = await req.json() as { phoneNumbers?: (string | null)[]; allowOwnerChat?: boolean };
+
     const allowedNumbers: string[] = (body.phoneNumbers ?? [])
       .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
       .map((p) => {
         const digits = p.replace(/[^\d]/g, "");
         return digits ? `+${digits}` : "";
       })
-      .filter((p) => p.length > 1); // "+digits"
+      .filter((p) => p.length > 1);
+
+    const allowOwnerChat: boolean = body.allowOwnerChat ?? false;
 
     const [waChannel] = await db
       .select()
@@ -84,35 +87,25 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
 
     const existingCredentials = (waChannel.credentials as Record<string, unknown>) ?? {};
-    // Migrate: remove legacy single-JID field
     const { allowedJid: _removed, ...rest } = existingCredentials as Creds & Record<string, unknown>;
     void _removed;
 
-    // Preserve any @lid entries auto-detected by the inbound route (owner's own device).
-    // These must survive phone-number list edits, otherwise the owner gets locked out.
-    const existingLids: string[] = Array.isArray((rest as Creds).allowedJids)
-      ? ((rest as Creds).allowedJids as string[]).filter((j) => j.endsWith("@lid"))
-      : [];
-
-    // Build JID list: phone numbers as @s.whatsapp.net + preserved @lid entries
-    const allowedJids: string[] = [
-      ...allowedNumbers.map((n) => `${n.replace("+", "")}@s.whatsapp.net`),
-      ...existingLids,
-    ];
+    // JID list: only @s.whatsapp.net entries (phone numbers for others).
+    // @lid is handled separately via the allowOwnerChat flag in the inbound route.
+    const allowedJids: string[] = allowedNumbers.map((n) => `${n.replace("+", "")}@s.whatsapp.net`);
 
     await db
       .update(agentChannel)
-      .set({ credentials: { ...rest, allowedNumbers, allowedJids } })
+      .set({ credentials: { ...rest, allowedNumbers, allowedJids, allowOwnerChat } })
       .where(eq(agentChannel.id, waChannel.id));
 
-    logger.info({ agentId: id, allowedNumbers }, "WhatsApp allowed numbers updated — relaunching");
+    logger.info({ agentId: id, allowedNumbers, allowOwnerChat }, "WhatsApp allowed numbers updated — relaunching");
 
-    // Relaunch so the container picks up the new WHATSAPP_ALLOW_FROM env var
     relaunchAgentWithChannels(id).catch((err) => {
       logger.error({ err, agentId: id }, "Failed to relaunch agent after allowed-number update");
     });
 
-    return NextResponse.json({ ok: true, allowedNumbers });
+    return NextResponse.json({ ok: true, allowedNumbers, allowOwnerChat });
   } catch (err) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to update WhatsApp allowed numbers");

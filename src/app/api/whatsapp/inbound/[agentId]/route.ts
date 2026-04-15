@@ -50,37 +50,24 @@ export async function POST(
   const [waChannel] = await db.select().from(agentChannel)
     .where(and(eq(agentChannel.agentId, agentId), eq(agentChannel.platform, "whatsapp")))
     .limit(1);
-  type WaCreds = { allowedJid?: string | null; allowedJids?: string[]; allowedNumbers?: string[]; discoveredOwnerJid?: string };
+  type WaCreds = { allowedJid?: string | null; allowedJids?: string[]; allowedNumbers?: string[]; allowOwnerChat?: boolean };
   const creds = (waChannel?.credentials ?? {}) as WaCreds;
 
-  // Support both legacy single allowedJid and new allowedJids array (populated from E.164 phone numbers)
   const allowedJids: string[] = Array.isArray(creds.allowedJids)
     ? creds.allowedJids
     : creds.allowedJid ? [creds.allowedJid] : [];
 
-  if (allowedJids.length > 0) {
+  const hasFilter = allowedJids.length > 0 || creds.allowOwnerChat === true;
+
+  if (hasFilter) {
     const isLid = jid.endsWith("@lid");
 
     if (isLid) {
-      // @lid JIDs only come from the device owner's own "message me" chat — no other
-      // sender ever produces @lid. Auto-whitelist the first @lid seen so the owner can
-      // always reach their own agent even when a phone-number filter is active.
-      const alreadyAllowed = allowedJids.includes(jid);
-      const hasAnyLid = allowedJids.some((a) => a.endsWith("@lid"));
-      if (!alreadyAllowed) {
-        if (hasAnyLid) {
-          // A different @lid is already explicitly listed — block this one
-          logger.info({ agentId, jid }, "WhatsApp message ignored — sender not in allowed list");
-          return NextResponse.json({ ok: true });
-        }
-        // No @lid in the list yet → auto-add the owner's device ID
-        if (waChannel) {
-          const updatedJids = [...allowedJids, jid];
-          db.update(agentChannel)
-            .set({ credentials: { ...creds, allowedJids: updatedJids } })
-            .where(eq(agentChannel.id, waChannel.id))
-            .catch(() => {});
-        }
+      // @lid JIDs are exclusively from the device owner's "message me" chat.
+      // Allow if the owner explicitly enabled allowOwnerChat.
+      if (!creds.allowOwnerChat) {
+        logger.info({ agentId, jid }, "WhatsApp message ignored — owner chat not enabled");
+        return NextResponse.json({ ok: true });
       }
     } else {
       const incomingNum = jid.split("@")[0];

@@ -200,6 +200,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [waQrData, setWaQrData] = useState<string | null>(null);
   const [waError, setWaError] = useState<string | null>(null);
   const [waAllowedNumbers, setWaAllowedNumbers] = useState<string[]>([]);
+  const [waAllowOwnerChat, setWaAllowOwnerChat] = useState(false);
   const [waSavingNumber, setWaSavingNumber] = useState(false);
   const [waNewNumber, setWaNewNumber] = useState("");
 
@@ -306,6 +307,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
       if (res.ok) {
         const data = await res.json();
         setWaAllowedNumbers(data.allowedNumbers ?? []);
+        setWaAllowOwnerChat(data.allowOwnerChat ?? false);
       }
     } catch { /* non-critical */ }
   }, [agentId]);
@@ -1221,15 +1223,18 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                         </div>
 
                         {isConnected && isWhatsApp && (() => {
-                          const saveNumbers = async (numbers: string[]) => {
+                          const saveAll = async (numbers: string[], ownerChat: boolean) => {
                             setWaSavingNumber(true);
                             try {
                               const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`, {
                                 method: "PATCH",
                                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ phoneNumbers: numbers }),
+                                body: JSON.stringify({ phoneNumbers: numbers, allowOwnerChat: ownerChat }),
                               });
-                              if (res.ok) setWaAllowedNumbers(numbers);
+                              if (res.ok) {
+                                setWaAllowedNumbers(numbers);
+                                setWaAllowOwnerChat(ownerChat);
+                              }
                             } finally {
                               setWaSavingNumber(false);
                             }
@@ -1238,10 +1243,12 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                             const digits = raw.replace(/[^\d]/g, "");
                             const entry = digits ? `+${digits}` : "";
                             if (!entry || waAllowedNumbers.includes(entry)) return;
-                            await saveNumbers([...waAllowedNumbers, entry]);
+                            await saveAll([...waAllowedNumbers, entry], waAllowOwnerChat);
                             setWaNewNumber("");
                           };
-                          const removeNumber = (num: string) => saveNumbers(waAllowedNumbers.filter((n) => n !== num));
+                          const removeNumber = (num: string) => saveAll(waAllowedNumbers.filter((n) => n !== num), waAllowOwnerChat);
+                          const toggleOwnerChat = () => saveAll(waAllowedNumbers, !waAllowOwnerChat);
+                          const hasAnyFilter = waAllowedNumbers.length > 0 || waAllowOwnerChat;
                           return (
                             <div style={{ marginTop: 4, padding: 16, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, display: "grid", gap: 10 }}>
                               <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: INK }}>
@@ -1249,13 +1256,38 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                                 <span style={{ fontWeight: 400, color: MUTED }}> — leave empty to respond to everyone</span>
                               </p>
 
-                              {waAllowedNumbers.length > 0 && (
+                              {hasAnyFilter && (
                                 <p style={{ margin: 0, fontSize: 10, color: MUTED }}>
-                                  The agent will restart automatically when you save changes.
+                                  The agent restarts automatically when you save changes.
                                 </p>
                               )}
 
-                              {/* Current allowed list */}
+                              {/* My own WhatsApp chat toggle */}
+                              <div
+                                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: BG, borderRadius: 8, border: `1px solid ${BORDER}` }}
+                              >
+                                <div>
+                                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: INK }}>My own WhatsApp chat</p>
+                                  <p style={{ margin: 0, fontSize: 11, color: MUTED }}>Allow messages from your personal &quot;message me&quot; chat</p>
+                                </div>
+                                <button
+                                  onClick={toggleOwnerChat}
+                                  disabled={waSavingNumber}
+                                  style={{
+                                    width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
+                                    background: waAllowOwnerChat ? "#25D366" : BORDER,
+                                    position: "relative", flexShrink: 0, transition: "background 0.2s",
+                                  }}
+                                >
+                                  <span style={{
+                                    position: "absolute", top: 3, left: waAllowOwnerChat ? 21 : 3,
+                                    width: 16, height: 16, borderRadius: "50%", background: "#fff",
+                                    transition: "left 0.2s",
+                                  }} />
+                                </button>
+                              </div>
+
+                              {/* Other allowed numbers */}
                               {waAllowedNumbers.map((num) => (
                                 <div key={num} style={{ display: "flex", alignItems: "center", gap: 8, background: BG, borderRadius: 8, padding: "6px 10px" }}>
                                   <span style={{ flex: 1, fontSize: 13, fontFamily: "var(--mono, monospace)", color: INK }}>{num}</span>
@@ -1269,10 +1301,10 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                                 </div>
                               ))}
 
-                              {/* Add phone number */}
+                              {/* Add other phone numbers */}
                               <div style={{ display: "flex", gap: 8 }}>
                                 <Input
-                                  placeholder="Phone number with country code, e.g. 212612345678"
+                                  placeholder="Other number with country code, e.g. 212612345678"
                                   value={waNewNumber}
                                   onChange={(e) => setWaNewNumber(e.target.value)}
                                   onKeyDown={(e) => { if (e.key === "Enter" && waNewNumber.trim()) addNumber(waNewNumber.trim()); }}
