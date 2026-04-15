@@ -27,6 +27,17 @@ if (!process.env.OPENCLAW_HOME) { console.error('whatsapp-relay: OPENCLAW_HOME n
 const noop = () => {};
 const logger = { level: 'silent', info: noop, warn: noop, error: noop, debug: noop, trace: noop, fatal: noop, child() { return this; } };
 
+// Track message IDs sent by this relay to suppress echo-backs from self-chat.
+// Self-chat (the "message yourself" chat) re-delivers every outbound message
+// as a fromMe event — we must not re-process our own replies as new inbound commands.
+const sentMessageIds = new Set();
+const SENT_ID_TTL_MS = 5 * 60 * 1000; // 5 min safety expiry
+
+function trackSentId(id) {
+  sentMessageIds.add(id);
+  setTimeout(() => sentMessageIds.delete(id), SENT_ID_TTL_MS);
+}
+
 async function startRelay() {
   const { state, saveCreds } = await useMultiFileAuthState(credsDir);
   const { version } = await fetchLatestBaileysVersion();
@@ -58,11 +69,21 @@ async function startRelay() {
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
     for (const msg of messages) {
-      if (msg.key.fromMe) continue;
+      const jid = msg.key.remoteJid;
+
+      // For fromMe messages: only allow self-chat (@lid or same-number remoteJid).
+      // This lets the user chat with the agent from their own "Message yourself" chat.
+      // All other fromMe messages (outbound DMs to third parties) are skipped.
+      if (msg.key.fromMe) {
+        const isSelfChat = jid && (jid.endsWith('@lid') || jid === sock.user?.id);
+        if (!isSelfChat) continue;
+        // Suppress echoes of our own relay replies to prevent infinite loops
+        if (msg.key.id && sentMessageIds.has(msg.key.id)) continue;
+      }
+
       const text = msg.message?.conversation
                 || msg.message?.extendedTextMessage?.text || '';
       if (!text.trim()) continue;
-      const jid = msg.key.remoteJid;
 
       console.log(`whatsapp-relay: inbound ${jid}: ${text.slice(0, 80)}`);
 
@@ -79,14 +100,16 @@ async function startRelay() {
         const reply = await res.json();
 
         if (reply.type === 'text') {
-          await sock.sendMessage(jid, { text: reply.text });
+          const sent = await sock.sendMessage(jid, { text: reply.text });
+          if (sent?.key?.id) trackSentId(sent.key.id);
         } else if (reply.type === 'document') {
-          await sock.sendMessage(jid, {
+          const sent = await sock.sendMessage(jid, {
             document: Buffer.from(reply.document, 'base64'),
             mimetype: reply.mimetype ?? 'application/pdf',
             fileName: reply.filename ?? 'document.pdf',
             caption: reply.caption ?? '',
           });
+          if (sent?.key?.id) trackSentId(sent.key.id);
         }
       } catch (err) {
         console.error('whatsapp-relay: error', err?.message);
