@@ -195,9 +195,10 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [waLinkStatus, setWaLinkStatus] = useState<"idle" | "starting" | "qr_ready" | "linked" | "failed">("idle");
   const [waQrData, setWaQrData] = useState<string | null>(null);
   const [waError, setWaError] = useState<string | null>(null);
-  const [waAllowedJid, setWaAllowedJid] = useState<string | null>(null);
+  const [waAllowedJids, setWaAllowedJids] = useState<string[]>([]);
   const [waDiscoveredJid, setWaDiscoveredJid] = useState<string | null>(null);
   const [waSavingNumber, setWaSavingNumber] = useState(false);
+  const [waNewNumber, setWaNewNumber] = useState("");
 
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [showAddMcp, setShowAddMcp] = useState(false);
@@ -253,7 +254,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
       const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`);
       if (res.ok) {
         const data = await res.json();
-        setWaAllowedJid(data.allowedJid ?? null);
+        setWaAllowedJids(data.allowedJids ?? []);
         setWaDiscoveredJid(data.discoveredOwnerJid ?? null);
       }
     } catch { /* non-critical */ }
@@ -1056,80 +1057,84 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                           </div>
                         </div>
 
-                        {isConnected && isWhatsApp && (
-                          <div
-                            style={{
-                              marginTop: 4,
-                              padding: 16,
-                              background: CARD,
-                              border: `1px solid ${BORDER}`,
-                              borderRadius: 12,
-                              display: "grid",
-                              gap: 8,
-                            }}
-                          >
-                            {waAllowedJid ? (
-                              <>
-                                <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
-                                  Private mode: only responding to <strong style={{ color: INK }}>{waAllowedJid}</strong>
-                                </p>
-                                <Button
-                                  size="sm"
-                                  disabled={waSavingNumber}
-                                  onClick={async () => {
-                                    setWaSavingNumber(true);
-                                    try {
-                                      const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`, {
-                                        method: "PATCH",
-                                        headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ jid: null }),
-                                      });
-                                      if (res.ok) { setWaAllowedJid(null); await fetchChannels(); }
-                                    } finally {
-                                      setWaSavingNumber(false);
-                                    }
-                                  }}
-                                  style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, justifySelf: "start" }}
-                                >
-                                  {waSavingNumber ? "Clearing…" : "Remove restriction"}
-                                </Button>
-                              </>
-                            ) : waDiscoveredJid ? (
-                              <>
-                                <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
-                                  Detected sender: <strong style={{ color: INK }}>{waDiscoveredJid}</strong>
-                                </p>
-                                <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
-                                  Click below to make this agent respond only to you.
-                                </p>
-                                <Button
-                                  size="sm"
-                                  disabled={waSavingNumber}
-                                  onClick={async () => {
-                                    setWaSavingNumber(true);
-                                    try {
-                                      const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`, {
-                                        method: "PATCH",
-                                        headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ jid: waDiscoveredJid }),
-                                      });
-                                      if (res.ok) { setWaAllowedJid(waDiscoveredJid); }
-                                    } finally {
-                                      setWaSavingNumber(false);
-                                    }
-                                  }}
-                                  style={{ background: "#25D366", color: "#fff", justifySelf: "start" }}
-                                >
-                                  {waSavingNumber ? "Saving…" : "Restrict to me"}
-                                </Button>
-                              </>
-                            ) : (
-                              <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
-                                Send a WhatsApp message to this agent, then return here to restrict it to your number only.
+                        {isConnected && isWhatsApp && (() => {
+                          const saveJids = async (jids: string[]) => {
+                            setWaSavingNumber(true);
+                            try {
+                              const res = await fetch(`/api/agents/${agentId}/whatsapp/allowed-number`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ allowedJids: jids }),
+                              });
+                              if (res.ok) setWaAllowedJids(jids);
+                            } finally {
+                              setWaSavingNumber(false);
+                            }
+                          };
+                          const addEntry = async (raw: string) => {
+                            const entry = raw.includes("@") ? raw : `${raw.replace(/[^\d]/g, "")}@s.whatsapp.net`;
+                            if (!entry || waAllowedJids.includes(entry)) return;
+                            await saveJids([...waAllowedJids, entry]);
+                            setWaNewNumber("");
+                          };
+                          const removeEntry = (jid: string) => saveJids(waAllowedJids.filter((j) => j !== jid));
+                          return (
+                            <div style={{ marginTop: 4, padding: 16, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, display: "grid", gap: 10 }}>
+                              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: INK }}>
+                                Allowed senders
+                                <span style={{ fontWeight: 400, color: MUTED }}> — leave empty to respond to everyone</span>
                               </p>
-                            )}
-                          </div>
-                        )}
+
+                              {/* Current allowed list */}
+                              {waAllowedJids.map((jid) => (
+                                <div key={jid} style={{ display: "flex", alignItems: "center", gap: 8, background: BG, borderRadius: 8, padding: "6px 10px" }}>
+                                  <span style={{ flex: 1, fontSize: 12, fontFamily: "var(--mono, monospace)", color: INK, wordBreak: "break-all" }}>{jid}</span>
+                                  <button
+                                    onClick={() => removeEntry(jid)}
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, padding: 2, lineHeight: 0 }}
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              ))}
+
+                              {/* Add detected JID if not already in list */}
+                              {waDiscoveredJid && !waAllowedJids.includes(waDiscoveredJid) && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 8, border: `1px dashed ${BORDER}` }}>
+                                  <span style={{ flex: 1, fontSize: 11, color: MUTED }}>
+                                    Detected: <span style={{ fontFamily: "var(--mono, monospace)", color: INK }}>{waDiscoveredJid}</span>
+                                  </span>
+                                  <button
+                                    onClick={() => addEntry(waDiscoveredJid)}
+                                    disabled={waSavingNumber}
+                                    style={{ background: "#25D366", color: "#fff", border: "none", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                                  >
+                                    + Add me
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Manual phone number entry */}
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <Input
+                                  placeholder="Add number (e.g. 212612345678)"
+                                  value={waNewNumber}
+                                  onChange={(e) => setWaNewNumber(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === "Enter" && waNewNumber.trim()) addEntry(waNewNumber.trim()); }}
+                                  style={{ flex: 1, fontSize: 13 }}
+                                />
+                                <Button
+                                  size="sm"
+                                  disabled={waSavingNumber || !waNewNumber.trim()}
+                                  onClick={() => addEntry(waNewNumber.trim())}
+                                  style={{ background: "#25D366", color: "#fff", whiteSpace: "nowrap" }}
+                                >
+                                  {waSavingNumber ? "…" : "Add"}
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {isExpanded && !isConnected && (
                           <div

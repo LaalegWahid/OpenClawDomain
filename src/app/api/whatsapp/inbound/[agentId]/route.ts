@@ -50,15 +50,26 @@ export async function POST(
   const [waChannel] = await db.select().from(agentChannel)
     .where(and(eq(agentChannel.agentId, agentId), eq(agentChannel.platform, "whatsapp")))
     .limit(1);
-  const creds = (waChannel?.credentials ?? {}) as { allowedJid?: string; discoveredOwnerJid?: string };
-  const allowedJid = creds.allowedJid;
-  if (allowedJid && jid !== allowedJid) {
-    logger.info({ agentId, jid }, "WhatsApp message ignored — sender not in allowed list");
-    return NextResponse.json({ ok: true });
+  type WaCreds = { allowedJid?: string | null; allowedJids?: string[]; discoveredOwnerJid?: string };
+  const creds = (waChannel?.credentials ?? {}) as WaCreds;
+  // Support both legacy single allowedJid and new allowedJids array
+  const allowedJids: string[] = Array.isArray(creds.allowedJids)
+    ? creds.allowedJids
+    : creds.allowedJid ? [creds.allowedJid] : [];
+
+  if (allowedJids.length > 0) {
+    const incomingNum = jid.split("@")[0];
+    const isAllowed = allowedJids.some(
+      (a) => a === jid || a.split("@")[0] === incomingNum,
+    );
+    if (!isAllowed) {
+      logger.info({ agentId, jid }, "WhatsApp message ignored — sender not in allowed list");
+      return NextResponse.json({ ok: true });
+    }
   }
 
   // Auto-capture the first incoming JID so the UI can offer "Restrict to me"
-  if (waChannel && !allowedJid && !creds.discoveredOwnerJid) {
+  if (waChannel && allowedJids.length === 0 && !creds.discoveredOwnerJid) {
     db.update(agentChannel)
       .set({ credentials: { ...creds, discoveredOwnerJid: jid } })
       .where(eq(agentChannel.id, waChannel.id))
