@@ -1098,40 +1098,51 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                                 </div>
                               ))}
 
-                              {/* Add detected JID — primary way to add yourself */}
-                              {waDiscoveredJid && !waAllowedJids.includes(waDiscoveredJid) && (
-                                <div style={{ padding: "8px 10px", borderRadius: 8, border: `1px dashed #25D366`, background: "rgba(37,211,102,0.04)" }}>
+                              {/* Step 1 — Add yourself via auto-detected device ID */}
+                              <div style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, background: BG }}>
+                                <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 600, color: INK }}>
+                                  Step 1 — Add yourself
+                                </p>
+                                {waDiscoveredJid ? (
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                     <div style={{ flex: 1 }}>
-                                      <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "#25D366" }}>Your device detected</p>
-                                      <p style={{ margin: 0, fontSize: 11, fontFamily: "var(--mono, monospace)", color: INK, wordBreak: "break-all" }}>{waDiscoveredJid}</p>
+                                      <p style={{ margin: 0, fontSize: 10, color: MUTED }}>Your WhatsApp device ID (auto-detected):</p>
+                                      <p style={{ margin: 0, fontSize: 11, fontFamily: "var(--mono, monospace)", color: INK, wordBreak: "break-all" }}>
+                                        {waDiscoveredJid}
+                                      </p>
                                     </div>
-                                    <button
-                                      onClick={() => addEntry(waDiscoveredJid)}
-                                      disabled={waSavingNumber}
-                                      style={{ background: "#25D366", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
-                                    >
-                                      Add me
-                                    </button>
+                                    {waAllowedJids.includes(waDiscoveredJid) ? (
+                                      <span style={{ fontSize: 11, color: "#25D366", fontWeight: 600, whiteSpace: "nowrap" }}>✓ Added</span>
+                                    ) : (
+                                      <button
+                                        onClick={() => addEntry(waDiscoveredJid)}
+                                        disabled={waSavingNumber}
+                                        style={{ background: "#25D366", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                                      >
+                                        Add me
+                                      </button>
+                                    )}
                                   </div>
-                                  <p style={{ margin: "4px 0 0", fontSize: 10, color: MUTED }}>
-                                    WhatsApp uses an internal device ID — this is the correct identifier, not your phone number.
+                                ) : (
+                                  <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
+                                    Send any message to this agent from your WhatsApp — your device ID will appear here automatically.
+                                    <br />
+                                    <span style={{ fontSize: 10 }}>WhatsApp uses an internal device ID, not your phone number — that&apos;s why <code>212...</code> won&apos;t work for yourself.</span>
                                   </p>
-                                </div>
-                              )}
+                                )}
+                              </div>
 
-                              {!waDiscoveredJid && waAllowedJids.length === 0 && (
-                                <p style={{ margin: 0, fontSize: 11, color: MUTED, padding: "4px 2px" }}>
-                                  Send a message to this agent from WhatsApp — your device ID will appear here so you can add it.
+                              {/* Step 2 — Add other people by phone number */}
+                              <div style={{ padding: "10px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, background: BG }}>
+                                <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 600, color: INK }}>
+                                  Step 2 — Add other allowed numbers <span style={{ fontWeight: 400, color: MUTED }}>(optional)</span>
                                 </p>
-                              )}
-
-                              {/* Manual phone number entry — for adding other people */}
-                              <div>
-                                <p style={{ margin: "0 0 6px", fontSize: 11, color: MUTED }}>Add another number (for other WhatsApp users, digits only):</p>
+                                <p style={{ margin: "0 0 6px", fontSize: 10, color: MUTED }}>
+                                  Other people&apos;s messages arrive as standard phone numbers. Enter digits only, e.g. <code>212612345678</code>.
+                                </p>
                                 <div style={{ display: "flex", gap: 8 }}>
                                   <Input
-                                    placeholder="e.g. 212612345678"
+                                    placeholder="Phone number, digits only"
                                     value={waNewNumber}
                                     onChange={(e) => setWaNewNumber(e.target.value)}
                                     onKeyDown={(e) => { if (e.key === "Enter" && waNewNumber.trim()) addEntry(waNewNumber.trim()); }}
