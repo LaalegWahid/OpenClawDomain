@@ -52,6 +52,16 @@ export async function POST(
     .limit(1);
   type WaCreds = { allowedJid?: string | null; allowedJids?: string[]; discoveredOwnerJid?: string };
   const creds = (waChannel?.credentials ?? {}) as WaCreds;
+
+  // Always capture the first-ever incoming JID BEFORE filtering so the UI can
+  // show the real JID even when the message gets blocked by a wrong filter entry.
+  if (waChannel && !creds.discoveredOwnerJid) {
+    db.update(agentChannel)
+      .set({ credentials: { ...creds, discoveredOwnerJid: jid } })
+      .where(eq(agentChannel.id, waChannel.id))
+      .catch(() => {});
+  }
+
   // Support both legacy single allowedJid and new allowedJids array
   const allowedJids: string[] = Array.isArray(creds.allowedJids)
     ? creds.allowedJids
@@ -66,14 +76,6 @@ export async function POST(
       logger.info({ agentId, jid }, "WhatsApp message ignored — sender not in allowed list");
       return NextResponse.json({ ok: true });
     }
-  }
-
-  // Auto-capture the first incoming JID so the UI can offer "Restrict to me"
-  if (waChannel && allowedJids.length === 0 && !creds.discoveredOwnerJid) {
-    db.update(agentChannel)
-      .set({ credentials: { ...creds, discoveredOwnerJid: jid } })
-      .where(eq(agentChannel.id, waChannel.id))
-      .catch(() => {});
   }
 
   logger.info({ agentId, jid, text }, "WhatsApp inbound message received");
