@@ -4,7 +4,6 @@ import { db } from "../../../../../../shared/lib/drizzle";
 import { eq, and } from "drizzle-orm";
 import { agent, agentChannel } from "../../../../../../shared/db/schema/agent";
 import { logger } from "../../../../../../shared/lib/logger";
-import { relaunchAgentWithChannels } from "../../../../../../shared/lib/agents/relaunch";
 
 type Ctx = { params: Promise<{ id: string }> };
 type Creds = {
@@ -99,11 +98,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       .set({ credentials: { ...rest, allowedNumbers, allowedJids, allowOwnerChat } })
       .where(eq(agentChannel.id, waChannel.id));
 
-    logger.info({ agentId: id, allowedNumbers, allowOwnerChat }, "WhatsApp allowed numbers updated — relaunching");
-
-    relaunchAgentWithChannels(id).catch((err) => {
-      logger.error({ err, agentId: id }, "Failed to relaunch agent after allowed-number update");
-    });
+    logger.info({ agentId: id, allowedNumbers, allowOwnerChat }, "WhatsApp allowed numbers updated");
 
     return NextResponse.json({ ok: true, allowedNumbers, allowOwnerChat });
   } catch (err) {

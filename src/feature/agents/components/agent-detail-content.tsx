@@ -1256,11 +1256,6 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                                 <span style={{ fontWeight: 400, color: MUTED }}> — leave empty to respond to everyone</span>
                               </p>
 
-                              {hasAnyFilter && (
-                                <p style={{ margin: 0, fontSize: 10, color: MUTED }}>
-                                  The agent restarts automatically when you save changes.
-                                </p>
-                              )}
 
                               {/* My own WhatsApp chat toggle */}
                               <div
