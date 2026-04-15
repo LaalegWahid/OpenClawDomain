@@ -10,10 +10,17 @@ COPY whatsapp-linker.sh /home/node/whatsapp-linker.sh
 COPY whatsapp-linker.mjs /home/node/whatsapp-linker.mjs
 COPY whatsapp-relay.mjs /home/node/whatsapp-relay.mjs
 COPY agent-config.py /home/node/agent-config.py
+
+# MCP test server — bundled for stdio integration testing.
+# Register in dashboard: Transport=Stdio, Command=node, Args=/app/mcp-test-server/index.mjs
+COPY mcp-test-server/package.json /app/mcp-test-server/package.json
+COPY mcp-test-server/index.mjs    /app/mcp-test-server/index.mjs
 RUN sed -i 's/\r$//' /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \
     && chmod +x /home/node/entrypoint.sh /home/node/whatsapp-linker.sh \
     && mkdir -p /home/node/.openclaw \
-    && chown node:node /home/node/.openclaw
+    && chown node:node /home/node/.openclaw \
+    && cd /app/mcp-test-server && npm install --omit=dev \
+    && chown -R node:node /app/mcp-test-server
 
 USER node
 WORKDIR /home/node

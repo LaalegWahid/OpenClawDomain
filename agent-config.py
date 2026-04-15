@@ -78,9 +78,51 @@ def patch_mcp(cfg):
     if not mcp_b64:
         return
     print("Adding MCP server config...")
-    mcp_servers = json.loads(base64.b64decode(mcp_b64).decode())
-    cfg.setdefault("mcp", {})["servers"] = mcp_servers
-    print("MCP servers configured.")
+    raw_servers = json.loads(base64.b64decode(mcp_b64).decode())
+
+    # Normalize to the flat format OpenClaw expects.
+    # Dashboard payloads may be either:
+    #   1) nested: { transport, config: { ... } }
+    #   2) flat:   { command/args/... } or { url/headers/... }
+    servers = {}
+    for name, srv in raw_servers.items():
+        transport = (srv.get("transport") or "").strip().lower()
+        inner = srv.get("config") if isinstance(srv.get("config"), dict) else None
+        src = inner if inner is not None else srv
+        entry = {}
+
+        # Stdio server (local process): command + args/env/cwd
+        if "command" in src:
+            for key in ("command", "args", "env", "cwd", "workingDirectory", "connectionTimeoutMs"):
+                if key in src:
+                    entry[key] = src[key]
+        # HTTP server (remote): url + optional transport/headers/timeout
+        elif "url" in src:
+            entry["url"] = src["url"]
+            if "headers" in src:
+                entry["headers"] = src["headers"]
+            if "connectionTimeoutMs" in src:
+                entry["connectionTimeoutMs"] = src["connectionTimeoutMs"]
+
+            # OpenClaw supports "sse" (default) and "streamable-http".
+            # Treat legacy "http"/"https" transport values as default SSE by omission.
+            if transport == "streamable-http":
+                entry["transport"] = "streamable-http"
+            elif transport == "sse":
+                entry["transport"] = "sse"
+        else:
+            # Unknown shape: best effort fallback keeps previously known behavior.
+            entry = dict(src)
+            if transport:
+                if transport in ("http", "https"):
+                    entry.pop("transport", None)  # default to SSE when URL-based
+                else:
+                    entry["transport"] = transport
+
+        servers[name] = entry
+
+    cfg.setdefault("mcp", {})["servers"] = servers
+    print(f"MCP servers configured: {list(servers.keys())}")
 
 
 def is_valid_key(key):
