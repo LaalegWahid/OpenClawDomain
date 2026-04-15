@@ -73,9 +73,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
       })
       .filter((p) => p.length > 1); // "+digits"
 
-    // Also store as JIDs for Next.js-layer fallback filtering
-    const allowedJids: string[] = allowedNumbers.map((n) => `${n.replace("+", "")}@s.whatsapp.net`);
-
     const [waChannel] = await db
       .select()
       .from(agentChannel)
@@ -90,6 +87,18 @@ export async function PATCH(req: Request, ctx: Ctx) {
     // Migrate: remove legacy single-JID field
     const { allowedJid: _removed, ...rest } = existingCredentials as Creds & Record<string, unknown>;
     void _removed;
+
+    // Preserve any @lid entries auto-detected by the inbound route (owner's own device).
+    // These must survive phone-number list edits, otherwise the owner gets locked out.
+    const existingLids: string[] = Array.isArray((rest as Creds).allowedJids)
+      ? ((rest as Creds).allowedJids as string[]).filter((j) => j.endsWith("@lid"))
+      : [];
+
+    // Build JID list: phone numbers as @s.whatsapp.net + preserved @lid entries
+    const allowedJids: string[] = [
+      ...allowedNumbers.map((n) => `${n.replace("+", "")}@s.whatsapp.net`),
+      ...existingLids,
+    ];
 
     await db
       .update(agentChannel)
