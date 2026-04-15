@@ -6,6 +6,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { stopContainer } from "../../../../shared/lib/agents/docker";
 import { deleteWebhook } from "../../../../shared/lib/telegram/bot";
 import { logger } from "../../../../shared/lib/logger";
+import { encryptIfPresent } from "../../../../shared/lib/crypto";
 
 export async function GET(
   req: Request,
@@ -32,7 +33,11 @@ export async function GET(
       .limit(20);
 
     logger.info({ agentId: id }, "Agent fetched");
-    return NextResponse.json({ agent: found, activities });
+    const { apiKey: _encApiKey, ...safeAgent } = found;
+    return NextResponse.json({
+      agent: { ...safeAgent, hasApiKey: !!_encApiKey },
+      activities,
+    });
   } catch (err) {
     if (err instanceof Response) return err;
     return NextResponse.json({ error: "Unhandled error in GET /api/agents/[id]. Check server logs." }, { status: 500 });
@@ -47,19 +52,52 @@ export async function PATCH(
     const session = await getSessionOrThrow(req);
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    const { profileImage } = body as { profileImage?: string | null };
+    const { profileImage, apiProvider, apiKey, agentModel } = body as {
+      profileImage?: string | null;
+      apiProvider?: string | null;
+      apiKey?: string | null;
+      agentModel?: string | null;
+    };
 
-    if (typeof profileImage !== "string" && profileImage !== null) {
-      return NextResponse.json({ error: "profileImage must be a string or null" }, { status: 400 });
+    const updates: Partial<typeof agent.$inferInsert> = {};
+
+    if (profileImage !== undefined) {
+      if (typeof profileImage !== "string" && profileImage !== null) {
+        return NextResponse.json({ error: "profileImage must be a string or null" }, { status: 400 });
+      }
+      if (typeof profileImage === "string") {
+        if (!profileImage.startsWith("data:image/")) {
+          return NextResponse.json({ error: "profileImage must be a data:image/... URI" }, { status: 400 });
+        }
+        if (profileImage.length > 700_000) {
+          return NextResponse.json({ error: "Image too large (max ~500KB after encoding)" }, { status: 413 });
+        }
+      }
+      updates.profileImage = profileImage ?? null;
     }
 
-    if (typeof profileImage === "string") {
-      if (!profileImage.startsWith("data:image/")) {
-        return NextResponse.json({ error: "profileImage must be a data:image/... URI" }, { status: 400 });
+    if (apiProvider !== undefined) {
+      updates.apiProvider = typeof apiProvider === "string" && apiProvider.trim()
+        ? apiProvider.trim().toLowerCase()
+        : null;
+    }
+
+    if (agentModel !== undefined) {
+      updates.agentModel = typeof agentModel === "string" && agentModel.trim()
+        ? agentModel.trim()
+        : null;
+    }
+
+    if (apiKey !== undefined) {
+      if (apiKey === null || apiKey === "") {
+        updates.apiKey = null;
+      } else if (typeof apiKey === "string") {
+        updates.apiKey = encryptIfPresent(apiKey);
       }
-      if (profileImage.length > 700_000) {
-        return NextResponse.json({ error: "Image too large (max ~500KB after encoding)" }, { status: 413 });
-      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
     const [found] = await db
@@ -73,11 +111,12 @@ export async function PATCH(
 
     const [updated] = await db
       .update(agent)
-      .set({ profileImage: profileImage ?? null })
+      .set(updates)
       .where(eq(agent.id, id))
       .returning();
 
-    return NextResponse.json({ agent: updated });
+    const { apiKey: _enc, ...safe } = updated;
+    return NextResponse.json({ agent: { ...safe, hasApiKey: !!_enc } });
   } catch (err) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Failed to update agent");
