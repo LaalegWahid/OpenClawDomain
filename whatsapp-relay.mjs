@@ -94,7 +94,7 @@ async function startRelay() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${gatewayToken}`,
           },
-          body: JSON.stringify({ jid, text, pushName: msg.pushName ?? '' }),
+          body: JSON.stringify({ jid, text, pushName: msg.pushName ?? '', fromMe: msg.key.fromMe === true }),
           signal: AbortSignal.timeout(120_000),
         });
         const reply = await res.json();

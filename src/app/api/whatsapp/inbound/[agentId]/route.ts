@@ -35,11 +35,12 @@ export async function POST(
   }
 
   // Parse body — must be inside a try so a malformed request never returns HTML 500
-  let jid: string, text: string;
+  let jid: string, text: string, fromMe: boolean;
   try {
-    const body = await req.json() as { jid: string; text: string; pushName?: string };
+    const body = await req.json() as { jid: string; text: string; pushName?: string; fromMe?: boolean };
     jid = body.jid;
     text = body.text;
+    fromMe = body.fromMe === true;
   } catch {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
@@ -59,22 +60,17 @@ export async function POST(
 
   const hasFilter = allowedJids.length > 0 || creds.allowOwnerChat === true;
 
-  logger.info(
-    { agentId, jid, allowedJids, allowOwnerChat: creds.allowOwnerChat, hasFilter, waChannelFound: !!waChannel },
-    "WhatsApp inbound filter check",
-  );
-
   if (hasFilter) {
-    const isLid = jid.endsWith("@lid");
-
-    if (isLid) {
-      // @lid JIDs are exclusively from the device owner's "message me" chat.
-      // Allow if the owner explicitly enabled allowOwnerChat.
+    if (fromMe) {
+      // fromMe=true means the owner typed this in their own "message me" chat.
+      // Allow only if the owner explicitly enabled allowOwnerChat.
       if (!creds.allowOwnerChat) {
         logger.info({ agentId, jid }, "WhatsApp message ignored — owner chat not enabled");
         return NextResponse.json({ ok: true });
       }
     } else {
+      // Message from someone else — check against the allowed numbers list.
+      // JIDs can be @s.whatsapp.net or @lid (modern linked-device contacts).
       const incomingNum = jid.split("@")[0];
       const isAllowed = allowedJids.some(
         (a) => a === jid || a.split("@")[0] === incomingNum,
