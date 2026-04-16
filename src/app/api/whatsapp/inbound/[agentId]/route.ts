@@ -59,6 +59,11 @@ export async function POST(
 
   const hasFilter = allowedJids.length > 0 || creds.allowOwnerChat === true;
 
+  logger.info(
+    { agentId, jid, allowedJids, allowOwnerChat: creds.allowOwnerChat, hasFilter, waChannelFound: !!waChannel },
+    "WhatsApp inbound filter check",
+  );
+
   if (hasFilter) {
     const isLid = jid.endsWith("@lid");
 
