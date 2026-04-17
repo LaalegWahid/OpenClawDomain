@@ -49,7 +49,7 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
 
   // Additional channels added later (Discord excluded — managed by Next.js)
   for (const ch of channels) {
-    if (ch.platform === "whatsapp" && !channelConfig.whatsapp) {
+    if (ch.platform === "whatsapp" && ch.enabled && !channelConfig.whatsapp) {
       channelConfig.whatsapp = { enabled: true };
     }
   }

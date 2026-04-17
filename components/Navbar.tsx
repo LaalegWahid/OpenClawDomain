@@ -110,14 +110,14 @@ export default function Navbar({ links = [] }: NavbarProps) {
 
           {/* Right */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {!isMobile && isAuthed && isAdmin && (
+            {/* {!isMobile && isAuthed && isAdmin && (
               <button
                 style={adminButtonStyle}
                 onClick={() => window.location.href = '/admin'}
               >
                 Admin
               </button>
-            )}
+            )} */}
             {!isMobile && isAuthed && (
               <button
                 style={ctaButtonStyle}
@@ -187,7 +187,7 @@ export default function Navbar({ links = [] }: NavbarProps) {
               {link.label}
             </button>
           ))}
-          {isAuthed && isAdmin && (
+          {/* {isAuthed && isAdmin && (
             <button
               style={{
                 marginTop: '1rem', background: 'transparent', color: '#2a1f19',
@@ -198,7 +198,7 @@ export default function Navbar({ links = [] }: NavbarProps) {
             >
               Admin
             </button>
-          )}
+          )} */}
           <button
             style={{
               marginTop: isAuthed && isAdmin ? '0.5rem' : '1rem',

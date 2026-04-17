@@ -5,12 +5,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { authClient } from "../../../shared/lib/auth/client";
 
-const NAV = [
+const BASE_NAV = [
   { label: "Agents",  href: "/overview" },
   { label: "Monitor", href: "/monitor"  },
   { label: "Skills",  href: "/skills"   },
   { label: "Profile", href: "/settings" },
 ];
+
+const ADMIN_NAV_ITEM = { label: "Admin", href: "/admin" };
 
 interface DashboardShellProps {
   children: React.ReactNode;
@@ -20,7 +22,8 @@ interface DashboardShellProps {
   isAdmin?: boolean;
 }
 
-export function DashboardShell({ children }: DashboardShellProps) {
+export function DashboardShell({ children, isAdmin }: DashboardShellProps) {
+  const NAV = isAdmin ? [...BASE_NAV, ADMIN_NAV_ITEM] : BASE_NAV;
   const pathname = usePathname();
   const router   = useRouter();
   const [navOpen, setNavOpen] = useState(false);

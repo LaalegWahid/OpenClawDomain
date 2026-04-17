@@ -290,7 +290,11 @@ export async function initAllDiscordBots(): Promise<void> {
     })
     .from(agentChannel)
     .innerJoin(agent, eq(agentChannel.agentId, agent.id))
-    .where(and(eq(agentChannel.platform, "discord"), eq(agent.status, "active")));
+    .where(and(
+      eq(agentChannel.platform, "discord"),
+      eq(agentChannel.enabled, true),
+      eq(agent.status, "active"),
+    ));
 
   logger.info({ count: discordChannels.length }, "Found Discord channels to initialise");
 
