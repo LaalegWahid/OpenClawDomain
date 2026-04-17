@@ -16,6 +16,8 @@ import {
   MessageSquare,
   Star,
   TrendingUp,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { authClient } from "../../../shared/lib/auth/client";
 
@@ -116,6 +118,37 @@ export function AdminContent({
   const [users, setUsers] = useState<UserRow[]>(initialUsers);
   const [agents] = useState<AgentRow[]>(initialAgents);
   const [agentQuery, setAgentQuery] = useState("");
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+  const [restartingAll, setRestartingAll] = useState(false);
+  const [restartResult, setRestartResult] = useState<
+    | { kind: "ok"; total: number; succeeded: number; failed: number }
+    | { kind: "err"; text: string }
+    | null
+  >(null);
+
+  async function restartAllAgents() {
+    setRestartingAll(true);
+    setRestartResult(null);
+    try {
+      const res = await fetch("/api/admin/agents/restart-all", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setRestartResult({ kind: "err", text: data.error ?? "Restart failed." });
+      } else {
+        setRestartResult({
+          kind: "ok",
+          total: data.total,
+          succeeded: data.succeeded,
+          failed: data.failed,
+        });
+      }
+    } catch {
+      setRestartResult({ kind: "err", text: "Network error. Please try again." });
+    } finally {
+      setRestartingAll(false);
+      setShowRestartConfirm(false);
+    }
+  }
   const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -577,34 +610,76 @@ export function AdminContent({
           title="Agents"
           icon={<Bot size={16} />}
           action={
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: "rgba(42,31,25,0.04)",
-                border: `1px solid ${BORDER}`,
-                borderRadius: 10,
-                padding: "6px 10px",
-              }}
-            >
-              <Search size={13} color={MUTED} />
-              <input
-                value={agentQuery}
-                onChange={(e) => setAgentQuery(e.target.value)}
-                placeholder="Search name, bot, owner, model"
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+              <button
+                onClick={() => { setRestartResult(null); setShowRestartConfirm(true); }}
+                disabled={restartingAll || agents.length === 0}
+                className="oc-btn-primary"
+                title="Relaunch every agent container"
                 style={{
-                  background: "transparent",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: ACCENT,
+                  color: "#fff",
                   border: "none",
-                  outline: "none",
+                  borderRadius: 10,
+                  padding: "8px 14px",
                   fontSize: 12,
-                  color: INK,
-                  width: 220,
+                  fontWeight: 600,
+                  cursor: restartingAll || agents.length === 0 ? "not-allowed" : "pointer",
+                  opacity: restartingAll || agents.length === 0 ? 0.6 : 1,
                 }}
-              />
+              >
+                <RefreshCw size={13} className={restartingAll ? "animate-spin" : undefined} />
+                {restartingAll ? "Restarting..." : "Restart All"}
+              </button>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "rgba(42,31,25,0.04)",
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 10,
+                  padding: "6px 10px",
+                }}
+              >
+                <Search size={13} color={MUTED} />
+                <input
+                  value={agentQuery}
+                  onChange={(e) => setAgentQuery(e.target.value)}
+                  placeholder="Search name, bot, owner, model"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    fontSize: 12,
+                    color: INK,
+                    width: 220,
+                  }}
+                />
+              </div>
             </div>
           }
         >
+          {restartResult && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: "8px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                background: restartResult.kind === "ok" ? "rgba(47,158,94,0.10)" : "rgba(200,52,38,0.08)",
+                color: restartResult.kind === "ok" ? "#2f9e5e" : "#c83426",
+                border: `1px solid ${restartResult.kind === "ok" ? "rgba(47,158,94,0.3)" : "rgba(200,52,38,0.25)"}`,
+              }}
+            >
+              {restartResult.kind === "ok"
+                ? `Restarted ${restartResult.succeeded}/${restartResult.total} agents${restartResult.failed > 0 ? ` — ${restartResult.failed} failed (see server logs)` : ""}.`
+                : restartResult.text}
+            </div>
+          )}
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
@@ -740,6 +815,96 @@ export function AdminContent({
           </div>
         </Card>
       </div>
+
+      {showRestartConfirm && (
+        <div
+          onClick={() => { if (!restartingAll) setShowRestartConfirm(false); }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(42,31,25,0.55)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: CARD,
+              border: `1px solid ${BORDER}`,
+              borderRadius: 14,
+              padding: "22px 24px",
+              maxWidth: 440,
+              width: "100%",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  background: "rgba(200,52,38,0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#c83426",
+                }}
+              >
+                <AlertTriangle size={18} />
+              </div>
+              <h3 style={{ margin: 0, fontFamily: "var(--serif)", fontSize: 18, fontWeight: 600 }}>
+                Restart all agents?
+              </h3>
+            </div>
+            <p style={{ margin: "0 0 18px", fontSize: 13, color: MUTED, lineHeight: 1.55 }}>
+              Warning — this will relaunch every agent container on the platform ({agents.length} total). Running conversations may drop messages while containers restart. Are you sure you want to continue?
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button
+                onClick={() => setShowRestartConfirm(false)}
+                disabled={restartingAll}
+                style={{
+                  background: "transparent",
+                  color: INK,
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 8,
+                  padding: "8px 16px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: restartingAll ? "not-allowed" : "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={restartAllAgents}
+                disabled={restartingAll}
+                style={{
+                  background: "#c83426",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "8px 16px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: restartingAll ? "wait" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <RefreshCw size={13} className={restartingAll ? "animate-spin" : undefined} />
+                {restartingAll ? "Restarting..." : "Yes, restart all"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

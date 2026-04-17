@@ -428,6 +428,28 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     }
   };
 
+  const handleToggleChannel = async (channelId: string, enabled: boolean) => {
+    // Optimistic update for instant feedback
+    setChannels((prev) => prev.map((c) => (c.id === channelId ? { ...c, enabled } : c)));
+    try {
+      const res = await fetch(`/api/agents/${agentId}/channels/${channelId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Failed to toggle channel");
+        await fetchChannels();
+        return;
+      }
+      await fetchChannels();
+    } catch {
+      setError("Failed to toggle channel");
+      await fetchChannels();
+    }
+  };
+
   const applyMcpTemplate = (tpl: (typeof MCP_TEMPLATES)[number]) => {
     setMcpName(tpl.name);
     setMcpTransport(tpl.transport);
@@ -642,7 +664,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
             height: 160,
           }}
         >
-          <Link
+          {/* <Link
             href="/overview"
             style={{
               position: "absolute",
@@ -661,7 +683,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
             }}
           >
             <ArrowLeft size={14} /> Overview
-          </Link>
+          </Link> */}
         </div>
 
         <div style={{ maxWidth: 1040, margin: "0 auto", padding: "0 2rem" }}>
@@ -1203,18 +1225,54 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                             </div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            {isConnected && agent.status === "active" && (
+                            {isConnected && isPrimary && agent.status === "active" && (
                               <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 999, color: "#2f9e5e", background: "rgba(47,158,94,0.12)" }}>
                                 Active
                               </span>
                             )}
                             {isConnected && channelRecord && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDeleteChannel(channelRecord.id); }}
-                                style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}
-                              >
-                                <X size={16} />
-                              </button>
+                              <>
+                                <span style={{ fontSize: 11, color: channelRecord.enabled ? "#2f9e5e" : MUTED }}>
+                                  {channelRecord.enabled ? "Enabled" : "Disabled"}
+                                </span>
+                                <button
+                                  role="switch"
+                                  aria-checked={channelRecord.enabled}
+                                  onClick={(e) => { e.stopPropagation(); handleToggleChannel(channelRecord.id, !channelRecord.enabled); }}
+                                  style={{
+                                    position: "relative",
+                                    width: 36,
+                                    height: 20,
+                                    borderRadius: 999,
+                                    border: "none",
+                                    background: channelRecord.enabled ? "#2f9e5e" : "rgba(42,31,25,0.22)",
+                                    cursor: "pointer",
+                                    transition: "background 0.18s ease",
+                                    padding: 0,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      position: "absolute",
+                                      top: 2,
+                                      left: channelRecord.enabled ? 18 : 2,
+                                      width: 16,
+                                      height: 16,
+                                      borderRadius: "50%",
+                                      background: "#fff",
+                                      transition: "left 0.18s ease",
+                                      boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                                    }}
+                                  />
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteChannel(channelRecord.id); }}
+                                  title="Remove channel"
+                                  style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}
+                                >
+                                  <X size={16} />
+                                </button>
+                              </>
                             )}
                             {!isConnected && (
                               <span style={{ fontSize: 11, color: MUTED }}>{isWhatsApp ? "→" : isExpanded ? "▲" : "▼"}</span>
