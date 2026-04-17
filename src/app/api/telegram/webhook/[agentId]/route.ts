@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../../shared/lib/drizzle";
 import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
+import { agentChannel } from "../../../../../shared/db/schema/agent";
 import { logger } from "../../../../../shared/lib/logger";
 import { sendChatAction, sendDocument, sendMessage } from "../../../../../shared/lib/telegram/bot";
 import { eq, and } from "drizzle-orm";
@@ -42,6 +43,21 @@ export async function POST(
   const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
   if (!found) return NextResponse.json({ ok: true });
 
+  // Resolve the Telegram bot token. For Telegram-primary agents, agent.botToken
+  // is the real token. For WhatsApp/Discord-primary agents that added Telegram
+  // as a secondary channel, agent.botToken is a placeholder (e.g. "whatsapp_…")
+  // and the real token lives in agentChannel.credentials.botToken.
+  let botToken = botToken;
+  if (botToken.startsWith("whatsapp_") || botToken.startsWith("discord_") || !botToken.includes(":")) {
+    const [tgChannel] = await db
+      .select({ credentials: agentChannel.credentials })
+      .from(agentChannel)
+      .where(and(eq(agentChannel.agentId, agentId), eq(agentChannel.platform, "telegram")))
+      .limit(1);
+    const channelToken = (tgChannel?.credentials as Record<string, string> | null)?.botToken;
+    if (channelToken) botToken = channelToken;
+  }
+
   const body = await req.json();
   const message = body?.message;
   if (!message?.text) return NextResponse.json({ ok: true });
@@ -55,7 +71,7 @@ export async function POST(
   if (isCancelCommand(text)) {
     const cancelled = await cancelChatRequest(agentId, chatId);
     await sendMessage(
-      found.botToken,
+      botToken,
       chatId,
       cancelled ? "✋ Cancelled." : "Nothing to cancel.",
     ).catch(() => {});
@@ -63,15 +79,15 @@ export async function POST(
   }
 
   if (found.status === "stopped") {
-    await sendMessage(found.botToken, chatId, "This agent has been stopped. Please restart it from the dashboard.").catch(() => {});
+    await sendMessage(botToken, chatId, "This agent has been stopped. Please restart it from the dashboard.").catch(() => {});
     return NextResponse.json({ ok: true });
   }
   if (found.status === "starting" || !found.containerId) {
-    await sendMessage(found.botToken, chatId, "Agent is starting up, please try again in a moment.").catch(() => {});
+    await sendMessage(botToken, chatId, "Agent is starting up, please try again in a moment.").catch(() => {});
     return NextResponse.json({ ok: true });
   }
   if (found.status === "error") {
-    await sendMessage(found.botToken, chatId, "This agent encountered an error. Please check the dashboard.").catch(() => {});
+    await sendMessage(botToken, chatId, "This agent encountered an error. Please check the dashboard.").catch(() => {});
     return NextResponse.json({ ok: true });
   }
 
@@ -98,9 +114,9 @@ export async function POST(
   // Show "typing..." in Telegram while the agent is generating. The action
   // expires after ~5s, so refresh it every 4s until the response is ready.
   const typingAction: "typing" | "upload_document" = docFormat ? "upload_document" : "typing";
-  sendChatAction(found.botToken, chatId, typingAction).catch(() => {});
+  sendChatAction(botToken, chatId, typingAction).catch(() => {});
   const typingInterval = setInterval(() => {
-    sendChatAction(found.botToken, chatId, typingAction).catch(() => {});
+    sendChatAction(botToken, chatId, typingAction).catch(() => {});
   }, 4000);
 
   try {
@@ -162,10 +178,10 @@ export async function POST(
         logger.info({ agentId, chatId, filename, contentLength: contentSource.length }, "Generating PDF");
 
         const pdfBuffer = await generatePdf(contentSource, pdfTitle, agentType);
-        await sendDocument(found.botToken, chatId, pdfBuffer, `${filename}.pdf`, "📄 Here is your document.");
+        await sendDocument(botToken, chatId, pdfBuffer, `${filename}.pdf`, "📄 Here is your document.");
         logger.info({ agentId, chatId, filename }, "Document sent");
       } else {
-        await sendMessage(found.botToken, chatId, responseText);
+        await sendMessage(botToken, chatId, responseText);
       }
     } catch (err) {
       logger.error({ agentId, chatId, err }, "Failed to deliver response");
@@ -176,7 +192,7 @@ export async function POST(
       });
       // Fallback: send the raw text so the user isn't left with no response
       if (docFormat) {
-        await sendMessage(found.botToken, chatId, responseText).catch(() => {});
+        await sendMessage(botToken, chatId, responseText).catch(() => {});
       }
     }
   } catch (err) {
@@ -194,7 +210,7 @@ export async function POST(
       const isTimeout = err instanceof Error && err.name === "TimeoutError";
       if (!isTimeout) {
         await sendMessage(
-          found.botToken,
+          botToken,
           chatId,
           "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!"
         ).catch(() => {});
