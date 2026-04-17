@@ -47,7 +47,7 @@ export async function POST(
   // is the real token. For WhatsApp/Discord-primary agents that added Telegram
   // as a secondary channel, agent.botToken is a placeholder (e.g. "whatsapp_…")
   // and the real token lives in agentChannel.credentials.botToken.
-  let botToken = botToken;
+  let botToken = found.botToken;
   if (botToken.startsWith("whatsapp_") || botToken.startsWith("discord_") || !botToken.includes(":")) {
     const [tgChannel] = await db
       .select({ credentials: agentChannel.credentials })
