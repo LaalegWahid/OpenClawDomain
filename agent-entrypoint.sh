@@ -32,12 +32,25 @@ for _tool in python3 openclaw; do
   fi
 done
 
-OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
+# OpenClaw root stays at ~/.openclaw (where the binary expects it)
+OPENCLAW_HOME="/home/node/.openclaw"
 CONFIG_FILE="${OPENCLAW_HOME}/openclaw.json"
-WORKSPACE="${OPENCLAW_HOME}/workspace"
 AUTH_DIR="${OPENCLAW_HOME}/agents/main/agent"
 
-mkdir -p "${OPENCLAW_HOME}" "${WORKSPACE}" "${AUTH_DIR}"
+# Per-agent persistent storage on EFS (isolated per user/agent)
+AGENT_DATA_DIR="${AGENT_DATA_DIR:-${OPENCLAW_HOME}}"
+AGENT_WORKSPACE="${AGENT_DATA_DIR}/workspace"
+
+mkdir -p "${OPENCLAW_HOME}" "${AGENT_WORKSPACE}" "${AUTH_DIR}"
+
+# Symlink workspace → per-agent EFS path so OpenClaw finds skills at ./skills/
+ln -sfn "${AGENT_WORKSPACE}" "${OPENCLAW_HOME}/workspace"
+WORKSPACE="${OPENCLAW_HOME}/workspace"
+
+# Symlink credentials from per-agent EFS so OpenClaw finds WhatsApp auth
+if [ -d "${AGENT_DATA_DIR}/credentials" ]; then
+  ln -sfn "${AGENT_DATA_DIR}/credentials" "${OPENCLAW_HOME}/credentials"
+fi
 
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful AI assistant.}"
 

@@ -13,12 +13,13 @@
 set -Eeuo pipefail
 
 export HOME="${HOME:-/home/node}"
-OPENCLAW_HOME="${OPENCLAW_HOME:-/home/node/.openclaw}"
+# Per-agent EFS path for persistent credential storage
+AGENT_DATA_DIR="${AGENT_DATA_DIR:-/home/node/.openclaw}"
 
 echo "WhatsApp linker starting for agent: ${AGENT_ID}"
 
-# Ensure openclaw home directory exists (EFS mount point)
-mkdir -p "${OPENCLAW_HOME}"
+# Ensure agent data directory exists (EFS mount point)
+mkdir -p "${AGENT_DATA_DIR}"
 
 echo "Starting WhatsApp login flow..."
 
@@ -26,4 +27,4 @@ exec node /home/node/whatsapp-linker.mjs \
   "${AGENT_ID}" \
   "${WEBHOOK_BASE_URL}" \
   "${GATEWAY_TOKEN}" \
-  "${OPENCLAW_HOME}"
+  "${AGENT_DATA_DIR}"
