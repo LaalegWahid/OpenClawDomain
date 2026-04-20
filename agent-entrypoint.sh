@@ -32,18 +32,19 @@ for _tool in python3 openclaw; do
   fi
 done
 
-# OpenClaw root stays at ~/.openclaw (where the binary expects it)
-OPENCLAW_HOME="/home/node/.openclaw"
+# Per-agent persistent storage on EFS (mounted at /home/node/.openclaw)
+AGENT_DATA_DIR="${AGENT_DATA_DIR:-/home/node/.openclaw}"
+AGENT_WORKSPACE="${AGENT_DATA_DIR}/workspace"
+
+# OpenClaw root on LOCAL (ephemeral) storage — conversation DB, cron, etc.
+# are NOT shared between agents. Only workspace + credentials come from EFS.
+OPENCLAW_HOME="/home/node/.openclaw-runtime"
 CONFIG_FILE="${OPENCLAW_HOME}/openclaw.json"
 AUTH_DIR="${OPENCLAW_HOME}/agents/main/agent"
 
-# Per-agent persistent storage on EFS (isolated per user/agent)
-AGENT_DATA_DIR="${AGENT_DATA_DIR:-${OPENCLAW_HOME}}"
-AGENT_WORKSPACE="${AGENT_DATA_DIR}/workspace"
-
 mkdir -p "${OPENCLAW_HOME}" "${AGENT_WORKSPACE}" "${AUTH_DIR}"
 
-# Symlink workspace → per-agent EFS path so OpenClaw finds skills at ./skills/
+# Symlink workspace → per-agent EFS path (skills, SOUL.md, MEMORY.md persist)
 ln -sfn "${AGENT_WORKSPACE}" "${OPENCLAW_HOME}/workspace"
 WORKSPACE="${OPENCLAW_HOME}/workspace"
 
@@ -424,6 +425,7 @@ echo "DEBUG [config] primary model = ${EFFECTIVE_AGENT_MODEL}"
 echo "OpenClaw agent starting | id=${AGENT_ID} type=${AGENT_TYPE} provider=${EFFECTIVE_PROVIDER}"
 
 export OPENCLAW_CONFIG_PATH="${CONFIG_FILE}"
+export OPENCLAW_HOME="${OPENCLAW_HOME}"
 
 # ── Channels, MCP, and auth profiles ─────────────────────────────────────────
 # agent-config.py handles: Discord/WhatsApp/MCP patches to openclaw.json,
