@@ -213,6 +213,14 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     fetch("/models.json").then(r => r.json()).then(setModelsCatalog).catch(() => {});
   }, [fetchAgents]);
 
+  // Auto-refresh while any agent is still starting
+  useEffect(() => {
+    const hasStarting = agents.some((a) => a.status === "starting");
+    if (!hasStarting) return;
+    const interval = setInterval(fetchAgents, 5000);
+    return () => clearInterval(interval);
+  }, [agents, fetchAgents]);
+
   const providerNames = Object.keys(modelsCatalog);
   const availableModels = apiProvider ? (modelsCatalog[apiProvider] ?? []) : [];
 
@@ -463,18 +471,34 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 
               <div style={{ height: "1px", background: "var(--border)" }} />
 
-              <Link href={`/overview/${ag.id}`} style={{ textDecoration: "none" }}>
-                <button style={{
-                  background: "transparent", color: "var(--foreground)",
-                  border: "1px solid var(--border)", borderRadius: "8px",
-                  padding: "10px", fontFamily: mono, fontSize: "12px",
-                  fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
-                  cursor: "pointer", width: "100%",
-                  transition: "border-color 0.15s, background 0.15s",
-                }}>
-                  View Agent
+              {ag.status === "active" ? (
+                <Link href={`/overview/${ag.id}`} style={{ textDecoration: "none" }}>
+                  <button style={{
+                    background: "transparent", color: "var(--foreground)",
+                    border: "1px solid var(--border)", borderRadius: "8px",
+                    padding: "10px", fontFamily: mono, fontSize: "12px",
+                    fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
+                    cursor: "pointer", width: "100%",
+                    transition: "border-color 0.15s, background 0.15s",
+                  }}>
+                    View Agent
+                  </button>
+                </Link>
+              ) : (
+                <button
+                  disabled
+                  style={{
+                    background: "transparent", color: "var(--foreground-3)",
+                    border: "1px solid var(--border)", borderRadius: "8px",
+                    padding: "10px", fontFamily: mono, fontSize: "12px",
+                    fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase",
+                    cursor: "not-allowed", width: "100%", opacity: 0.6,
+                    transition: "border-color 0.15s, background 0.15s",
+                  }}
+                >
+                  {ag.status === "starting" ? "Starting…" : ag.status === "error" ? "Error" : "Unavailable"}
                 </button>
-              </Link>
+              )}
             </div>
           ))}
         </div>
