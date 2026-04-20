@@ -17,6 +17,31 @@ import { getServiceEnabled } from "../../../../../shared/lib/service/status";
 
 const MAX_HISTORY = 20;
 
+function getAgentErrorMessage(errMsg: string, err: unknown): string {
+  if (errMsg.includes("ECONNREFUSED") || errMsg.includes("fetch failed")) {
+    return "The agent is starting up. Please try again in a few seconds.";
+  }
+  if (err instanceof Error && err.name === "TimeoutError") {
+    return "The agent took too long to respond. The AI model may be overloaded. Please try again shortly.";
+  }
+  if (errMsg.includes("403") && errMsg.toLowerCase().includes("key limit")) {
+    return "The AI provider's API key has reached its usage limit. Please contact the administrator or try again later.";
+  }
+  if (errMsg.includes("403")) {
+    return "The AI provider rejected the request (authorization issue). Please check your API key settings.";
+  }
+  if (errMsg.includes("429") || errMsg.toLowerCase().includes("rate limit")) {
+    return "The AI provider is rate-limiting requests. Please wait a moment and try again.";
+  }
+  if (errMsg.includes("500") || errMsg.includes("502") || errMsg.includes("503")) {
+    return "The AI provider is experiencing issues. Please try again in a few minutes.";
+  }
+  if (errMsg.includes("maximum iterations")) {
+    return "The agent's response was too complex to complete. Please try a simpler question.";
+  }
+  return "Something went wrong while processing your message. Please try again.";
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ agentId: string }> },
@@ -199,17 +224,12 @@ export async function POST(
     }).where(eq(agentLog.id, logEntry.id));
 
     logger.error({ agentId, jid, err }, "Failed to process WhatsApp message");
-    const isTimeout = err instanceof Error && err.name === "TimeoutError";
-    if (isTimeout) {
-      // Suppress timeout messages — let the user retry on their own.
-      cleanupChatAbort(agentId, jid, logEntry.id);
-      return NextResponse.json({ ok: true });
-    }
+    const errMsg = err instanceof Error ? err.message : "";
     // Inner try-catch: a DB insert failure must not prevent the JSON response
     try {
       await db.insert(agentActivity).values({
         agentId, type: "error",
-        message: `WhatsApp ${jid}: ${err instanceof Error ? err.message : "Unknown"}`,
+        message: `WhatsApp ${jid}: ${errMsg || "Unknown"}`,
       });
     } catch (dbErr) {
       logger.error({ agentId, jid, dbErr }, "Failed to record WhatsApp error activity");
@@ -217,7 +237,7 @@ export async function POST(
     cleanupChatAbort(agentId, jid, logEntry.id);
     return NextResponse.json({
       type: "text",
-      text: "🚀 The agent is warming up. Please send your message again in a few seconds!",
+      text: getAgentErrorMessage(errMsg, err),
     });
   }
 }

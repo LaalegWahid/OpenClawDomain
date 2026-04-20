@@ -21,6 +21,35 @@ import { getServiceEnabled } from "../../../../../shared/lib/service/status";
 
 const MAX_HISTORY = 20;
 
+function getAgentErrorMessage(errMsg: string, err: unknown): string {
+  // Connection refused — container is still starting
+  if (errMsg.includes("ECONNREFUSED") || errMsg.includes("fetch failed")) {
+    return "The agent is starting up. Please try again in a few seconds.";
+  }
+  // Timeout — agent took too long (model overloaded or billing issue)
+  if (err instanceof Error && err.name === "TimeoutError") {
+    return "The agent took too long to respond. The AI model may be overloaded. Please try again shortly.";
+  }
+  // API key / billing errors from the gateway
+  if (errMsg.includes("403") && errMsg.toLowerCase().includes("key limit")) {
+    return "The AI provider's API key has reached its usage limit. Please contact the administrator or try again later.";
+  }
+  if (errMsg.includes("403")) {
+    return "The AI provider rejected the request (authorization issue). Please check your API key settings.";
+  }
+  if (errMsg.includes("429") || errMsg.toLowerCase().includes("rate limit")) {
+    return "The AI provider is rate-limiting requests. Please wait a moment and try again.";
+  }
+  if (errMsg.includes("500") || errMsg.includes("502") || errMsg.includes("503")) {
+    return "The AI provider is experiencing issues. Please try again in a few minutes.";
+  }
+  if (errMsg.includes("maximum iterations")) {
+    return "The agent's response was too complex to complete. Please try a simpler question.";
+  }
+  // Generic fallback
+  return "Something went wrong while processing your message. Please try again.";
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ agentId: string }> },
@@ -191,14 +220,9 @@ export async function POST(
       }).where(eq(agentLog.id, logEntry.id));
 
       logger.error({ agentId, err }, "Failed to reach agent container");
-      const isTimeout = err instanceof Error && err.name === "TimeoutError";
-      if (!isTimeout) {
-        await sendMessage(
-          found.botToken,
-          chatId,
-          "🚀 The agent is warming up and will be ready shortly. Please send your message again in a few seconds!"
-        ).catch(() => {});
-      }
+      const errMsg = err instanceof Error ? err.message : "";
+      const userMessage = getAgentErrorMessage(errMsg, err);
+      await sendMessage(found.botToken, chatId, userMessage).catch(() => {});
     }
   } finally {
     cleanupChatAbort(agentId, chatId, logEntry.id);
