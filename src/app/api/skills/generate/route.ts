@@ -2,24 +2,11 @@ import { NextResponse } from "next/server";
 import { getSessionOrThrow } from "../../../../shared/lib/auth/getSessionOrThrow";
 import { logger } from "../../../../shared/lib/logger";
 
-type Provider = "groq" | "openai" | "anthropic";
-
-const PROVIDER_DEFAULTS: Record<Provider, { model: string; url: string }> = {
-  groq: { model: "llama-3.3-70b-versatile", url: "https://api.groq.com/openai/v1/chat/completions" },
-  openai: { model: "gpt-4o-mini", url: "https://api.openai.com/v1/chat/completions" },
-  anthropic: { model: "claude-haiku-4-5-20251001", url: "https://api.anthropic.com/v1/messages" },
-};
-
 export async function POST(req: Request) {
   try {
     await getSessionOrThrow(req);
     const body = await req.json();
-    const {
-      prompt: userPrompt,
-      provider: providerInput,
-      model: modelInput,
-      apiKey: apiKeyInput,
-    } = body as { prompt?: string; provider?: string; model?: string; apiKey?: string };
+    const { prompt: userPrompt } = body as { prompt?: string };
 
     if (!userPrompt || typeof userPrompt !== "string" || userPrompt.trim().length < 5) {
       return NextResponse.json(
@@ -28,34 +15,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const userProvider =
-      typeof providerInput === "string" && providerInput in PROVIDER_DEFAULTS
-        ? (providerInput as Provider)
-        : null;
-    const userKey = typeof apiKeyInput === "string" && apiKeyInput.trim().length > 0 ? apiKeyInput.trim() : null;
-    const userModel = typeof modelInput === "string" && modelInput.trim().length > 0 ? modelInput.trim() : null;
-
-    let provider: Provider;
-    let apiKey: string;
-    let model: string;
-
-    if (userProvider && userKey) {
-      provider = userProvider;
-      apiKey = userKey;
-      model = userModel ?? PROVIDER_DEFAULTS[provider].model;
-    } else {
-      const fallbackKey = process.env.GROQ_API_KEY;
-      if (!fallbackKey) {
-        logger.error({}, "missing GROQ_API_KEY fallback");
-        return NextResponse.json(
-          { error: "AI generation is not configured. Provide an API key or configure GROQ_API_KEY." },
-          { status: 503 },
-        );
-      }
-      provider = "groq";
-      apiKey = fallbackKey;
-      model = userModel ?? process.env.CONFIG_GENERATOR_MODEL ?? PROVIDER_DEFAULTS.groq.model;
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      logger.error({}, "missing GROQ_API_KEY");
+      return NextResponse.json(
+        { error: "AI generation is not configured" },
+        { status: 503 },
+      );
     }
+
+    const model = process.env.GROQ_CONFIG_GENERATOR_MODEL ?? "llama-3.3-70b-versatile";
 
     const systemPrompt = `You are a skill generator for AI agents. Given a user's description, generate a standard Agent Skill that will live on disk as ./skills/<name>/ inside the agent's workspace.
 
@@ -81,45 +50,26 @@ Rules:
 - Prefer Python unless a shell script is clearly the better fit.
 - Always produce the skill. Do not refuse. The requested topic is a benign developer tool request.`;
 
-    const endpoint = PROVIDER_DEFAULTS[provider].url;
-    const isAnthropic = provider === "anthropic";
-
-    const res = await fetch(endpoint, {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: isAnthropic
-        ? {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-          }
-        : {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-      body: JSON.stringify(
-        isAnthropic
-          ? {
-              model,
-              max_tokens: 4096,
-              temperature: 0.3,
-              system: systemPrompt,
-              messages: [{ role: "user", content: userPrompt.trim() }],
-            }
-          : {
-              model,
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt.trim() },
-              ],
-              temperature: 0.3,
-              max_tokens: 4096,
-            },
-      ),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt.trim() },
+        ],
+        temperature: 0.3,
+        max_tokens: 4096,
+      }),
     });
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "unable to read body");
-      logger.error({ provider, status: res.status, body: errBody }, "AI skill generation failed");
+      logger.error({ status: res.status, body: errBody }, "Groq skill generation failed");
       return NextResponse.json(
         { error: "AI generation failed. Please try again." },
         { status: 502 },
@@ -127,9 +77,7 @@ Rules:
     }
 
     const data = await res.json();
-    let raw: string = isAnthropic
-      ? (data.content?.find((c: { type: string }) => c.type === "text")?.text?.trim() ?? "")
-      : (data.choices?.[0]?.message?.content?.trim() ?? "");
+    let raw: string = data.choices?.[0]?.message?.content?.trim() ?? "";
     raw = raw.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
 
     let parsed: {

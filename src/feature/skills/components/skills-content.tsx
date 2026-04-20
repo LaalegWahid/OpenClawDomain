@@ -72,42 +72,12 @@ export function SkillsContent() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [aiPrompt, setAiPrompt] = useState("");
-  const [aiProvider, setAiProvider] = useState<"" | "groq" | "openai" | "anthropic">("");
-  const [aiModel, setAiModel] = useState("");
-  const [aiApiKey, setAiApiKey] = useState("");
-  const [showAiAdvanced, setShowAiAdvanced] = useState(false);
   const [aiDraft, setAiDraft] = useState<{
     name: string;
     description: string;
     instructions: string;
     files: Array<{ path: string; content: string }>;
   } | null>(null);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("skills.aiProviderConfig");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.provider) setAiProvider(parsed.provider);
-        if (parsed.model) setAiModel(parsed.model);
-        if (parsed.apiKey) setAiApiKey(parsed.apiKey);
-        if (parsed.provider || parsed.apiKey) setShowAiAdvanced(true);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "skills.aiProviderConfig",
-        JSON.stringify({ provider: aiProvider, model: aiModel, apiKey: aiApiKey }),
-      );
-    } catch {
-      // ignore
-    }
-  }, [aiProvider, aiModel, aiApiKey]);
 
   const [importDraft, setImportDraft] = useState<{ name: string; description: string; instructions: string } | null>(null);
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
@@ -153,12 +123,7 @@ export function SkillsContent() {
       const res = await fetch("/api/skills/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: aiPrompt,
-          provider: aiProvider || undefined,
-          model: aiModel.trim() || undefined,
-          apiKey: aiApiKey.trim() || undefined,
-        }),
+        body: JSON.stringify({ prompt: aiPrompt }),
       });
       const data = await res.json();
       if (!res.ok) { setCreateError(data.error || "Generation failed"); return; }
@@ -394,59 +359,6 @@ export function SkillsContent() {
             <div>
               {!aiDraft ? (
                 <>
-                  <div style={{ marginBottom: 12 }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowAiAdvanced((v) => !v)}
-                      style={{ background: "transparent", border: "none", padding: 0, fontSize: 12, fontWeight: 600, color: "var(--foreground-3)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
-                    >
-                      {showAiAdvanced ? "▾" : "▸"} AI provider {aiProvider && aiApiKey ? `(${aiProvider})` : "(using Groq fallback)"}
-                    </button>
-                  </div>
-                  {showAiAdvanced && (
-                    <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: 12, marginBottom: 16 }}>
-                      <p style={{ fontSize: 11, color: "var(--foreground-3)", margin: "0 0 12px" }}>
-                        Provide your own API key to use a specific provider. Leave blank to use the server&apos;s Groq fallback.
-                      </p>
-                      <div style={{ marginBottom: 10 }}>
-                        <label style={labelStyle}>Provider</label>
-                        <select
-                          value={aiProvider}
-                          onChange={(e) => setAiProvider(e.target.value as "" | "groq" | "openai" | "anthropic")}
-                          style={inputStyle}
-                        >
-                          <option value="">— Fallback (Groq server key) —</option>
-                          <option value="groq">Groq</option>
-                          <option value="openai">OpenAI</option>
-                          <option value="anthropic">Anthropic</option>
-                        </select>
-                      </div>
-                      <div style={{ marginBottom: 10 }}>
-                        <label style={labelStyle}>Model {aiProvider ? "" : "(optional)"}</label>
-                        <input
-                          value={aiModel}
-                          onChange={(e) => setAiModel(e.target.value)}
-                          placeholder={
-                            aiProvider === "openai" ? "gpt-4o-mini"
-                            : aiProvider === "anthropic" ? "claude-haiku-4-5-20251001"
-                            : "llama-3.3-70b-versatile"
-                          }
-                          style={inputStyle}
-                        />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>API Key {aiProvider ? "" : "(optional)"}</label>
-                        <input
-                          type="password"
-                          value={aiApiKey}
-                          onChange={(e) => setAiApiKey(e.target.value)}
-                          placeholder={aiProvider ? "Required for the selected provider" : "Leave blank to use server Groq key"}
-                          style={inputStyle}
-                          autoComplete="off"
-                        />
-                      </div>
-                    </div>
-                  )}
                   <label style={labelStyle}>Describe the skill you want</label>
                   <textarea
                     value={aiPrompt}
