@@ -203,7 +203,7 @@ export async function launchContainer(
         environment: [
           { name: "AGENT_ID",         value: agentId },
           { name: "AGENT_TYPE",       value: agentType },
-          { name: "OPENCLAW_HOME",    value: `/home/node/.openclaw/${userId}/${agentId}` },
+          { name: "OPENCLAW_HOME",    value: `/home/node/.openclaw` },
           { name: "AGENT_MODEL",      value: agentModel },
           { name: "WEBHOOK_BASE_URL", value: webhookBaseUrl },
           { name: "GATEWAY_TOKEN",    value: getGatewayToken() },
@@ -250,7 +250,7 @@ export async function launchWhatsappLinker(
         environment: [
           { name: "OPENCLAW_MODE",    value: "whatsapp_link" },
           { name: "AGENT_ID",         value: agentId },
-          { name: "OPENCLAW_HOME",    value: `/home/node/.openclaw/${userId}/${agentId}` },
+          { name: "OPENCLAW_HOME",    value: `/home/node/.openclaw` },
           { name: "WEBHOOK_BASE_URL", value: webhookBaseUrl },
           { name: "GATEWAY_TOKEN",    value: getGatewayToken() },
         ],
