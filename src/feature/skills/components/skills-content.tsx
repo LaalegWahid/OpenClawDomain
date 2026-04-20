@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, Loader2, Trash2, Pencil, FileText, Upload, Archive, Folder, File as FileIcon, X } from "lucide-react";
+import { Sparkles, Loader2, Trash2, Pencil, Upload, Archive, Folder, File as FileIcon, X } from "lucide-react";
 import { EditSkillModal } from "./edit-skill-modal";
 
 interface SkillRecord {
@@ -14,7 +14,7 @@ interface SkillRecord {
   createdAt: string;
 }
 
-type Tab = "ai" | "manual" | "import";
+type Tab = "ai" | "import";
 
 const skeleton: React.CSSProperties = {
   background: "linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%)",
@@ -72,11 +72,42 @@ export function SkillsContent() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [aiPrompt, setAiPrompt] = useState("");
-  const [aiDraft, setAiDraft] = useState<{ name: string; description: string; instructions: string } | null>(null);
+  const [aiProvider, setAiProvider] = useState<"" | "groq" | "openai" | "anthropic">("");
+  const [aiModel, setAiModel] = useState("");
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [showAiAdvanced, setShowAiAdvanced] = useState(false);
+  const [aiDraft, setAiDraft] = useState<{
+    name: string;
+    description: string;
+    instructions: string;
+    files: Array<{ path: string; content: string }>;
+  } | null>(null);
 
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [instructions, setInstructions] = useState("");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("skills.aiProviderConfig");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.provider) setAiProvider(parsed.provider);
+        if (parsed.model) setAiModel(parsed.model);
+        if (parsed.apiKey) setAiApiKey(parsed.apiKey);
+        if (parsed.provider || parsed.apiKey) setShowAiAdvanced(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "skills.aiProviderConfig",
+        JSON.stringify({ provider: aiProvider, model: aiModel, apiKey: aiApiKey }),
+      );
+    } catch {
+      // ignore
+    }
+  }, [aiProvider, aiModel, aiApiKey]);
 
   const [importDraft, setImportDraft] = useState<{ name: string; description: string; instructions: string } | null>(null);
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
@@ -122,11 +153,16 @@ export function SkillsContent() {
       const res = await fetch("/api/skills/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: aiPrompt }),
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          provider: aiProvider || undefined,
+          model: aiModel.trim() || undefined,
+          apiKey: aiApiKey.trim() || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setCreateError(data.error || "Generation failed"); return; }
-      setAiDraft(data.skill);
+      setAiDraft({ ...data.skill, files: Array.isArray(data.skill?.files) ? data.skill.files : [] });
     } catch {
       setCreateError("Network error. Please try again.");
     } finally {
@@ -134,18 +170,51 @@ export function SkillsContent() {
     }
   };
 
-  const handleSave = async (draft: { name: string; description: string; instructions: string }, source: string) => {
+  const handleSaveAi = async (draft: {
+    name: string;
+    description: string;
+    instructions: string;
+    files: Array<{ path: string; content: string }>;
+  }) => {
     setCreateError(null);
     setSubmitting(true);
     try {
       const res = await fetch("/api/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...draft, source }),
+        body: JSON.stringify({
+          name: draft.name,
+          description: draft.description,
+          instructions: draft.instructions,
+          source: "ai",
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setCreateError(data.error || "Failed to save skill"); return; }
-      setAiPrompt(""); setAiDraft(null); setName(""); setDescription(""); setInstructions("");
+
+      const escaped = (s: string) => s.replace(/"/g, '\\"');
+      const skillMd = `---\nname: ${draft.name}\ndescription: "${escaped(draft.description)}"\n---\n\n${draft.instructions}\n`;
+
+      const fileForm = new FormData();
+      const paths: string[] = [];
+      fileForm.append("files", new Blob([skillMd], { type: "text/markdown" }), "SKILL.md");
+      paths.push("SKILL.md");
+      for (const f of draft.files) {
+        const filename = f.path.split("/").pop()!;
+        const mime = f.path.endsWith(".py") ? "text/x-python" : "text/x-shellscript";
+        fileForm.append("files", new Blob([f.content], { type: mime }), filename);
+        paths.push(f.path);
+      }
+      fileForm.append("paths", JSON.stringify(paths));
+
+      const uploadRes = await fetch(`/api/skills/${data.skill.id}/files`, { method: "POST", body: fileForm });
+      if (!uploadRes.ok) {
+        const d = await uploadRes.json().catch(() => ({}));
+        setCreateError(d.error || "File upload failed");
+        return;
+      }
+
+      setAiPrompt(""); setAiDraft(null);
       setShowModal(false);
       fetchSkills();
     } catch {
@@ -229,7 +298,6 @@ export function SkillsContent() {
 
   const createTabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "ai", label: "AI Generate", icon: <Sparkles size={14} /> },
-    { key: "manual", label: "Manual", icon: <FileText size={14} /> },
     { key: "import", label: "Import", icon: <Upload size={14} /> },
   ];
 
@@ -275,7 +343,7 @@ export function SkillsContent() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <div>
                 <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--foreground)", margin: "0 0 4px" }}>Create Skill</h2>
-                <p style={{ fontSize: 13, color: "var(--foreground-3)", margin: 0 }}>Build a new skill using AI, write one manually, or import from a zip archive.</p>
+                <p style={{ fontSize: 13, color: "var(--foreground-3)", margin: 0 }}>Generate a new skill with AI or import one from a zip archive.</p>
               </div>
               <button
                 onClick={() => setShowModal(false)}
@@ -326,6 +394,59 @@ export function SkillsContent() {
             <div>
               {!aiDraft ? (
                 <>
+                  <div style={{ marginBottom: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAiAdvanced((v) => !v)}
+                      style={{ background: "transparent", border: "none", padding: 0, fontSize: 12, fontWeight: 600, color: "var(--foreground-3)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+                    >
+                      {showAiAdvanced ? "▾" : "▸"} AI provider {aiProvider && aiApiKey ? `(${aiProvider})` : "(using Groq fallback)"}
+                    </button>
+                  </div>
+                  {showAiAdvanced && (
+                    <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: 12, marginBottom: 16 }}>
+                      <p style={{ fontSize: 11, color: "var(--foreground-3)", margin: "0 0 12px" }}>
+                        Provide your own API key to use a specific provider. Leave blank to use the server&apos;s Groq fallback.
+                      </p>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={labelStyle}>Provider</label>
+                        <select
+                          value={aiProvider}
+                          onChange={(e) => setAiProvider(e.target.value as "" | "groq" | "openai" | "anthropic")}
+                          style={inputStyle}
+                        >
+                          <option value="">— Fallback (Groq server key) —</option>
+                          <option value="groq">Groq</option>
+                          <option value="openai">OpenAI</option>
+                          <option value="anthropic">Anthropic</option>
+                        </select>
+                      </div>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={labelStyle}>Model {aiProvider ? "" : "(optional)"}</label>
+                        <input
+                          value={aiModel}
+                          onChange={(e) => setAiModel(e.target.value)}
+                          placeholder={
+                            aiProvider === "openai" ? "gpt-4o-mini"
+                            : aiProvider === "anthropic" ? "claude-haiku-4-5-20251001"
+                            : "llama-3.3-70b-versatile"
+                          }
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>API Key {aiProvider ? "" : "(optional)"}</label>
+                        <input
+                          type="password"
+                          value={aiApiKey}
+                          onChange={(e) => setAiApiKey(e.target.value)}
+                          placeholder={aiProvider ? "Required for the selected provider" : "Leave blank to use server Groq key"}
+                          style={inputStyle}
+                          autoComplete="off"
+                        />
+                      </div>
+                    </div>
+                  )}
                   <label style={labelStyle}>Describe the skill you want</label>
                   <textarea
                     value={aiPrompt}
@@ -367,37 +488,30 @@ export function SkillsContent() {
                     <button onClick={() => setAiDraft(null)} style={{ flex: 1, padding: "10px 0", background: "var(--surface-2)", color: "var(--foreground)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                       Start Over
                     </button>
-                    <button onClick={() => handleSave(aiDraft, "ai")} disabled={submitting} style={{ flex: 1, padding: "10px 0", background: submitting ? "var(--surface-2)" : "#FF4D00", color: submitting ? "var(--foreground-3)" : "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: submitting ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <button onClick={() => handleSaveAi(aiDraft)} disabled={submitting} style={{ flex: 1, padding: "10px 0", background: submitting ? "var(--surface-2)" : "#FF4D00", color: submitting ? "var(--foreground-3)" : "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: submitting ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                       {submitting ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null} Save Skill
                     </button>
                   </div>
+                  {aiDraft.files.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <label style={labelStyle}>Generated files ({aiDraft.files.length + 1})</label>
+                      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 0" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", fontSize: 12 }}>
+                          <FileIcon size={13} style={{ color: "var(--foreground-3)", flexShrink: 0 }} />
+                          <span style={{ color: "var(--foreground)", flex: 1 }}>SKILL.md</span>
+                        </div>
+                        {aiDraft.files.map((f, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", fontSize: 12 }}>
+                            <Folder size={13} style={{ color: "#FF4D00", flexShrink: 0 }} />
+                            <span style={{ color: "var(--foreground)", flex: 1 }}>{f.path}</span>
+                            <span style={{ color: "var(--foreground-3)", flexShrink: 0 }}>{f.content.length} B</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
-            </div>
-          )}
-
-          {/* Manual */}
-          {tab === "manual" && (
-            <div>
-              <div style={{ marginBottom: 12 }}>
-                <label style={labelStyle}>Name (slug)</label>
-                <input value={name} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))} placeholder="e.g. sentiment-analysis" style={inputStyle} />
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <label style={labelStyle}>Description</label>
-                <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="One sentence about what this skill does" style={inputStyle} />
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>Instructions</label>
-                <textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Detailed instructions for the agent on how to use this skill..." rows={5} style={{ ...inputStyle, resize: "vertical" }} />
-              </div>
-              <button
-                onClick={() => handleSave({ name, description, instructions }, "manual")}
-                disabled={submitting || !name || !description || !instructions}
-                style={{ width: "100%", padding: "10px 0", background: submitting || !name || !description || !instructions ? "var(--surface-2)" : "#FF4D00", color: submitting || !name || !description || !instructions ? "var(--foreground-3)" : "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: submitting || !name || !description || !instructions ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
-              >
-                {submitting ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : null} Save Skill
-              </button>
             </div>
           )}
 
