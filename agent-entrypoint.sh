@@ -128,12 +128,10 @@ print(f"DEBUG [skills] Materialized {len(skills)} skill(s), {total_files} file(s
 PYEOF
 fi
 
-# ── Role files: only write on FIRST launch ──────────────────
-# If SOUL.md already exists on EFS, this is a restart — preserve it
-if [ ! -f "${WORKSPACE}/SOUL.md" ]; then
-  echo "First launch — writing role files for ${AGENT_TYPE}"
+# ── Role files: write every launch to match the agent type ──────────────────
+echo "Writing role files for ${AGENT_TYPE}"
 
-  case "${AGENT_TYPE}" in
+case "${AGENT_TYPE}" in
     "finance")
       cat > "${WORKSPACE}/SOUL.md" << 'EOF'
 # Identity
@@ -226,7 +224,6 @@ role: ${PRETTY_TYPE} Agent
 EOF
       ;;
   esac
-fi
 
 # TOOLS.md: rewrite every launch (static content, must stay in sync with runtime)
 cat > "${WORKSPACE}/TOOLS.md" << 'EOF'
