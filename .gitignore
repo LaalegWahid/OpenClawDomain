@@ -63,4 +63,5 @@ docker_build_push.sh
 *.pem
 *.txt
 deploy-commands.md
+aws_cred.txt
 /mcp-test-server

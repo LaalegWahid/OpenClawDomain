@@ -6,6 +6,7 @@ import { AdminContent } from "../../../feature/admin/components/admin-content";
 import { db } from "../../../shared/lib/drizzle";
 import { user, agent, agentLog, agentCreationFeedback } from "../../../shared/db/schema";
 import { sql, desc, eq } from "drizzle-orm";
+import { getVisitStats } from "../../../shared/lib/rum/visits";
 
 export default async function AdminPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -25,6 +26,7 @@ export default async function AdminPage() {
     userGrowthRows,
     agentActivityRows,
     feedbackRows,
+    visitStats,
   ] = await Promise.all([
       db.select({ totalUsers: sql<number>`count(*)::int` }).from(user),
       db.select({ totalAgents: sql<number>`count(*)::int` }).from(agent),
@@ -99,6 +101,7 @@ export default async function AdminPage() {
         .leftJoin(agent, eq(agentCreationFeedback.agentId, agent.id))
         .leftJoin(user, eq(agentCreationFeedback.userId, user.id))
         .orderBy(desc(agentCreationFeedback.createdAt)),
+      getVisitStats(),
     ]);
 
   const userGrowth = (userGrowthRows as unknown as { rows?: Array<{ day: string; count: number }> }).rows ??
@@ -142,6 +145,7 @@ export default async function AdminPage() {
         userName: f.userName,
       }))}
       avgRating={avgRating}
+      visits={visitStats}
     />
   );
 }
