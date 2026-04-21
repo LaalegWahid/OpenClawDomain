@@ -21,28 +21,23 @@ import { getServiceEnabled } from "../../../../../shared/lib/service/status";
 
 const MAX_HISTORY = 20;
 
-// Telegram retries any webhook that doesn't ack within ~60s. Without dedup,
-// a slow agent response causes the same update to be delivered multiple
-// times, and the user sees the reply (or timeout error) repeated.
-const UPDATE_TTL_MS = 5 * 60_000;
-const seenUpdates = new Map<number, number>();
+const TIMEOUT_WORDS = [
+  "Thinking...",
+  "Imagining...",
+  "Discombobulating...",
+  "Pondering...",
+  "Cogitating...",
+  "Mulling...",
+  "Percolating...",
+  "Ruminating...",
+  "Marinating...",
+  "Brewing...",
+  "Conjuring...",
+  "Untangling...",
+];
 
-function markUpdateSeen(id: number) {
-  seenUpdates.set(id, Date.now() + UPDATE_TTL_MS);
-  if (seenUpdates.size > 1000) {
-    const now = Date.now();
-    for (const [k, v] of seenUpdates) if (v <= now) seenUpdates.delete(k);
-  }
-}
-
-function isUpdateSeen(id: number): boolean {
-  const expiresAt = seenUpdates.get(id);
-  if (!expiresAt) return false;
-  if (expiresAt <= Date.now()) {
-    seenUpdates.delete(id);
-    return false;
-  }
-  return true;
+function randomTimeoutWord(): string {
+  return TIMEOUT_WORDS[Math.floor(Math.random() * TIMEOUT_WORDS.length)];
 }
 
 function getAgentErrorMessage(errMsg: string, err: unknown): string {
@@ -50,9 +45,11 @@ function getAgentErrorMessage(errMsg: string, err: unknown): string {
   if (errMsg.includes("ECONNREFUSED") || errMsg.includes("fetch failed")) {
     return "The agent is starting up. Please try again in a few seconds.";
   }
-  // Timeout — agent took too long (model overloaded or billing issue)
+  // Timeout — Telegram retries the webhook, so the user would otherwise see
+  // the same long error repeated. Send a short whimsical word instead so the
+  // repeated deliveries read as status pings rather than spam.
   if (err instanceof Error && err.name === "TimeoutError") {
-    return "The agent took too long to respond. The AI model may be overloaded. Please try again shortly.";
+    return randomTimeoutWord();
   }
   // API key / billing errors from the gateway
   if (errMsg.includes("403") && errMsg.toLowerCase().includes("key limit")) {
@@ -84,36 +81,20 @@ export async function POST(
   }
 
   const { agentId } = await params;
-  const body = await req.json();
-  const updateId = typeof body?.update_id === "number" ? body.update_id : undefined;
 
-  if (updateId !== undefined && isUpdateSeen(updateId)) {
-    return NextResponse.json({ ok: true });
-  }
-  if (updateId !== undefined) markUpdateSeen(updateId);
-
-  // Ack Telegram immediately; processing the agent response can take much
-  // longer than Telegram's ~60s retry window.
-  void processUpdate(agentId, body).catch((err) => {
-    logger.error({ agentId, err }, "Unhandled error processing Telegram update");
-  });
-
-  return NextResponse.json({ ok: true });
-}
-
-async function processUpdate(agentId: string, body: any): Promise<void> {
   // Global kill-switch: drop the message silently so no tokens are consumed
   const serviceEnabled = await getServiceEnabled();
   if (!serviceEnabled) {
     logger.info({ agentId }, "Service blocked — message dropped");
-    return;
+    return NextResponse.json({ ok: true });
   }
 
   const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
-  if (!found) return;
+  if (!found) return NextResponse.json({ ok: true });
 
+  const body = await req.json();
   const message = body?.message;
-  if (!message?.text) return;
+  if (!message?.text) return NextResponse.json({ ok: true });
 
   const chatId = String(message.chat.id);
   const text = message.text.trim();
@@ -128,20 +109,20 @@ async function processUpdate(agentId: string, body: any): Promise<void> {
       chatId,
       cancelled ? "✋ Cancelled." : "Nothing to cancel.",
     ).catch(() => {});
-    return;
+    return NextResponse.json({ ok: true });
   }
 
   if (found.status === "stopped") {
     await sendMessage(found.botToken, chatId, "This agent has been stopped. Please restart it from the dashboard.").catch(() => {});
-    return;
+    return NextResponse.json({ ok: true });
   }
   if (found.status === "starting" || !found.containerId) {
     await sendMessage(found.botToken, chatId, "Agent is starting up, please try again in a moment.").catch(() => {});
-    return;
+    return NextResponse.json({ ok: true });
   }
   if (found.status === "error") {
     await sendMessage(found.botToken, chatId, "This agent encountered an error. Please check the dashboard.").catch(() => {});
-    return;
+    return NextResponse.json({ ok: true });
   }
 
   const [session] = await db
@@ -267,4 +248,6 @@ async function processUpdate(agentId: string, body: any): Promise<void> {
   } finally {
     cleanupChatAbort(agentId, chatId, logEntry.id);
   }
+
+  return NextResponse.json({ ok: true });
 }
