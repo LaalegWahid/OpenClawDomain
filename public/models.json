@@ -81,6 +81,7 @@
     "mistralai/devstral-medium-latest",
     "meta-llama/llama-3.3-70b-instruct",
     "meta-llama/llama-3.1-8b-instruct",
+    "nvidia/nemotron-3-super-120b-a12b:free",
     "qwen/qwen3-32b",
     "qwen/qwen3-235b-a22b",
     "qwen/qwen3.6-plus",
