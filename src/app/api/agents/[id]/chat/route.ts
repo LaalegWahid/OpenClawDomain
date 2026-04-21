@@ -20,6 +20,25 @@ import { getServiceEnabled } from "../../../../../shared/lib/service/status";
 
 const MAX_HISTORY = 20;
 
+const TIMEOUT_WORDS = [
+  "Thinking...",
+  "Imagining...",
+  "Discombobulating...",
+  "Pondering...",
+  "Cogitating...",
+  "Mulling...",
+  "Percolating...",
+  "Ruminating...",
+  "Marinating...",
+  "Brewing...",
+  "Conjuring...",
+  "Untangling...",
+];
+
+function randomTimeoutWord(): string {
+  return TIMEOUT_WORDS[Math.floor(Math.random() * TIMEOUT_WORDS.length)];
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -174,8 +193,15 @@ export async function POST(
 
       logger.error({ agentId: id, err }, "Failed to reach agent container");
       const isTimeout = err instanceof Error && err.name === "TimeoutError";
+      // On timeout, reply with a short whimsical word rendered as an
+      // assistant message instead of a red error banner. History is not
+      // updated (we fell through the catch), so the placeholder doesn't
+      // pollute future context.
+      if (isTimeout) {
+        return NextResponse.json({ reply: randomTimeoutWord() });
+      }
       return NextResponse.json(
-        { error: isAbort ? "Task was aborted." : isTimeout ? "Processing took too long, please try again." : "Failed to reach the agent. It may be starting up — try again shortly." },
+        { error: isAbort ? "Task was aborted." : "Failed to reach the agent. It may be starting up — try again shortly." },
         { status: isAbort ? 499 : 502 },
       );
     } finally {
