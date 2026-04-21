@@ -16,6 +16,9 @@ import {
   MessageSquare,
   Star,
   TrendingUp,
+  Eye,
+  Globe,
+  AlertCircle,
 } from "lucide-react";
 import { authClient } from "../../../shared/lib/auth/client";
 
@@ -82,6 +85,25 @@ interface FeedbackRow {
   userName: string | null;
 }
 
+interface RecentVisit {
+  timestamp: string;
+  url: string;
+  pageId: string;
+  referrer: string | null;
+  sessionId: string;
+  deviceType: string | null;
+  browserName: string | null;
+  country: string | null;
+}
+
+interface VisitStats {
+  totalVisits: number;
+  uniqueSessions: number;
+  dailyVisits: SeriesPoint[];
+  recent: RecentVisit[];
+  error: string | null;
+}
+
 interface AdminContentProps {
   initialEnabled: boolean;
   stats: {
@@ -96,6 +118,7 @@ interface AdminContentProps {
   agentActivity: SeriesPoint[];
   feedback: FeedbackRow[];
   avgRating: number;
+  visits: VisitStats;
 }
 
 export function AdminContent({
@@ -107,6 +130,7 @@ export function AdminContent({
   agentActivity,
   feedback,
   avgRating,
+  visits,
 }: AdminContentProps) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [loading, setLoading] = useState(false);
@@ -504,6 +528,149 @@ export function AdminContent({
           </Card>
         </div>
 
+        {/* Site Visits (AWS CloudWatch RUM) */}
+        <Card
+          title="Site Visits"
+          icon={<Eye size={16} />}
+          action={
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 14, fontSize: 12, color: MUTED }}>
+              <span>
+                <span style={{ fontWeight: 700, color: INK, fontFamily: "var(--serif)", fontSize: 16 }}>
+                  {visits.totalVisits}
+                </span>{" "}
+                views
+              </span>
+              <span>
+                <span style={{ fontWeight: 700, color: INK, fontFamily: "var(--serif)", fontSize: 16 }}>
+                  {visits.uniqueSessions}
+                </span>{" "}
+                sessions · 30d
+              </span>
+            </div>
+          }
+        >
+          {visits.error && (
+            <div
+              style={{
+                marginBottom: 12,
+                fontSize: 12,
+                color: "#c83426",
+                background: "rgba(200,52,38,0.08)",
+                border: "1px solid rgba(200,52,38,0.25)",
+                borderRadius: 8,
+                padding: "8px 12px",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <AlertCircle size={14} />
+              {visits.error}
+            </div>
+          )}
+
+          <LineChart data={visits.dailyVisits} color="#2a1f19" fill="rgba(42,31,25,0.08)" />
+
+          <div style={{ marginTop: 16 }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: MUTED,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                marginBottom: 8,
+              }}
+            >
+              Recent Visits
+            </div>
+            {visits.recent.length === 0 ? (
+              <div style={{ padding: "20px 0", textAlign: "center", color: MUTED, fontSize: 13 }}>
+                No visits recorded yet.
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto", maxHeight: 360, overflowY: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: MUTED, position: "sticky", top: 0, background: CARD }}>
+                      {["When", "Page", "Referrer", "Device", "Session"].map((h) => (
+                        <th
+                          key={h}
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.04em",
+                            padding: "8px 12px",
+                            borderBottom: `1px solid ${BORDER}`,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visits.recent.map((v, i) => (
+                      <tr key={`${v.sessionId}-${v.timestamp}-${i}`} className="oc-row" style={{ borderBottom: `1px solid ${BORDER}` }}>
+                        <td style={{ padding: "10px 12px", color: MUTED, whiteSpace: "nowrap" }}>
+                          {new Date(v.timestamp).toLocaleString()}
+                        </td>
+                        <td
+                          style={{
+                            padding: "10px 12px",
+                            maxWidth: 320,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={v.url || v.pageId}
+                        >
+                          <span style={{ fontFamily: "monospace" }}>{v.pageId || v.url || "—"}</span>
+                        </td>
+                        <td
+                          style={{
+                            padding: "10px 12px",
+                            color: MUTED,
+                            maxWidth: 220,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={v.referrer ?? ""}
+                        >
+                          {v.referrer ? (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <Globe size={11} /> {shortenReferrer(v.referrer)}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 12px", color: MUTED, whiteSpace: "nowrap" }}>
+                          {[v.deviceType, v.browserName].filter(Boolean).join(" · ") || "—"}
+                        </td>
+                        <td
+                          style={{
+                            padding: "10px 12px",
+                            color: MUTED,
+                            fontFamily: "monospace",
+                            fontSize: 11,
+                          }}
+                          title={v.sessionId}
+                        >
+                          {v.sessionId ? v.sessionId.slice(0, 8) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </Card>
+
         {/* Feedback */}
         <Card
           title="Feedback"
@@ -857,6 +1024,15 @@ function BarChart({ data, color }: { data: SeriesPoint[]; color: string }) {
       </div>
     </div>
   );
+}
+
+function shortenReferrer(ref: string): string {
+  try {
+    const u = new URL(ref);
+    return u.hostname.replace(/^www\./, "") + (u.pathname === "/" ? "" : u.pathname);
+  } catch {
+    return ref;
+  }
 }
 
 function formatDay(d: string) {

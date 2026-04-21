@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-ecs": "^3.1012.0",
+    "@aws-sdk/client-rum": "^3.1033.0",
     "@aws-sdk/client-s3": "^3.1025.0",
     "@aws-sdk/s3-request-presigner": "^3.1025.0",
     "@google/generative-ai": "^0.24.1",
