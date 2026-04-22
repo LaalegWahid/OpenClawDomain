@@ -209,7 +209,7 @@ async function generateViaOpenRouter(domain: string): Promise<DomainConfig> {
   if (!apiKey) throw new Error("OPENROUTER_CONFIG_KEY is not set — cannot generate config for dynamic agent type");
 
   const envModel = (process.env.CONFIG_GENERATOR_MODEL ?? "").trim().replace(/^["']|["']$/g, "");
-  const model = envModel || "meta-llama/llama-3.3-70b-instruct:free";
+  const model = envModel || "openrouter/free";
 
   const prompt = `You are a configuration generator. Given a domain/field, generate a specialized AI agent config.
 
