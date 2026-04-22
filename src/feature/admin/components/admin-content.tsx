@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import {
   Users,
   Bot,
@@ -19,6 +20,7 @@ import {
   Eye,
   Globe,
   AlertCircle,
+  Terminal,
 } from "lucide-react";
 import { authClient } from "../../../shared/lib/auth/client";
 
@@ -39,6 +41,8 @@ const pageStyles = `
   .oc-btn-primary { transition: transform 0.18s ease, box-shadow 0.18s ease; }
   .oc-btn-primary:hover { transform: translateY(-1px); box-shadow: ${ACCENT_GLOW}; }
   .oc-row:hover { background: rgba(42,31,25,0.03); }
+  .oc-agent-link { transition: border-color 0.15s ease, color 0.15s ease; }
+  a:hover .oc-agent-link { border-bottom-color: ${ACCENT}; color: ${ACCENT}; }
 `;
 
 interface UserRow {
@@ -94,6 +98,8 @@ interface RecentVisit {
   deviceType: string | null;
   browserName: string | null;
   country: string | null;
+  subdivision: string | null;
+  city: string | null;
 }
 
 interface VisitStats {
@@ -593,7 +599,7 @@ export function AdminContent({
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr style={{ textAlign: "left", color: MUTED, position: "sticky", top: 0, background: CARD }}>
-                      {["When", "Page", "Referrer", "Device", "Session"].map((h) => (
+                      {["When", "Page", "Location", "Referrer", "Device", "Session"].map((h) => (
                         <th
                           key={h}
                           style={{
@@ -628,6 +634,19 @@ export function AdminContent({
                           title={v.url || v.pageId}
                         >
                           <span style={{ fontFamily: "monospace" }}>{v.pageId || v.url || "—"}</span>
+                        </td>
+                        <td
+                          style={{
+                            padding: "10px 12px",
+                            color: MUTED,
+                            maxWidth: 200,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={formatLocation(v, true) || "Unknown"}
+                        >
+                          {formatLocation(v, false) || "—"}
                         </td>
                         <td
                           style={{
@@ -785,6 +804,7 @@ export function AdminContent({
                     "Model",
                     "Container",
                     "Created",
+                    "",
                   ].map((h) => (
                     <th
                       key={h}
@@ -807,8 +827,20 @@ export function AdminContent({
                 {filteredAgents.map((a) => (
                   <tr key={a.id} className="oc-row" style={{ borderBottom: `1px solid ${BORDER}` }}>
                     <td style={{ padding: "12px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
-                        {a.name}
+                      <Link
+                        href={`/admin/agents/${a.id}/logs`}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontWeight: 600,
+                          color: INK,
+                          textDecoration: "none",
+                        }}
+                      >
+                        <span style={{ borderBottom: "1px dashed transparent" }} className="oc-agent-link">
+                          {a.name}
+                        </span>
                         {a.isPrimary && (
                           <span
                             style={{
@@ -824,7 +856,7 @@ export function AdminContent({
                             PRIMARY
                           </span>
                         )}
-                      </div>
+                      </Link>
                       <div style={{ fontSize: 12, color: MUTED }}>@{a.botUsername}</div>
                     </td>
                     <td style={{ padding: "12px" }}>
@@ -893,11 +925,31 @@ export function AdminContent({
                     <td style={{ padding: "12px", color: MUTED, fontSize: 12, whiteSpace: "nowrap" }}>
                       {new Date(a.createdAt).toLocaleDateString()}
                     </td>
+                    <td style={{ padding: "12px", textAlign: "right" }}>
+                      <Link
+                        href={`/admin/agents/${a.id}/logs`}
+                        title="View ECS logs"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: MUTED,
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 8,
+                          padding: "6px 10px",
+                          textDecoration: "none",
+                        }}
+                      >
+                        <Terminal size={13} /> Logs
+                      </Link>
+                    </td>
                   </tr>
                 ))}
                 {filteredAgents.length === 0 && (
                   <tr>
-                    <td colSpan={8} style={{ padding: "28px 12px", textAlign: "center", color: MUTED, fontSize: 13 }}>
+                    <td colSpan={9} style={{ padding: "28px 12px", textAlign: "center", color: MUTED, fontSize: 13 }}>
                       No agents match this search.
                     </td>
                   </tr>
@@ -1024,6 +1076,16 @@ function BarChart({ data, color }: { data: SeriesPoint[]; color: string }) {
       </div>
     </div>
   );
+}
+
+function formatLocation(
+  v: { country: string | null; subdivision: string | null; city: string | null },
+  full: boolean,
+): string {
+  const parts = full
+    ? [v.city, v.subdivision, v.country]
+    : [v.city, v.country];
+  return parts.filter((p): p is string => Boolean(p && p.trim())).join(", ");
 }
 
 function shortenReferrer(ref: string): string {
