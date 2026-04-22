@@ -133,10 +133,7 @@ function PlatformIcon({ platform }: { platform: "telegram" | "discord" | "whatsa
 }
 
 const MCP_TEMPLATES = [
-  { name: "Notion", transport: "http" as const, configPlaceholder: { url: "https://mcp.notion.so", headers: { Authorization: "Bearer TOKEN" } } },
-  { name: "Google Calendar", transport: "http" as const, configPlaceholder: { url: "https://mcp.googleapis.com/calendar", headers: { Authorization: "Bearer TOKEN" } } },
   { name: "GitHub", transport: "stdio" as const, configPlaceholder: { command: "npx", args: ["@modelcontextprotocol/server-github"] } },
-  { name: "Filesystem", transport: "stdio" as const, configPlaceholder: { command: "npx", args: ["@modelcontextprotocol/server-filesystem", "/workspace"] } },
 ];
 
 type Tab = "info" | "playground" | "aiSettings" | "platforms" | "skills" | "mcp" | "activity";
@@ -207,8 +204,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [showAddMcp, setShowAddMcp] = useState(false);
   const [mcpName, setMcpName] = useState("");
-  const [mcpTransport, setMcpTransport] = useState<"stdio" | "http">("http");
-  const [mcpUrl, setMcpUrl] = useState("");
+  const [mcpTransport] = useState<"stdio">("stdio");
   const [mcpCommand, setMcpCommand] = useState("npx");
   const [mcpArgs, setMcpArgs] = useState("");
   const [addingMcp, setAddingMcp] = useState(false);
@@ -430,24 +426,16 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
 
   const applyMcpTemplate = (tpl: (typeof MCP_TEMPLATES)[number]) => {
     setMcpName(tpl.name);
-    setMcpTransport(tpl.transport);
-    if (tpl.transport === "http") {
-      setMcpUrl((tpl.configPlaceholder as { url: string }).url);
-    } else {
-      const cfg = tpl.configPlaceholder as { command: string; args: string[] };
-      setMcpCommand(cfg.command);
-      setMcpArgs(cfg.args.join(" "));
-    }
+    const cfg = tpl.configPlaceholder as { command: string; args: string[] };
+    setMcpCommand(cfg.command);
+    setMcpArgs(cfg.args.join(" "));
   };
 
   const handleAddMcp = async () => {
     setAddingMcp(true);
     setError(null);
     try {
-      const config =
-        mcpTransport === "http"
-          ? { url: mcpUrl }
-          : { command: mcpCommand, args: mcpArgs.split(" ").filter(Boolean) };
+      const config = { command: mcpCommand, args: mcpArgs.split(" ").filter(Boolean) };
       const res = await fetch(`/api/agents/${agentId}/mcp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -458,7 +446,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
         setError(data.error ?? "Failed to add MCP server");
         return;
       }
-      setMcpName(""); setMcpUrl(""); setMcpArgs(""); setMcpCommand("npx");
+      setMcpName(""); setMcpArgs(""); setMcpCommand("npx");
       setShowAddMcp(false);
       await fetchMcp();
     } catch {
@@ -1517,64 +1505,34 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                         </div>
                       </div>
                       <Input
-                        placeholder="Server name (e.g. Notion)"
+                        placeholder="Server name (e.g. GitHub)"
                         value={mcpName}
                         onChange={(e) => setMcpName(e.target.value)}
                       />
                       <div style={{ display: "flex", gap: 6 }}>
-                        {(["http", "stdio"] as const).map((t) => (
+                        {["npx", "node", "python3"].map((cmd) => (
                           <button
-                            key={t}
-                            onClick={() => setMcpTransport(t)}
+                            key={cmd}
+                            onClick={() => setMcpCommand(cmd)}
                             style={{
-                              padding: "4px 12px",
+                              padding: "2px 10px",
                               fontSize: 11,
-                              fontWeight: 600,
-                              borderRadius: 999,
-                              border: `1px solid ${mcpTransport === t ? ACCENT : BORDER}`,
-                              background: mcpTransport === t ? ACCENT_SOFT : "transparent",
-                              color: mcpTransport === t ? ACCENT : MUTED,
+                              borderRadius: 6,
+                              background: mcpCommand === cmd ? ACCENT_SOFT : "rgba(42,31,25,0.05)",
+                              border: `1px solid ${mcpCommand === cmd ? ACCENT : BORDER}`,
+                              color: mcpCommand === cmd ? ACCENT : INK,
                               cursor: "pointer",
                             }}
                           >
-                            {t === "http" ? "HTTP / SSE" : "Stdio"}
+                            {cmd}
                           </button>
                         ))}
                       </div>
-                      {mcpTransport === "http" ? (
-                        <Input
-                          placeholder="Server URL (https://...)"
-                          value={mcpUrl}
-                          onChange={(e) => setMcpUrl(e.target.value)}
-                        />
-                      ) : (
-                        <>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            {["npx", "node", "python3"].map((cmd) => (
-                              <button
-                                key={cmd}
-                                onClick={() => setMcpCommand(cmd)}
-                                style={{
-                                  padding: "2px 10px",
-                                  fontSize: 11,
-                                  borderRadius: 6,
-                                  background: mcpCommand === cmd ? ACCENT_SOFT : "rgba(42,31,25,0.05)",
-                                  border: `1px solid ${mcpCommand === cmd ? ACCENT : BORDER}`,
-                                  color: mcpCommand === cmd ? ACCENT : INK,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {cmd}
-                              </button>
-                            ))}
-                          </div>
-                          <Input
-                            placeholder="Args (e.g. @notionhq/mcp --token TOKEN)"
-                            value={mcpArgs}
-                            onChange={(e) => setMcpArgs(e.target.value)}
-                          />
-                        </>
-                      )}
+                      <Input
+                        placeholder="Args (e.g. @modelcontextprotocol/server-github)"
+                        value={mcpArgs}
+                        onChange={(e) => setMcpArgs(e.target.value)}
+                      />
                       <div style={{ display: "flex", gap: 8 }}>
                         <Button
                           size="sm"

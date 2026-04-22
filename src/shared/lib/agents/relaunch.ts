@@ -60,12 +60,10 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
   }
 
   // ── 5. Build MCP config ───────────────────────────────────────────────────
+  // Pass config flat — OpenClaw expects { command, args } directly, not wrapped.
   const mcpConfig: Record<string, McpServerConfig> = {};
   for (const srv of mcpRows.filter((s) => s.enabled)) {
-    mcpConfig[srv.serverName] = {
-      transport: srv.transport as McpServerConfig["transport"],
-      config: srv.config as Record<string, unknown>,
-    };
+    mcpConfig[srv.serverName] = srv.config as McpServerConfig;
   }
 
   // ── 6. Decrypt per-agent API keys ─────────────────────────────────────────

@@ -6,24 +6,16 @@ import { eq, and } from "drizzle-orm";
 import { logger } from "../../../../../shared/lib/logger";
 import { relaunchAgentWithChannels } from "../../../../../shared/lib/agents/relaunch";
 
-const ALLOWED_TRANSPORTS = ["stdio", "http"] as const;
-
 // Allowlisted stdio packages to prevent arbitrary code execution
 const ALLOWED_STDIO_COMMANDS = ["npx", "node", "python3", "python", "uvx"];
 
 function validateMcpConfig(transport: string, config: Record<string, unknown>): string | null {
-  if (!ALLOWED_TRANSPORTS.includes(transport as "stdio" | "http")) {
-    return "transport must be: stdio or http";
+  if (transport !== "stdio") {
+    return "Only stdio transport is supported";
   }
-  if (transport === "stdio") {
-    if (!config.command || typeof config.command !== "string") return "stdio requires config.command";
-    if (!ALLOWED_STDIO_COMMANDS.includes(config.command)) {
-      return `stdio command must be one of: ${ALLOWED_STDIO_COMMANDS.join(", ")}`;
-    }
-  }
-  if (transport === "http") {
-    if (!config.url || typeof config.url !== "string") return "http requires config.url";
-    try { new URL(config.url as string); } catch { return "config.url must be a valid URL"; }
+  if (!config.command || typeof config.command !== "string") return "stdio requires config.command";
+  if (!ALLOWED_STDIO_COMMANDS.includes(config.command)) {
+    return `stdio command must be one of: ${ALLOWED_STDIO_COMMANDS.join(", ")}`;
   }
   return null;
 }
