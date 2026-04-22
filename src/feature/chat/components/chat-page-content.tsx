@@ -102,25 +102,28 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
         body: JSON.stringify({ message: text }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        setError(data.error || "Failed to send message");
-        setMessages((prev) => prev.slice(0, -1));
+      // If the server returned a reply (even an error translated to friendly
+      // text), render it as an assistant bubble — mirrors the Telegram bot
+      // behavior where the user's message stays and the bot always replies.
+      if (typeof data.reply === "string") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: data.document ? "Your document is ready." : data.reply,
+            document: data.document ?? undefined,
+          },
+        ]);
         return;
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: data.document ? "Your document is ready." : data.reply,
-          document: data.document ?? undefined,
-        },
-      ]);
+      // Hard failures (aborted, agent stopped, service disabled, etc.):
+      // show a red banner and keep the user's message in the thread.
+      setError(data.error || "Failed to send message.");
     } catch {
-      setError("Failed to reach the server");
-      setMessages((prev) => prev.slice(0, -1));
+      setError("Can't reach the server. Check your connection and try again.");
     } finally {
       setSending(false);
       textareaRef.current?.focus();

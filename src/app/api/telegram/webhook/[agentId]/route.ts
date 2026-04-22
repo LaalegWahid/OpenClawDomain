@@ -18,58 +18,9 @@ import {
 } from "../../../../../shared/lib/agents/document";
 import { env } from "../../../../../shared/config/env";
 import { getServiceEnabled } from "../../../../../shared/lib/service/status";
+import { getAgentErrorMessage } from "../../../../../shared/lib/agents/errors";
 
 const MAX_HISTORY = 20;
-
-const TIMEOUT_WORDS = [
-  "Thinking...",
-  "Imagining...",
-  "Discombobulating...",
-  "Pondering...",
-  "Cogitating...",
-  "Mulling...",
-  "Percolating...",
-  "Ruminating...",
-  "Marinating...",
-  "Brewing...",
-  "Conjuring...",
-  "Untangling...",
-];
-
-function randomTimeoutWord(): string {
-  return TIMEOUT_WORDS[Math.floor(Math.random() * TIMEOUT_WORDS.length)];
-}
-
-function getAgentErrorMessage(errMsg: string, err: unknown): string {
-  // Connection refused — container is still starting
-  if (errMsg.includes("ECONNREFUSED") || errMsg.includes("fetch failed")) {
-    return "The agent is starting up. Please try again in a few seconds.";
-  }
-  // Timeout — Telegram retries the webhook, so the user would otherwise see
-  // the same long error repeated. Send a short whimsical word instead so the
-  // repeated deliveries read as status pings rather than spam.
-  if (err instanceof Error && err.name === "TimeoutError") {
-    return randomTimeoutWord();
-  }
-  // API key / billing errors from the gateway
-  if (errMsg.includes("403") && errMsg.toLowerCase().includes("key limit")) {
-    return "The AI provider's API key has reached its usage limit. Please contact the administrator or try again later.";
-  }
-  if (errMsg.includes("403")) {
-    return "The AI provider rejected the request (authorization issue). Please check your API key settings.";
-  }
-  if (errMsg.includes("429") || errMsg.toLowerCase().includes("rate limit")) {
-    return "The AI provider is rate-limiting requests. Please wait a moment and try again.";
-  }
-  if (errMsg.includes("500") || errMsg.includes("502") || errMsg.includes("503")) {
-    return "The AI provider is experiencing issues. Please try again in a few minutes.";
-  }
-  if (errMsg.includes("maximum iterations")) {
-    return "The agent's response was too complex to complete. Please try a simpler question.";
-  }
-  // Generic fallback
-  return "Something went wrong while processing your message. Please try again.";
-}
 
 export async function POST(
   req: Request,
