@@ -702,8 +702,8 @@ export function OverviewContent({ userName }: OverviewContentProps) {
                 <input
                   type="text"
                   value={customType}
-                  onChange={(e) => setCustomType(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-                  placeholder="e.g. education, cybersecurity, agriculture"
+                  onChange={(e) => setCustomType(e.target.value.replace(/[\x00-\x1F\x7F]/g, "").slice(0, 60))}
+                  placeholder="e.g. politics, marketing monitoring, agriculture"
                   style={inputStyle}
                 />
               </div>
