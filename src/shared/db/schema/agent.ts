@@ -114,8 +114,8 @@ export const agentMcp = pgTable(
       .notNull()
       .references(() => agent.id, { onDelete: "cascade" }),
     serverName: text("server_name").notNull(),
-    transport: text("transport").notNull(), // "stdio" | "http"
-    config: jsonb("config").notNull(), // { command, args, env } or { url, headers }
+    transport: text("transport").notNull(), // "stdio"
+    config: jsonb("config").notNull(), // { command, args, env }
     enabled: boolean("enabled").default(true),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

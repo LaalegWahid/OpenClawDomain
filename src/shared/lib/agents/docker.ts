@@ -83,10 +83,11 @@ export interface ChannelConfig {
   whatsapp?: { enabled: true; allowFrom?: string[] };
 }
 
-export interface McpServerConfig {
-  transport: "stdio" | "http";
-  config: Record<string, unknown>;
-}
+/**
+ * MCP server config in the shape OpenClaw expects (flat, no wrapper).
+ * Stdio: { command: "npx", args: ["@modelcontextprotocol/server-github"] }
+ */
+export type McpServerConfig = Record<string, unknown>;
 
 /**
  * Maps a provider slug to the env-var name the container expects.
