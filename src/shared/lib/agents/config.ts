@@ -154,7 +154,11 @@ CRITICAL: If someone asks about finance, marketing, football, cooking, or ANY no
 // ─── Validation ──────────────────────────────────────────────────────────────
 
 export function isValidAgentType(type: string): boolean {
-  return typeof type === "string" && /^[a-z0-9_-]+$/.test(type.trim());
+  if (typeof type !== "string") return false;
+  const trimmed = type.trim();
+  if (trimmed.length === 0 || trimmed.length > 60) return false;
+  // Allow any non-control characters (letters, digits, spaces, underscores, hyphens, unicode).
+  return !/[\x00-\x1F\x7F]/.test(trimmed);
 }
 
 // ─── In-memory cache + concurrency guard ─────────────────────────────────────
@@ -205,7 +209,8 @@ async function generateViaOpenRouter(domain: string): Promise<DomainConfig> {
   const apiKey = process.env.OPENROUTER_CONFIG_KEY;
   if (!apiKey) throw new Error("OPENROUTER_CONFIG_KEY is not set — cannot generate config for dynamic agent type");
 
-  const model = process.env.CONFIG_GENERATOR_MODEL ?? "qwen/qwen3.6-plus:free";
+  const envModel = (process.env.CONFIG_GENERATOR_MODEL ?? "").trim().replace(/^["']|["']$/g, "");
+  const model = envModel || "meta-llama/llama-3.3-70b-instruct:free";
 
   const prompt = `You are a configuration generator. Given a domain/field, generate a specialized AI agent config.
 

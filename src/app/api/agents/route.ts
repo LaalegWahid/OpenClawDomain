@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     if (!isValidAgentType(type)) {
       return NextResponse.json(
-        { error: "Invalid agent type. Must be a non-empty alphanumeric slug (e.g. 'finance', 'education', 'cybersecurity')." },
+        { error: "Invalid agent type. Must be a non-empty description (1–60 characters, no control characters)." },
         { status: 400 },
       );
     }
