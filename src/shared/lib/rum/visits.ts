@@ -15,6 +15,8 @@ export interface RecentVisit {
   deviceType: string | null;
   browserName: string | null;
   country: string | null;
+  subdivision: string | null;
+  city: string | null;
 }
 
 export interface VisitStats {
@@ -37,11 +39,21 @@ interface ParsedMeta {
   url?: string;
   pageId?: string;
   title?: string;
+  domain?: string;
   referrer?: string;
+  referrerUrl?: string;
+  referrerDomain?: string;
   deviceType?: string;
   browserName?: string;
+  osName?: string;
   country?: string;
   countryCode?: string;
+  countryName?: string;
+  subdivision?: string;
+  subdivisionCode?: string;
+  subdivisionName?: string;
+  city?: string;
+  cityName?: string;
 }
 
 interface ParsedUser {
@@ -49,6 +61,15 @@ interface ParsedUser {
   userId?: string;
   deviceType?: string;
   browserName?: string;
+}
+
+interface ParsedDetails {
+  pageId?: string;
+  url?: string;
+  pageUrl?: string;
+  referrerUrl?: string;
+  referrerDomain?: string;
+  referrer?: string;
 }
 
 function safeParse<T>(raw: string | undefined): T {
@@ -120,15 +141,37 @@ export async function getVisitStats(days = 30): Promise<VisitStats> {
       .map((e) => {
         const meta = safeParse<ParsedMeta>(e.metadata);
         const user = safeParse<ParsedUser>(e.user_details);
+        const details = safeParse<ParsedDetails>(e.event_details);
+        const pageId = details.pageId ?? meta.pageId ?? "";
+        const constructedUrl =
+          meta.domain && pageId
+            ? `https://${meta.domain}${pageId.startsWith("/") ? pageId : `/${pageId}`}`
+            : "";
+        const url =
+          meta.url ||
+          details.url ||
+          details.pageUrl ||
+          constructedUrl ||
+          pageId;
+        const referrer =
+          meta.referrer ??
+          meta.referrerUrl ??
+          details.referrerUrl ??
+          details.referrer ??
+          meta.referrerDomain ??
+          details.referrerDomain ??
+          null;
         return {
           timestamp: new Date(Number(e.event_timestamp)).toISOString(),
-          url: meta.url ?? meta.pageId ?? "",
-          pageId: meta.pageId ?? "",
-          referrer: meta.referrer ?? null,
+          url,
+          pageId,
+          referrer,
           sessionId: user.sessionId ?? "",
           deviceType: user.deviceType ?? meta.deviceType ?? null,
           browserName: user.browserName ?? meta.browserName ?? null,
-          country: meta.country ?? meta.countryCode ?? null,
+          country: meta.countryName ?? meta.country ?? meta.countryCode ?? null,
+          subdivision: meta.subdivisionName ?? meta.subdivision ?? meta.subdivisionCode ?? null,
+          city: meta.cityName ?? meta.city ?? null,
         };
       });
 
