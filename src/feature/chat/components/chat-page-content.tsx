@@ -1,9 +1,24 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Download, Bot, ChevronDown, RotateCcw } from "lucide-react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { Send, Download, Bot, ChevronDown, RotateCcw, Square } from "lucide-react";
+import { getAgentErrorMessage } from "../../../shared/lib/agents/errors";
 
 const mono = "var(--mono), 'JetBrains Mono', monospace";
+
+// Slightly longer than the server-side gateway timeout (120s in docker.ts) so
+// that the server normally resolves its own timeout first and returns a
+// friendly bubble. The client timeout is a last-resort safety net in case the
+// Next.js route handler itself hangs.
+const CLIENT_TIMEOUT_MS = 150_000;
+
+// Textarea autogrow bounds. With fontSize 13 and lineHeight 18, one row is
+// 18px — so the textarea grows freely from 1 row up to 10 rows (180px of
+// content + 20px vertical padding = 200px), then scrolls.
+const TEXTAREA_LINE_HEIGHT = 18;
+const TEXTAREA_MAX_ROWS = 10;
+const TEXTAREA_VERTICAL_PADDING = 20;
+const TEXTAREA_MAX_HEIGHT = TEXTAREA_LINE_HEIGHT * TEXTAREA_MAX_ROWS + TEXTAREA_VERTICAL_PADDING;
 
 interface ChatDocument {
   data: string;
@@ -33,6 +48,7 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
   const [loadingAgents, setLoadingAgents] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const selectedAgent = defaultAgentId
     ? { id: defaultAgentId, name: "Agent", status: "active", type: "default" }
@@ -86,6 +102,16 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
     scrollToBottom();
   }, [messages, sending, scrollToBottom]);
 
+  // Auto-grow textarea: expand with content up to TEXTAREA_MAX_HEIGHT, then
+  // let the browser show a scrollbar. Runs pre-paint so the user never sees
+  // a flash of the old height.
+  useLayoutEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
+  }, [input]);
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || sending || !isActive || !selectedAgentId) return;
@@ -95,40 +121,78 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
     setSending(true);
     setMessages((prev) => [...prev, { role: "user", content: text }]);
 
+    const appendAssistantBubble = (content: string) =>
+      setMessages((prev) => [...prev, { role: "assistant", content }]);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => {
+      controller.abort(new DOMException("Request timed out", "TimeoutError"));
+    }, CLIENT_TIMEOUT_MS);
+
     try {
       const res = await fetch(`/api/agents/${selectedAgentId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
+        signal: controller.signal,
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data: { reply?: string; document?: ChatDocument; error?: string } =
+        await res.json().catch(() => ({}));
 
       // If the server returned a reply (even an error translated to friendly
       // text), render it as an assistant bubble — mirrors the Telegram bot
       // behavior where the user's message stays and the bot always replies.
       if (typeof data.reply === "string") {
+        const reply = data.reply;
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: data.document ? "Your document is ready." : data.reply,
+            content: data.document ? "Your document is ready." : reply,
             document: data.document ?? undefined,
           },
         ]);
         return;
       }
 
-      // Hard failures (aborted, agent stopped, service disabled, etc.):
-      // show a red banner and keep the user's message in the thread.
-      setError(data.error || "Failed to send message.");
-    } catch {
-      setError("Can't reach the server. Check your connection and try again.");
+      // Sticky state issues (agent stopped, service disabled, aborted): the
+      // server sent a user-actionable message in `error` — show it as a banner.
+      if (!res.ok && data.error && (res.status === 400 || res.status === 499 || res.status === 503)) {
+        setError(data.error);
+        return;
+      }
+
+      // Everything else without a reply (5xx upstream, unexpected payload):
+      // translate via the same helper Telegram uses and render as a bubble.
+      const synthetic = `HTTP ${res.status} ${data.error ?? ""}`.trim();
+      appendAssistantBubble(getAgentErrorMessage(synthetic, null));
+    } catch (err) {
+      // The reason passed to controller.abort() (TimeoutError or default
+      // AbortError) is surfaced via signal.reason — use it so the helper can
+      // route to the whimsical-timeout-word branch instead of a generic msg.
+      const thrown = controller.signal.aborted ? controller.signal.reason ?? err : err;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setError("You're offline. Check your connection and try again.");
+        return;
+      }
+      // Network-level failure (server unreachable, user-cancelled, timeout,
+      // DNS, etc.) gets the same Telegram-style friendly translation as a
+      // bubble.
+      const errMsg = thrown instanceof Error ? thrown.message : "";
+      appendAssistantBubble(getAgentErrorMessage(errMsg, thrown));
     } finally {
+      clearTimeout(timeoutId);
+      abortRef.current = null;
       setSending(false);
       textareaRef.current?.focus();
     }
   }, [input, sending, isActive, selectedAgentId]);
+
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const handleReset = async () => {
     if (!selectedAgentId) return;
@@ -361,8 +425,10 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
               flex: 1, resize: "none",
               background: "var(--surface-2)", border: "1px solid var(--border)",
               borderRadius: 8, padding: "10px 14px",
-              fontFamily: mono, fontSize: 13, color: "var(--foreground)",
-              outline: "none", maxHeight: 128, overflowY: "auto",
+              fontFamily: mono, fontSize: 13, lineHeight: `${TEXTAREA_LINE_HEIGHT}px`,
+              color: "var(--foreground)",
+              outline: "none",
+              maxHeight: TEXTAREA_MAX_HEIGHT, overflowY: "auto",
               transition: "border-color 0.15s",
               opacity: (!isActive || sending) ? 0.4 : 1,
               cursor: (!isActive || sending) ? "not-allowed" : "text",
@@ -370,20 +436,36 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
             onFocus={(e) => { e.currentTarget.style.borderColor = "#FF4D00"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
           />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || sending || !isActive}
-            style={{
-              background: (!input.trim() || sending || !isActive) ? "var(--surface-2)" : "#FF4D00",
-              color: (!input.trim() || sending || !isActive) ? "var(--foreground-3)" : "#fff",
-              border: "none", borderRadius: 8,
-              padding: "10px 14px", cursor: (!input.trim() || sending || !isActive) ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              flexShrink: 0, transition: "all 0.15s",
-            }}
-          >
-            <Send size={16} />
-          </button>
+          {sending ? (
+            <button
+              onClick={handleCancel}
+              title="Stop generating"
+              style={{
+                background: "#FF4D00", color: "#fff",
+                border: "none", borderRadius: 8,
+                padding: "10px 14px", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0, transition: "all 0.15s",
+              }}
+            >
+              <Square size={14} fill="#fff" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || !isActive}
+              style={{
+                background: (!input.trim() || !isActive) ? "var(--surface-2)" : "#FF4D00",
+                color: (!input.trim() || !isActive) ? "var(--foreground-3)" : "#fff",
+                border: "none", borderRadius: 8,
+                padding: "10px 14px", cursor: (!input.trim() || !isActive) ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0, transition: "all 0.15s",
+              }}
+            >
+              <Send size={16} />
+            </button>
+          )}
         </div>
       </div>
 
