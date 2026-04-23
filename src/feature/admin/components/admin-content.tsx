@@ -644,9 +644,9 @@ export function AdminContent({
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
                           }}
-                          title={formatLocation(v, true) || "Unknown"}
+                          title={formatLocation(v) || "Unknown"}
                         >
-                          {formatLocation(v, false) || "—"}
+                          {formatLocation(v) || "—"}
                         </td>
                         <td
                           style={{
@@ -1078,13 +1078,31 @@ function BarChart({ data, color }: { data: SeriesPoint[]; color: string }) {
   );
 }
 
-function formatLocation(
-  v: { country: string | null; subdivision: string | null; city: string | null },
-  full: boolean,
-): string {
-  const parts = full
-    ? [v.city, v.subdivision, v.country]
-    : [v.city, v.country];
+const countryNames =
+  typeof Intl !== "undefined" && "DisplayNames" in Intl
+    ? new Intl.DisplayNames(["en"], { type: "region" })
+    : null;
+
+function countryLabel(code: string | null): string | null {
+  if (!code) return null;
+  const trimmed = code.trim();
+  if (!trimmed) return null;
+  if (trimmed.length === 2 && countryNames) {
+    try {
+      return countryNames.of(trimmed.toUpperCase()) ?? trimmed;
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
+function formatLocation(v: {
+  country: string | null;
+  subdivision: string | null;
+  city: string | null;
+}): string {
+  const parts = [v.city, v.subdivision, countryLabel(v.country)];
   return parts.filter((p): p is string => Boolean(p && p.trim())).join(", ");
 }
 
