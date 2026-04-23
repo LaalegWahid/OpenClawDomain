@@ -30,9 +30,9 @@ export interface VisitStats {
 interface RawRumEvent {
   event_timestamp?: number | string;
   event_type?: string;
-  event_details?: string;
-  user_details?: string;
-  metadata?: string;
+  event_details?: unknown;
+  user_details?: unknown;
+  metadata?: unknown;
 }
 
 interface ParsedMeta {
@@ -72,8 +72,10 @@ interface ParsedDetails {
   referrer?: string;
 }
 
-function safeParse<T>(raw: string | undefined): T {
+function safeParse<T>(raw: unknown): T {
   if (!raw) return {} as T;
+  if (typeof raw === "object") return raw as T;
+  if (typeof raw !== "string") return {} as T;
   try {
     return JSON.parse(raw) as T;
   } catch {
@@ -113,10 +115,15 @@ export async function getVisitStats(days = 30): Promise<VisitStats> {
 
       for (const raw of res.Events ?? []) {
         try {
-          events.push(JSON.parse(raw) as RawRumEvent);
+          const parsed = JSON.parse(raw) as RawRumEvent;
+          events.push(parsed);
         } catch {
           /* ignore malformed */
         }
+      }
+      if (page === 0 && (res.Events?.length ?? 0) > 0) {
+        console.log("[rum] sample raw event:", res.Events?.[0]);
+        console.log("[rum] sample parsed event:", events[0]);
       }
 
       nextToken = res.NextToken;
