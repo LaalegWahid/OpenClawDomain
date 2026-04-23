@@ -1127,8 +1127,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                   style={{
                     height: 620,
                     borderRadius: 16,
-                    border: `1px solid ${BORDER}`,
-                    background: "#111111",
+                    border: "1px solid transparent",
                     overflow: "hidden",
                   }}
                 >
