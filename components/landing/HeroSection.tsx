@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 
 const clawPositions = [
   { t: '2%',  l: '-3%',  s: 260, r: -25,  o: 0.35 },
@@ -33,25 +33,106 @@ const clawPositions = [
   { t: '90%', l: '80%',  s: 195, r: 10,   o: 0.30 },
 ]
 
-export default function HeroSection() {
-  const h1Ref    = useRef<HTMLHeadingElement>(null)
-  const subRef   = useRef<HTMLParagraphElement>(null)
-  const btnsRef  = useRef<HTMLDivElement>(null)
+const FRAME_INTERVAL = 1000 / 20
 
-  useEffect(() => {
-    const els = [h1Ref.current, subRef.current, btnsRef.current]
-    const delays = [200, 500, 800]
+export default function HeroSection() {
+  const canvasRef   = useRef<HTMLCanvasElement>(null)
+  const h1Ref       = useRef<HTMLHeadingElement>(null)
+  const subRef      = useRef<HTMLParagraphElement>(null)
+  const sub2Ref     = useRef<HTMLParagraphElement>(null)
+  const btnsRef     = useRef<HTMLDivElement>(null)
+  const revealedRef = useRef(false)
+
+  // Reveal text — called once the canvas image is ready (or on fallback timeout)
+  const triggerReveal = useCallback(() => {
+    if (revealedRef.current) return
+    revealedRef.current = true
+    const els    = [h1Ref.current, subRef.current, sub2Ref.current, btnsRef.current]
+    const delays = [0, 300, 450, 600]
     els.forEach((el, i) => {
       if (!el) return
-      el.style.opacity = '0'
-      el.style.transform = 'translateY(30px)'
       setTimeout(() => {
         el.style.transition = 'opacity 0.8s ease, transform 0.8s ease'
-        el.style.opacity = '1'
-        el.style.transform = 'translateY(0)'
+        el.style.opacity    = '1'
+        el.style.transform  = 'translateY(0)'
       }, delays[i])
     })
   }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    let rafId     = 0
+    let startTime = 0
+    let lastDraw  = 0
+
+    const resize = () => {
+      canvas.width  = canvas.offsetWidth
+      canvas.height = canvas.offsetHeight
+    }
+    resize()
+
+    const draw = (timestamp: number) => {
+      rafId = requestAnimationFrame(draw)
+      if (timestamp - lastDraw < FRAME_INTERVAL) return
+      lastDraw = timestamp
+      if (!startTime) startTime = timestamp
+
+      const t        = (timestamp - startTime) / 1000
+      const cw       = canvas.width
+      const ch       = canvas.height
+      const iw       = img.naturalWidth
+      const ih       = img.naturalHeight
+      const aspectH  = iw > 0 ? ih / iw : 1
+
+      ctx.clearRect(0, 0, cw, ch)
+
+      const visibleCount = cw < 640 ? 13 : cw < 900 ? 19 : clawPositions.length
+      const sizeMul      = cw < 640 ? 0.55 : cw < 900 ? 0.75 : 1
+      const step         = clawPositions.length / visibleCount
+
+      for (let i = 0; i < visibleCount; i++) {
+        const m     = clawPositions[Math.floor(i * step)]
+        const s     = m.s * sizeMul
+        const phase = (t + i * 0.8) * (Math.PI * 2 / 12)
+        const rot   = (m.r + Math.sin(phase) * 4) * (Math.PI / 180)
+        const sc    = 1 + Math.sin(phase) * 0.02
+        const cx    = (parseFloat(m.l) / 100) * cw + s / 2
+        const cy    = (parseFloat(m.t) / 100) * ch + (s * aspectH) / 2
+
+        ctx.save()
+        ctx.translate(cx, cy)
+        ctx.rotate(rot)
+        ctx.scale(sc, sc)
+        ctx.globalAlpha = m.o
+        ctx.drawImage(img, -s / 2, -(s * aspectH) / 2, s, s * aspectH)
+        ctx.restore()
+      }
+    }
+
+    const img = new window.Image()
+    img.onload = () => {
+      rafId = requestAnimationFrame(draw)
+      triggerReveal()
+    }
+
+    // Safety valve: reveal text even if the image somehow stalls
+    const fallback = setTimeout(triggerReveal, 900)
+
+    img.src = '/images/claw-hero-1.webp'
+
+    const handleResize = () => resize()
+    window.addEventListener('resize', handleResize, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(rafId)
+      clearTimeout(fallback)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [triggerReveal])
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -65,33 +146,21 @@ export default function HeroSection() {
       textAlign: 'center', padding: '120px 2rem 6rem',
       position: 'relative', overflow: 'hidden',
     }}>
-      {/* Scattered claw background */}
-      <div className="oc-hero-claw" style={{
-        position: 'absolute', inset: 0,
-        zIndex: 0, pointerEvents: 'none', userSelect: 'none', overflow: 'hidden',
-      }}>
-        {clawPositions.map((m, i) => (
-          <img
-            key={i}
-            src="/images/claw-hero.png"
-            alt=""
-            aria-hidden="true"
-            loading="eager"
-            className="oc-claw-drift"
-            style={{
-              position: 'absolute',
-              top: m.t, left: m.l,
-              width: `${m.s}px`,
-              height: 'auto',
-              opacity: m.o,
-              '--r': `${m.r}deg`,
-              animationDelay: `${i * -0.8}s`,
-            } as React.CSSProperties}
-          />
-        ))}
-      </div>
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        style={{
+          position: 'absolute', inset: 0,
+          width: '100%', height: '100%',
+          pointerEvents: 'none', userSelect: 'none',
+          zIndex: 0,
+        }}
+      />
 
+      {/* opacity:0 + translateY here so SSR also renders them hidden — no flash on hydration */}
       <h1 ref={h1Ref} style={{
+        opacity: 0,
+        transform: 'translateY(30px)',
         fontSize: 'clamp(3rem, 7vw, 5.5rem)',
         fontWeight: 500,
         lineHeight: 1.10,
@@ -106,6 +175,8 @@ export default function HeroSection() {
       </h1>
 
       <p ref={subRef} style={{
+        opacity: 0,
+        transform: 'translateY(30px)',
         fontSize: '1.1rem',
         color: '#8a7060',
         maxWidth: '520px',
@@ -117,7 +188,9 @@ export default function HeroSection() {
         Any domain. Any workflow. Your agent is live in under 2 minutes.
       </p>
 
-      <p style={{
+      <p ref={sub2Ref} style={{
+        opacity: 0,
+        transform: 'translateY(30px)',
         fontSize: '1.1rem', color: '#8a7060', maxWidth: '520px',
         lineHeight: 2, margin: '0 auto 3.5rem', fontWeight: 400,
         position: 'relative', zIndex: 1,
@@ -125,7 +198,11 @@ export default function HeroSection() {
         Legal · HR · Real Estate · Healthcare · and any other field
       </p>
 
-      <div ref={btnsRef} className="oc-hero-btns" style={{ marginBottom: '4rem', position: 'relative', zIndex: 1 }}>
+      <div ref={btnsRef} className="oc-hero-btns" style={{
+        opacity: 0,
+        transform: 'translateY(30px)',
+        marginBottom: '4rem', position: 'relative', zIndex: 1,
+      }}>
         <button
           style={{
             background: '#FF4D00', color: '#FFFFFF', border: 'none',

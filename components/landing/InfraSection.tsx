@@ -1,4 +1,5 @@
 import { Shield, TrendingUp, Clock, Zap } from 'lucide-react'
+import Image from 'next/image'
 import SectionLabel from './ui/SectionLabel'
 
 const features = [
@@ -24,10 +25,14 @@ export default function InfraSection() {
               Enterprise-grade infrastructure with none of the overhead.
             </p>
           </div>
-          <div style={{ flexShrink: 0 }}>
-            <img
+          <div className="oc-infra-image" style={{ flexShrink: 0 }}>
+            <Image
               src="/images/macmini.png"
               alt="Lobster destroying a Mac Mini"
+              width={380}
+              height={380}
+              loading="lazy"
+              sizes="(max-width: 640px) 280px, (max-width: 900px) 28vw, 380px"
               style={{ width: 'clamp(220px, 28vw, 380px)', height: 'auto', display: 'block' }}
             />
           </div>

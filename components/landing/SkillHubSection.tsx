@@ -1,4 +1,5 @@
 import { Wand2, Download, Sliders, Lock } from 'lucide-react'
+import Image from 'next/image'
 import SectionLabel from './ui/SectionLabel'
 
 const features = [
@@ -39,9 +40,13 @@ export default function SkillHubSection() {
             </p>
           </div>
           <div style={{ flexShrink: 0 }}>
-            <img
+            <Image
               src="/images/skills.png"
               alt="Skill Hub"
+              width={380}
+              height={380}
+              loading="lazy"
+              sizes="(max-width: 900px) 28vw, 380px"
               style={{ width: 'clamp(220px, 28vw, 380px)', height: 'auto', display: 'block' }}
             />
           </div>

@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import SectionLabel from './ui/SectionLabel'
 
 const platforms = [
@@ -42,7 +43,7 @@ export default function ConnectivitySection() {
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '16px' }}>
+        <div className="oc-grid-connectivity">
           {platforms.map(p => (
             <div key={p.name} style={{
               background: '#f0e8de', border: '0.5px solid rgba(42,31,25,0.12)',
@@ -52,7 +53,7 @@ export default function ConnectivitySection() {
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(255,77,0,0.35) 50%, transparent)' }} />
               <div style={{ position: 'absolute', bottom: 0, right: 0, width: '160px', height: '160px', background: 'radial-gradient(circle at bottom right, rgba(255,77,0,0.13) 0%, transparent 70%)', pointerEvents: 'none' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '1.25rem', position: 'relative' }}>
-                <img src={p.icon} alt={p.name} style={{ width: '40px', height: '40px', objectFit: 'contain', flexShrink: 0 }} />
+                <Image src={p.icon} alt={p.name} width={40} height={40} loading="lazy" style={{ objectFit: 'contain', flexShrink: 0 }} />
                 <div>
                   <div style={{ fontSize: '18px', fontWeight: 800, color: '#2a1f19', fontFamily: 'var(--serif)', letterSpacing: '-0.02em' }}>{p.name}</div>
                   <div style={{ fontSize: '11px', color: '#8a7060', fontFamily: 'var(--mono)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{p.subtitle}</div>

@@ -42,6 +42,7 @@ export const landingStyles = `
   .oc-grid-2     { display:grid; grid-template-columns:1fr 1fr; gap:3rem; align-items:center; }
   .oc-grid-3     { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
   .oc-grid-4     { display:grid; grid-template-columns:repeat(4,1fr); gap:20px; }
+  .oc-grid-connectivity { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
   .oc-grid-skills   { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
   .oc-grid-pricing  { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
   .oc-grid-footer   { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:2rem; }
@@ -60,9 +61,11 @@ export const landingStyles = `
   }
   @media(max-width:640px){
     .oc-grid-3{grid-template-columns:1fr;}
+    .oc-grid-connectivity{grid-template-columns:1fr;}
     .oc-grid-skills{grid-template-columns:1fr;}
     .oc-grid-2{grid-template-columns:1fr;gap:2.5rem;}
-    .oc-grid-4{grid-template-columns:1fr 1fr;}
+    .oc-grid-4{grid-template-columns:1fr;}
+    .oc-infra-image{width:100% !important;max-width:280px;margin:0 auto;}
     .oc-nav-links{display:none;}
     .oc-hamburger{display:flex !important;}
     .oc-hero-btns{flex-direction:column;align-items:center;}

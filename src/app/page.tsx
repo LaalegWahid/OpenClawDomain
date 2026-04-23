@@ -1,16 +1,19 @@
+import dynamic from 'next/dynamic'
 import Navbar from '../../components/Navbar'
 import ClawScrollSection from '../../components/ClawScrollSection'
 import HeroSection from '../../components/landing/HeroSection'
 import ProductSection from '../../components/landing/ProductSection'
-import InfraSection from '../../components/landing/InfraSection'
-import ConnectivitySection from '../../components/landing/ConnectivitySection'
-import SkillHubSection from '../../components/landing/SkillHubSection'
-import PricingSection from '../../components/landing/PricingSection'
-import FAQSection from '../../components/landing/FAQSection'
-import CTASection from '../../components/landing/CTASection'
-import LandingFooter from '../../components/landing/LandingFooter'
 import Divider from '../../components/landing/ui/Divider'
 import { landingStyles } from '../../components/landing/landingStyles'
+
+// Below-fold sections — split into separate JS chunks, still SSR-rendered
+const InfraSection       = dynamic(() => import('../../components/landing/InfraSection'))
+const ConnectivitySection = dynamic(() => import('../../components/landing/ConnectivitySection'))
+const SkillHubSection    = dynamic(() => import('../../components/landing/SkillHubSection'))
+const PricingSection     = dynamic(() => import('../../components/landing/PricingSection'))
+const FAQSection         = dynamic(() => import('../../components/landing/FAQSection'))
+const CTASection         = dynamic(() => import('../../components/landing/CTASection'))
+const LandingFooter      = dynamic(() => import('../../components/landing/LandingFooter'))
 
 export default function LandingPage() {
   return (

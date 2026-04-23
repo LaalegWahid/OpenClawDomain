@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback } from 'react'
+import Image from 'next/image'
 
 // UTILITIES
 function lerp(a: number, b: number, t: number): number {
@@ -66,7 +67,7 @@ export default function ClawScrollSection() {
   const scrollProgressRef = useRef(0)
   const particlesRef = useRef<Particle[]>([])
   const rafRef = useRef<number>(0)
-  const isActiveRef = useRef(true)
+  const isActiveRef = useRef(false)
   const centerRef = useRef({ x: 0, y: 0 })
   const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -116,7 +117,10 @@ export default function ClawScrollSection() {
 
   // Animation loop
   const animate = useCallback(() => {
-    if (!isActiveRef.current) return
+    if (!isActiveRef.current) {
+      rafRef.current = 0
+      return
+    }
 
     const canvas = canvasRef.current
     if (!canvas) {
@@ -187,25 +191,20 @@ export default function ClawScrollSection() {
       const pt = particles[i]
 
       if (i < activeCount) {
-        // Target opacity based on layer and scroll
         const baseOpacity = pt.layer === 'inner' ? 0.7 : pt.layer === 'mid' ? 0.55 : 0.45
         pt.targetOpacity = baseOpacity * fadeOutFactor * (0.7 + 0.3 * Math.sin(pt.phase + Date.now() * 0.001))
       } else {
         pt.targetOpacity = 0
       }
 
-      // Lerp opacity
       pt.opacity = lerp(pt.opacity, pt.targetOpacity, 0.05)
 
       if (pt.opacity < 0.005) continue
 
-      // Advance angle
       pt.angle += pt.orbitSpeed * slowFactor
 
-      // Drift outward in fade-out phase
       const driftRadius = isFading ? pt.orbitRadius * (1 + (1 - fadeOutFactor) * 0.3) : pt.orbitRadius
 
-      // Position
       const orbitX = cx + Math.cos(pt.angle) * driftRadius
       const orbitY = cy + Math.sin(pt.angle) * driftRadius * 0.45
 
@@ -217,11 +216,9 @@ export default function ClawScrollSection() {
         pt.y = lerp(pt.y, orbitY, 0.08)
       }
 
-      // Update trail
       pt.trail.push({ x: pt.x, y: pt.y })
       if (pt.trail.length > 4) pt.trail.shift()
 
-      // Draw trail
       for (let t = 0; t < pt.trail.length; t++) {
         const tp = pt.trail[t]
         ctx.beginPath()
@@ -230,19 +227,16 @@ export default function ClawScrollSection() {
         ctx.fill()
       }
 
-      // Draw glow for larger particles
       if (pt.size > 2.5) {
         ctx.shadowBlur = 8
         ctx.shadowColor = '#FF4D00'
       }
 
-      // Draw particle
       ctx.beginPath()
       ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2)
       ctx.fillStyle = `rgba(255, 77, 0, ${pt.opacity})`
       ctx.fill()
 
-      // Reset shadow
       if (pt.size > 2.5) {
         ctx.shadowBlur = 0
         ctx.shadowColor = 'transparent'
@@ -263,7 +257,6 @@ export default function ClawScrollSection() {
       const p = clamp(rawProgress, 0, 1)
       scrollProgressRef.current = p
 
-      // Image container transform (entry / exit)
       const hand = handRef.current
       if (hand) {
         let translateY = 0
@@ -278,12 +271,10 @@ export default function ClawScrollSection() {
         hand.style.transform = `translate(-50%, calc(-50% + ${translateY}px)) scale(${scale})`
       }
 
-      // crossfade: frame-1 out, frame-2 in — both over scroll 0.2 → 0.65
       const crossfade = clamp((p - 0.2) / (0.65 - 0.2), 0, 1)
       if (frame1Ref.current) frame1Ref.current.style.opacity = String(1 - crossfade)
       if (frame2Ref.current) frame2Ref.current.style.opacity = String(crossfade)
 
-      // Text overlays
       const applyText = (
         el: HTMLDivElement | null,
         opacity: number,
@@ -319,7 +310,7 @@ export default function ClawScrollSection() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Canvas setup, resize, and RAF
+  // Canvas setup and resize
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -346,16 +337,40 @@ export default function ClawScrollSection() {
 
     window.addEventListener('resize', handleResize)
 
-    isActiveRef.current = true
-    rafRef.current = requestAnimationFrame(animate)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current)
+    }
+  }, [initParticles])
+
+  // IntersectionObserver — only run RAF while section is on screen
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          if (!isActiveRef.current) {
+            isActiveRef.current = true
+            rafRef.current = requestAnimationFrame(animate)
+          }
+        } else {
+          isActiveRef.current = false
+          // rafRef.current will be set to 0 by animate() on next tick
+        }
+      },
+      { threshold: 0, rootMargin: '100px' }
+    )
+
+    observer.observe(wrapper)
 
     return () => {
       isActiveRef.current = false
       cancelAnimationFrame(rafRef.current)
-      window.removeEventListener('resize', handleResize)
-      if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current)
+      observer.disconnect()
     }
-  }, [animate, initParticles])
+  }, [animate])
 
   // Store base transforms on text elements
   useEffect(() => {
@@ -398,35 +413,45 @@ export default function ClawScrollSection() {
           }}
         >
           {/* frame-1 — closing arms, fades out */}
-          <img
-            ref={frame1Ref}
+          <Image
+            ref={frame1Ref as React.Ref<HTMLImageElement>}
             src="/images/lobster-closing-arms.png"
             alt="Lobster closing arms"
+            width={820}
+            height={680}
+            priority
+            sizes="(max-width: 900px) 90vw, 820px"
             style={{
               position: 'absolute',
               top: 0,
               left: 0,
               width: '100%',
+              height: 'auto',
               objectFit: 'contain',
               opacity: 1,
               willChange: 'opacity',
             }}
           />
           {/* frame-2 — opening arms, crossfades in */}
-          <img
-            ref={frame2Ref}
+          <Image
+            ref={frame2Ref as React.Ref<HTMLImageElement>}
             src="/images/lobster-opening-arms.png"
             alt="Lobster opening arms"
+            width={820}
+            height={680}
+            priority
+            sizes="(max-width: 900px) 90vw, 820px"
             style={{
               position: 'relative',
               width: '100%',
+              height: 'auto',
               objectFit: 'contain',
               opacity: 0,
               willChange: 'opacity',
             }}
           />
 
-          {/* Dark vignette — hides the cut-off bottom of the hand */}
+          {/* Dark vignette */}
           <div
             style={{
               position: 'absolute',
@@ -438,7 +463,7 @@ export default function ClawScrollSection() {
               pointerEvents: 'none',
             }}
           />
-          {/* Bottom fade — makes the wrist dissolve into the background */}
+          {/* Bottom fade */}
           <div style={{
             position: 'absolute',
             bottom: 0,
@@ -459,7 +484,6 @@ export default function ClawScrollSection() {
             inset: 0,
             width: '100%',
             height: '100%',
-            willChange: 'contents',
             pointerEvents: 'none',
           }}
         />
@@ -476,7 +500,7 @@ export default function ClawScrollSection() {
             pointerEvents: 'none',
           }}
         >
-          {/* Text 2 — Main headline */}
+          {/* Text 2 */}
           <div
             ref={text2Ref}
             style={{
@@ -506,7 +530,7 @@ export default function ClawScrollSection() {
             </h2>
           </div>
 
-          {/* Text 3 — Agent names */}
+          {/* Text 3 */}
           <div
             ref={text3Ref}
             style={{
@@ -563,9 +587,7 @@ export default function ClawScrollSection() {
                 cursor: 'pointer',
                 letterSpacing: '-0.01em',
               }}
-              onClick={() => {
-                window.location.href = '/register'
-              }}
+              onClick={() => { window.location.href = '/register' }}
             >
               Deploy OpenClaw
             </button>
@@ -575,10 +597,3 @@ export default function ClawScrollSection() {
     </div>
   )
 }
-
-// SETUP INSTRUCTIONS:
-// 1. Place the closed fist image at /public/images/frame-1.png
-// 2. Place the open hand image at /public/images/frame-2.png
-// 3. Import this component in your landing page: import ClawScrollSection from '@/components/ClawScrollSection'
-// 4. Drop it between the Hero and How It Works sections
-// 5. The section handles its own scroll logic — no props needed
