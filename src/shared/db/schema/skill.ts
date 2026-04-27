@@ -37,6 +37,28 @@ export const skill = pgTable(
   ],
 );
 
+export const skillApiKey = pgTable(
+  "skill_api_key",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .unique()
+      .references(() => user.id, { onDelete: "cascade" }),
+    apiProvider: text("api_provider").notNull(),
+    apiKey: text("api_key").notNull(),
+    agentModel: text("agent_model").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("skill_api_key_userId_idx").on(table.userId)],
+);
+
 export const agentSkill = pgTable(
   "agent_skill",
   {

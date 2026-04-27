@@ -1,8 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, Loader2, Trash2, Pencil, Upload, Archive, Folder, File as FileIcon, X } from "lucide-react";
+import { Sparkles, Loader2, Trash2, Pencil, Upload, Archive, Folder, File as FileIcon, X, KeyRound } from "lucide-react";
 import { EditSkillModal } from "./edit-skill-modal";
+
+interface SkillKeyInfo {
+  hasKey: boolean;
+  provider?: string;
+  model?: string;
+}
 
 interface SkillRecord {
   id: string;
@@ -72,10 +78,6 @@ export function SkillsContent() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [aiPrompt, setAiPrompt] = useState("");
-  const [aiProvider, setAiProvider] = useState<"" | "groq" | "openai" | "anthropic">("");
-  const [aiModel, setAiModel] = useState("");
-  const [aiApiKey, setAiApiKey] = useState("");
-  const [showAiAdvanced, setShowAiAdvanced] = useState(false);
   const [aiDraft, setAiDraft] = useState<{
     name: string;
     description: string;
@@ -83,31 +85,104 @@ export function SkillsContent() {
     files: Array<{ path: string; content: string }>;
   } | null>(null);
 
-  useEffect(() => {
+  // ── Skill API key (provider/key/model stored in DB) ──
+  const [keyInfo, setKeyInfo] = useState<SkillKeyInfo | null>(null);
+  const [keyInfoLoading, setKeyInfoLoading] = useState(true);
+  const [showKeyEditor, setShowKeyEditor] = useState(false);
+  const [modelsCatalog, setModelsCatalog] = useState<Record<string, string[]>>({});
+  const [setupProvider, setSetupProvider] = useState("");
+  const [setupModel, setSetupModel] = useState("");
+  const [setupApiKey, setSetupApiKey] = useState("");
+  const [savingKey, setSavingKey] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
+
+  const fetchKeyInfo = useCallback(async () => {
+    setKeyInfoLoading(true);
     try {
-      const saved = localStorage.getItem("skills.aiProviderConfig");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.provider) setAiProvider(parsed.provider);
-        if (parsed.model) setAiModel(parsed.model);
-        if (parsed.apiKey) setAiApiKey(parsed.apiKey);
-        if (parsed.provider || parsed.apiKey) setShowAiAdvanced(true);
+      const res = await fetch("/api/skills/api-key");
+      if (res.ok) {
+        const data = await res.json();
+        setKeyInfo({
+          hasKey: !!data.hasKey,
+          provider: data.provider,
+          model: data.model,
+        });
+      } else {
+        setKeyInfo({ hasKey: false });
       }
     } catch {
-      // ignore
+      setKeyInfo({ hasKey: false });
+    } finally {
+      setKeyInfoLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        "skills.aiProviderConfig",
-        JSON.stringify({ provider: aiProvider, model: aiModel, apiKey: aiApiKey }),
-      );
-    } catch {
-      // ignore
+    fetchKeyInfo();
+    fetch("/models.json")
+      .then((r) => r.json())
+      .then(setModelsCatalog)
+      .catch(() => {});
+  }, [fetchKeyInfo]);
+
+  // When opening modal on AI tab without a saved key, default to the editor
+  useEffect(() => {
+    if (!showModal) return;
+    if (tab !== "ai") return;
+    if (keyInfoLoading) return;
+    if (!keyInfo?.hasKey) {
+      setSetupProvider("");
+      setSetupModel("");
+      setSetupApiKey("");
+      setKeyError(null);
+      setShowKeyEditor(true);
     }
-  }, [aiProvider, aiModel, aiApiKey]);
+  }, [showModal, tab, keyInfo, keyInfoLoading]);
+
+  const SUPPORTED_PROVIDERS = ["anthropic", "openai", "openrouter", "google"] as const;
+  const providerNames = Object.keys(modelsCatalog).filter(
+    (p) => (SUPPORTED_PROVIDERS as readonly string[]).includes(p),
+  );
+  const setupAvailableModels = setupProvider ? (modelsCatalog[setupProvider] ?? []) : [];
+
+  const handleSaveApiKey = async () => {
+    setKeyError(null);
+    if (!setupProvider) { setKeyError("Select a provider."); return; }
+    if (!setupModel) { setKeyError("Select a model."); return; }
+    if (!setupApiKey.trim()) { setKeyError("Enter your API key."); return; }
+    setSavingKey(true);
+    try {
+      const res = await fetch("/api/skills/api-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: setupProvider,
+          model: setupModel,
+          apiKey: setupApiKey.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setKeyError(data.error || "Failed to save API key.");
+        return;
+      }
+      setKeyInfo({ hasKey: true, provider: setupProvider, model: setupModel });
+      setSetupApiKey("");
+      setShowKeyEditor(false);
+    } catch {
+      setKeyError("Network error. Please try again.");
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  const openKeyEditor = () => {
+    setSetupProvider(keyInfo?.provider ?? "");
+    setSetupModel(keyInfo?.model ?? "");
+    setSetupApiKey("");
+    setKeyError(null);
+    setShowKeyEditor(true);
+  };
 
   const [importDraft, setImportDraft] = useState<{ name: string; description: string; instructions: string } | null>(null);
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
@@ -153,15 +228,19 @@ export function SkillsContent() {
       const res = await fetch("/api/skills/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: aiPrompt,
-          provider: aiProvider || undefined,
-          model: aiModel.trim() || undefined,
-          apiKey: aiApiKey.trim() || undefined,
-        }),
+        body: JSON.stringify({ prompt: aiPrompt }),
       });
       const data = await res.json();
-      if (!res.ok) { setCreateError(data.error || "Generation failed"); return; }
+      if (!res.ok) {
+        if (data.error === "missing_skill_api_key") {
+          setKeyInfo({ hasKey: false });
+          setShowKeyEditor(true);
+          setCreateError(data.message || "Save your AI provider API key to generate skills.");
+          return;
+        }
+        setCreateError(data.error || "Generation failed");
+        return;
+      }
       setAiDraft({ ...data.skill, files: Array.isArray(data.skill?.files) ? data.skill.files : [] });
     } catch {
       setCreateError("Network error. Please try again.");
@@ -392,61 +471,107 @@ export function SkillsContent() {
           {/* AI Generate */}
           {tab === "ai" && (
             <div>
-              {!aiDraft ? (
-                <>
-                  <div style={{ marginBottom: 12 }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowAiAdvanced((v) => !v)}
-                      style={{ background: "transparent", border: "none", padding: 0, fontSize: 12, fontWeight: 600, color: "var(--foreground-3)", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
-                    >
-                      {showAiAdvanced ? "▾" : "▸"} AI provider {aiProvider && aiApiKey ? `(${aiProvider})` : "(using Groq fallback)"}
-                    </button>
-                  </div>
-                  {showAiAdvanced && (
-                    <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: 12, marginBottom: 16 }}>
-                      <p style={{ fontSize: 11, color: "var(--foreground-3)", margin: "0 0 12px" }}>
-                        Provide your own API key to use a specific provider. Leave blank to use the server&apos;s Groq fallback.
+              {keyInfoLoading ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 0", color: "var(--foreground-3)" }}>
+                  <Loader2 size={16} style={{ animation: "spin 1s linear infinite", marginRight: 8 }} /> Checking saved API key…
+                </div>
+              ) : showKeyEditor || !keyInfo?.hasKey ? (
+                <div>
+                  <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <KeyRound size={14} style={{ color: "#FF4D00" }} />
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "var(--foreground)", margin: 0 }}>
+                        {keyInfo?.hasKey ? "Update your AI provider key" : "Connect your AI provider"}
                       </p>
-                      <div style={{ marginBottom: 10 }}>
+                    </div>
+                    <p style={{ fontSize: 11, color: "var(--foreground-3)", margin: "0 0 12px", lineHeight: 1.5 }}>
+                      Choose your provider and model, and paste your API key. We store it securely and reuse it for every skill you generate. (Imports don&apos;t need a key.)
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                      <div>
                         <label style={labelStyle}>Provider</label>
                         <select
-                          value={aiProvider}
-                          onChange={(e) => setAiProvider(e.target.value as "" | "groq" | "openai" | "anthropic")}
-                          style={inputStyle}
+                          value={setupProvider}
+                          onChange={(e) => { setSetupProvider(e.target.value); setSetupModel(""); }}
+                          style={{ ...inputStyle, cursor: "pointer" }}
                         >
-                          <option value="">— Fallback (Groq server key) —</option>
-                          <option value="groq">Groq</option>
-                          <option value="openai">OpenAI</option>
-                          <option value="anthropic">Anthropic</option>
+                          <option value="">Select provider…</option>
+                          {providerNames.map((p) => (
+                            <option key={p} value={p}>{p.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+                          ))}
                         </select>
                       </div>
-                      <div style={{ marginBottom: 10 }}>
-                        <label style={labelStyle}>Model {aiProvider ? "" : "(optional)"}</label>
-                        <input
-                          value={aiModel}
-                          onChange={(e) => setAiModel(e.target.value)}
-                          placeholder={
-                            aiProvider === "openai" ? "gpt-4o-mini"
-                            : aiProvider === "anthropic" ? "claude-haiku-4-5-20251001"
-                            : "llama-3.3-70b-versatile"
-                          }
-                          style={inputStyle}
-                        />
-                      </div>
                       <div>
-                        <label style={labelStyle}>API Key {aiProvider ? "" : "(optional)"}</label>
-                        <input
-                          type="password"
-                          value={aiApiKey}
-                          onChange={(e) => setAiApiKey(e.target.value)}
-                          placeholder={aiProvider ? "Required for the selected provider" : "Leave blank to use server Groq key"}
-                          style={inputStyle}
-                          autoComplete="off"
-                        />
+                        <label style={labelStyle}>Model</label>
+                        <select
+                          value={setupModel}
+                          onChange={(e) => setSetupModel(e.target.value)}
+                          style={{ ...inputStyle, cursor: "pointer" }}
+                          disabled={!setupProvider}
+                        >
+                          <option value="">{setupProvider ? "Select model…" : "Select a provider first"}</option>
+                          {setupAvailableModels.map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
-                  )}
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={labelStyle}>API Key</label>
+                      <input
+                        type="password"
+                        value={setupApiKey}
+                        onChange={(e) => setSetupApiKey(e.target.value)}
+                        placeholder={keyInfo?.hasKey ? "Enter a new key to replace the saved one" : "sk-…"}
+                        style={inputStyle}
+                        autoComplete="off"
+                      />
+                    </div>
+                    {keyError && (
+                      <div style={{ background: "rgba(226,61,45,0.08)", border: "1px solid rgba(226,61,45,0.25)", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "#E23D2D", marginBottom: 10 }}>
+                        {keyError}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {keyInfo?.hasKey && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowKeyEditor(false); setKeyError(null); }}
+                          style={{ flex: 1, padding: "9px 0", background: "var(--surface)", color: "var(--foreground)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleSaveApiKey}
+                        disabled={savingKey}
+                        style={{ flex: keyInfo?.hasKey ? 2 : 1, padding: "9px 0", background: savingKey ? "var(--surface-2)" : "#FF4D00", color: savingKey ? "var(--foreground-3)" : "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: savingKey ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                      >
+                        {savingKey ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <KeyRound size={13} />}
+                        {keyInfo?.hasKey ? "Update Key" : "Save & Continue"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : !aiDraft ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--foreground-2)" }}>
+                      <KeyRound size={13} style={{ color: "#FF4D00" }} />
+                      <span>
+                        Using <strong style={{ color: "var(--foreground)" }}>{keyInfo.provider}</strong>
+                        {keyInfo.model ? ` · ${keyInfo.model}` : ""}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openKeyEditor}
+                      style={{ background: "transparent", border: "none", color: "#FF4D00", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}
+                    >
+                      Change
+                    </button>
+                  </div>
                   <label style={labelStyle}>Describe the skill you want</label>
                   <textarea
                     value={aiPrompt}
