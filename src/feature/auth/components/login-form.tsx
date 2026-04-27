@@ -143,46 +143,88 @@ export function LoginForm() {
           {loading ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Signing in…</> : "Sign in →"}
         </button>
       </form>
-            <div style={{ height: "1px", background: "var(--border)", margin: "1.75rem 0" }} />
 
-<button
-  type="button"
-  onClick={handleGoogleLogin}
-  disabled={fetchStatus === "fetching"}
-  style={{
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "10px",
-    width: "100%",
-    padding: "13px",
-    background: "var(--surface)",
-    color: "var(--foreground)",
-    border: "1px solid var(--border)",
-    borderRadius: "10px",
-    fontFamily: mono,
-    fontSize: "12px",
-    fontWeight: 600,
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-    cursor: fetchStatus === "fetching" ? "not-allowed" : "pointer",
-    opacity: fetchStatus === "fetching" ? 0.5 : 1,
-    transition: "background 0.15s, border-color 0.15s",
-  }}
-  onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-  onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
->
-  <GoogleIcon />
-  Sign in with Google
-</button>
-      <div style={{ height: "1px", background: "var(--border)", margin: "1.75rem 0" }} />
+      {/* Inline divider — softer than a hard rule */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          margin: "1.75rem 0 1.25rem",
+        }}
+      >
+        <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        <span
+          style={{
+            fontFamily: mono,
+            fontSize: 11,
+            color: "var(--foreground-3)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+          }}
+        >
+          or continue with
+        </span>
+        <span style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      </div>
 
-      <p style={{ textAlign: "center", fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)", margin: 0 }}>
+      <button
+        type="button"
+        onClick={handleGoogleLogin}
+        disabled={fetchStatus === "fetching"}
+        className="oc-google-btn"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          width: "100%",
+          padding: "12px",
+          background: "rgba(42,31,25,0.04)",
+          color: "var(--foreground)",
+          border: "0.5px solid rgba(42,31,25,0.15)",
+          borderRadius: 10,
+          fontFamily: mono,
+          fontSize: 13,
+          fontWeight: 500,
+          letterSpacing: "-0.01em",
+          cursor: fetchStatus === "fetching" ? "not-allowed" : "pointer",
+          opacity: fetchStatus === "fetching" ? 0.5 : 1,
+          transition: "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.15s ease",
+        }}
+      >
+        <GoogleIcon />
+        <span>Continue with <strong style={{ fontWeight: 600 }}>Google</strong></span>
+      </button>
+
+      <p
+        style={{
+          textAlign: "center",
+          fontFamily: mono,
+          fontSize: 12,
+          color: "var(--foreground-3)",
+          margin: "1.75rem 0 0",
+        }}
+      >
         Don&apos;t have an account?{" "}
-        <Link href="/register" style={{ color: "var(--foreground)", textDecoration: "none", fontWeight: 600 }}>Create one</Link>
+        <Link
+          href="/register"
+          style={{ color: "var(--foreground)", textDecoration: "none", fontWeight: 600 }}
+        >
+          Create one
+        </Link>
       </p>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .oc-google-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          background: rgba(42,31,25,0.06) !important;
+          border-color: rgba(255,77,0,0.30) !important;
+          box-shadow: 0 6px 18px rgba(42,31,25,0.06);
+        }
+        .oc-google-btn:active:not(:disabled) { transform: translateY(0); }
+      `}</style>
     </div>
   );
 }

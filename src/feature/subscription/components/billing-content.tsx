@@ -5,6 +5,9 @@ import { Loader2, CreditCard, AlertTriangle, Plus, Star, Trash2, CheckCircle2 } 
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { getStripe } from "../../../shared/lib/stripe/client";
 
+const serif = "var(--serif), 'Cormorant Garamond', Georgia, serif";
+const mono = "var(--mono), 'JetBrains Mono', monospace";
+
 interface PaymentMethodData {
   id: string;
   stripePaymentMethodId: string;
@@ -28,11 +31,11 @@ interface AgentSubData {
 }
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  active:     { bg: "rgba(34,197,94,0.1)",  fg: "#22c55e" },
-  incomplete: { bg: "rgba(234,179,8,0.1)",  fg: "#eab308" },
-  past_due:   { bg: "rgba(255,77,0,0.1)",   fg: "#FF4D00" },
-  canceled:   { bg: "rgba(120,120,120,0.1)", fg: "#999999" },
-  unpaid:     { bg: "rgba(255,77,0,0.1)",   fg: "#FF4D00" },
+  active:     { bg: "rgba(76,175,80,0.10)",  fg: "#3d8a40" },
+  incomplete: { bg: "rgba(234,179,8,0.10)",  fg: "#a07a08" },
+  past_due:   { bg: "rgba(255,77,0,0.10)",   fg: "#FF4D00" },
+  canceled:   { bg: "rgba(42,31,25,0.06)",   fg: "#8a7060" },
+  unpaid:     { bg: "rgba(255,77,0,0.10)",   fg: "#FF4D00" },
 };
 
 /* ── Add Card Form (SetupIntent-based) ────────────────── */
@@ -53,7 +56,6 @@ function AddCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
       const card = elements.getElement(CardElement);
       if (!card) return;
 
-      // Get a SetupIntent client secret from the server
       const setupRes = await fetch("/api/stripe/setup-intent", { method: "POST" });
       const setupData = await setupRes.json();
       if (!setupRes.ok || !setupData.clientSecret) {
@@ -105,39 +107,67 @@ function AddCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
   return (
     <form onSubmit={handleSubmit} style={{ marginTop: "1rem" }}>
       {error && (
-        <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.3)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#FF4D00", marginBottom: 12 }}>
+        <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.25)", borderRadius: 10, padding: "10px 14px", fontFamily: mono, fontSize: 12, color: "#FF4D00", marginBottom: 12 }}>
           {error}
         </div>
       )}
-      <div style={{ background: "#0A0A0A", border: "0.5px solid #1E1E1E", borderRadius: 8, padding: "12px 14px" }}>
+      <div style={{ background: "rgba(42,31,25,0.03)", border: "0.5px solid rgba(42,31,25,0.15)", borderRadius: 10, padding: "14px 16px" }}>
         <CardElement
           options={{
             style: {
               base: {
                 fontSize: "14px",
-                color: "#F0EEE8",
+                color: "#2a1f19",
                 fontFamily: "inherit",
-                "::placeholder": { color: "#555555" },
+                "::placeholder": { color: "#8a7060" },
               },
               invalid: { color: "#FF4D00" },
             },
           }}
         />
       </div>
-      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
         <button
           type="submit"
           disabled={loading || !stripe}
-          style={{ background: loading ? "#2A2A2A" : "#FF4D00", color: loading ? "#555555" : "#FFFFFF", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 6 }}
+          style={{
+            background: loading ? "rgba(42,31,25,0.06)" : "#FF4D00",
+            color: loading ? "#8a7060" : "#FFFFFF",
+            border: "none",
+            borderRadius: 10,
+            padding: "11px 22px",
+            fontFamily: mono,
+            fontSize: 12,
+            fontWeight: 500,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            cursor: loading ? "not-allowed" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            transition: "transform 0.15s ease, box-shadow 0.15s ease",
+          }}
         >
-          {loading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null}
+          {loading ? <Loader2 size={14} style={{ animation: "billingSpin 1s linear infinite" }} /> : null}
           {loading ? "Saving…" : "Save card"}
         </button>
         <button
           type="button"
           onClick={onCancel}
           disabled={loading}
-          style={{ background: "#1E1E1E", color: "#F0EEE8", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
+          style={{
+            background: "rgba(42,31,25,0.05)",
+            color: "#4a3a30",
+            border: "0.5px solid rgba(42,31,25,0.15)",
+            borderRadius: 10,
+            padding: "11px 22px",
+            fontFamily: mono,
+            fontSize: 12,
+            fontWeight: 500,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+          }}
         >
           Cancel
         </button>
@@ -204,16 +234,16 @@ export function BillingContent() {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4rem 0" }}>
-        <Loader2 size={24} style={{ color: "#FF4D00", animation: "spin 1s linear infinite" }} />
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4rem 0", color: "#2a1f19" }}>
+        <Loader2 size={24} style={{ color: "#FF4D00", animation: "billingSpin 1s linear infinite" }} />
+        <style>{`@keyframes billingSpin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
   if (fetchError) {
     return (
-      <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.3)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#FF4D00", maxWidth: 640 }}>
+      <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.25)", borderRadius: 10, padding: "12px 16px", fontFamily: mono, fontSize: 12, color: "#FF4D00", maxWidth: 720 }}>
         {fetchError}
       </div>
     );
@@ -222,74 +252,174 @@ export function BillingContent() {
   const hasCard = methods.length > 0;
 
   return (
-    <div style={{ maxWidth: 640 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 600, color: "#F0EEE8", margin: "0 0 4px" }}>Billing</h1>
-      <p style={{ fontSize: 13, color: "#999999", margin: "0 0 1.5rem" }}>
-        Manage cards and per-agent subscriptions. A debit/credit card on file is required to create new agents.
-      </p>
+    <div style={{ maxWidth: 720, color: "#2a1f19" }}>
+      {/* Heading */}
+      <div style={{ marginBottom: "2.25rem" }}>
+        <h1
+          style={{
+            fontFamily: serif,
+            fontSize: "clamp(1.8rem, 3vw, 2.4rem)",
+            fontWeight: 600,
+            letterSpacing: "-0.02em",
+            color: "#2a1f19",
+            margin: "0 0 8px",
+            lineHeight: 1.1,
+          }}
+        >
+          Billing &amp; <em style={{ fontStyle: "italic", color: "#FF4D00" }}>subscriptions</em>
+        </h1>
+        <p style={{ fontFamily: mono, fontSize: 12, color: "#8a7060", lineHeight: 1.7, letterSpacing: "0.02em", margin: 0 }}>
+          Manage cards and per-agent subscriptions. A card on file is required to create new agents.
+        </p>
+      </div>
 
       {/* No-card warning */}
       {!hasCard && (
-        <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.3)", borderRadius: 12, padding: "16px 18px", marginBottom: "1.5rem", display: "flex", gap: 12, alignItems: "flex-start" }}>
+        <div
+          style={{
+            background: "rgba(255,77,0,0.06)",
+            border: "0.5px solid rgba(255,77,0,0.25)",
+            borderRadius: 14,
+            padding: "16px 18px",
+            marginBottom: "1.75rem",
+            display: "flex",
+            gap: 12,
+            alignItems: "flex-start",
+          }}
+        >
           <AlertTriangle size={18} style={{ color: "#FF4D00", flexShrink: 0, marginTop: 2 }} />
           <div>
-            <p style={{ fontSize: 13, fontWeight: 500, color: "#F0EEE8", margin: "0 0 4px" }}>No card on file</p>
-            <p style={{ fontSize: 12, color: "#999999", margin: 0, lineHeight: 1.5 }}>
-              You must register a debit or credit card before creating an agent. Each agent is billed monthly.
+            <p style={{ fontFamily: serif, fontSize: 16, fontWeight: 600, color: "#2a1f19", margin: "0 0 4px", letterSpacing: "-0.01em" }}>
+              No card on file
+            </p>
+            <p style={{ fontFamily: mono, fontSize: 12, color: "#8a7060", margin: 0, lineHeight: 1.7 }}>
+              Register a debit or credit card before creating an agent. Each agent is billed monthly.
             </p>
           </div>
         </div>
       )}
 
-      {/* Payment Methods */}
-      <div style={{ background: "#111111", border: "0.5px solid #1E1E1E", borderRadius: 12, padding: "1.5rem", marginBottom: "1.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-          <h2 style={{ fontSize: 14, fontWeight: 500, color: "#F0EEE8", margin: 0 }}>Cards</h2>
+      {/* ── Payment Methods card ─────────────────────────── */}
+      <section
+        style={{
+          background: "#fff",
+          border: "0.5px solid rgba(42,31,25,0.15)",
+          borderRadius: 16,
+          padding: "1.75rem",
+          marginBottom: "1.5rem",
+          boxShadow: "0 4px 24px rgba(42,31,25,0.04)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+          <div>
+            <h2 style={{ fontFamily: serif, fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em", color: "#2a1f19", margin: 0 }}>
+              Cards
+            </h2>
+            <p style={{ fontFamily: mono, fontSize: 11, color: "#8a7060", margin: "4px 0 0", letterSpacing: "0.02em" }}>
+              Set one as default — it will be billed for new agents.
+            </p>
+          </div>
           {!showAddCard && (
             <button
               onClick={() => setShowAddCard(true)}
-              style={{ background: "none", border: "0.5px solid #1E1E1E", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#F0EEE8", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+              style={{
+                background: "rgba(42,31,25,0.05)",
+                color: "#4a3a30",
+                border: "0.5px solid rgba(42,31,25,0.15)",
+                borderRadius: 10,
+                padding: "9px 16px",
+                fontFamily: mono,
+                fontSize: 12,
+                fontWeight: 500,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
             >
-              <Plus size={11} /> Add card
+              <Plus size={12} /> Add card
             </button>
           )}
         </div>
 
         {methods.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#555555", margin: 0 }}>No payment methods on file.</p>
+          <p style={{ fontFamily: mono, fontSize: 13, color: "#8a7060", margin: 0 }}>No payment methods on file.</p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {methods.map((pm) => (
               <div
                 key={pm.id}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 12,
-                  padding: 12,
-                  background: "#0A0A0A",
-                  border: pm.isDefault ? "0.5px solid rgba(255,77,0,0.4)" : "0.5px solid #1E1E1E",
-                  borderRadius: 8,
+                  gap: 14,
+                  padding: "14px 16px",
+                  background: pm.isDefault ? "rgba(255,77,0,0.04)" : "rgba(42,31,25,0.025)",
+                  border: pm.isDefault ? "0.5px solid rgba(255,77,0,0.35)" : "0.5px solid rgba(42,31,25,0.10)",
+                  borderRadius: 12,
+                  transition: "border-color 0.15s ease, background 0.15s ease",
                 }}
               >
-                <CreditCard size={16} style={{ color: pm.isDefault ? "#FF4D00" : "#999999", flexShrink: 0 }} />
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: pm.isDefault ? "rgba(255,77,0,0.10)" : "rgba(42,31,25,0.05)",
+                    border: pm.isDefault ? "0.5px solid rgba(255,77,0,0.20)" : "0.5px solid rgba(42,31,25,0.08)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <CreditCard size={16} style={{ color: pm.isDefault ? "#FF4D00" : "#8a7060" }} />
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 13, color: "#F0EEE8", textTransform: "capitalize" }}>
+                  <p style={{ fontFamily: mono, fontSize: 13, color: "#2a1f19", margin: 0, fontWeight: 500, textTransform: "capitalize" }}>
                     {pm.brand ?? "Card"} •••• {pm.last4}
-                  </span>
-                  <span style={{ fontSize: 11, color: "#555555", marginLeft: 10 }}>
-                    {String(pm.expMonth).padStart(2, "0")}/{pm.expYear}
-                  </span>
+                  </p>
+                  <p style={{ fontFamily: mono, fontSize: 11, color: "#8a7060", margin: "2px 0 0", letterSpacing: "0.02em" }}>
+                    Expires {String(pm.expMonth).padStart(2, "0")}/{pm.expYear}
+                  </p>
                 </div>
                 {pm.isDefault ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 4, background: "rgba(255,77,0,0.1)", color: "#FF4D00", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontFamily: mono,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                      background: "rgba(255,77,0,0.10)",
+                      color: "#FF4D00",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                    }}
+                  >
                     <Star size={10} /> Default
                   </span>
                 ) : (
                   <button
                     onClick={() => handleSetDefault(pm)}
                     disabled={actionLoading === pm.id}
-                    style={{ background: "none", border: "0.5px solid #1E1E1E", borderRadius: 6, padding: "5px 10px", fontSize: 11, color: "#F0EEE8", cursor: actionLoading === pm.id ? "not-allowed" : "pointer" }}
+                    style={{
+                      background: "transparent",
+                      border: "0.5px solid rgba(42,31,25,0.15)",
+                      borderRadius: 8,
+                      padding: "6px 12px",
+                      fontFamily: mono,
+                      fontSize: 11,
+                      color: "#4a3a30",
+                      cursor: actionLoading === pm.id ? "not-allowed" : "pointer",
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                    }}
                   >
                     Set default
                   </button>
@@ -298,9 +428,30 @@ export function BillingContent() {
                   onClick={() => handleRemove(pm)}
                   disabled={actionLoading === pm.id}
                   title="Remove card"
-                  style={{ background: "none", border: "none", color: "#555555", cursor: actionLoading === pm.id ? "not-allowed" : "pointer", padding: 4, display: "flex" }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#8a7060",
+                    cursor: actionLoading === pm.id ? "not-allowed" : "pointer",
+                    padding: 6,
+                    display: "flex",
+                    borderRadius: 8,
+                    transition: "color 0.15s ease, background 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "#FF4D00";
+                    e.currentTarget.style.background = "rgba(255,77,0,0.06)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "#8a7060";
+                    e.currentTarget.style.background = "transparent";
+                  }}
                 >
-                  {actionLoading === pm.id ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Trash2 size={13} />}
+                  {actionLoading === pm.id ? (
+                    <Loader2 size={14} style={{ animation: "billingSpin 1s linear infinite" }} />
+                  ) : (
+                    <Trash2 size={14} />
+                  )}
                 </button>
               </div>
             ))}
@@ -315,39 +466,103 @@ export function BillingContent() {
             />
           </Elements>
         )}
-      </div>
+      </section>
 
-      {/* Per-Agent Subscriptions */}
-      <div style={{ background: "#111111", border: "0.5px solid #1E1E1E", borderRadius: 12, padding: "1.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-          <h2 style={{ fontSize: 14, fontWeight: 500, color: "#F0EEE8", margin: 0 }}>Agent Subscriptions</h2>
-          <span style={{ fontSize: 11, color: "#555555" }}>$20/month per agent</span>
+      {/* ── Per-Agent Subscriptions card ─────────────────── */}
+      <section
+        style={{
+          background: "#fff",
+          border: "0.5px solid rgba(42,31,25,0.15)",
+          borderRadius: 16,
+          padding: "1.75rem",
+          boxShadow: "0 4px 24px rgba(42,31,25,0.04)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "1.25rem", flexWrap: "wrap", gap: 8 }}>
+          <div>
+            <h2 style={{ fontFamily: serif, fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em", color: "#2a1f19", margin: 0 }}>
+              Agent <em style={{ fontStyle: "italic", color: "#FF4D00" }}>subscriptions</em>
+            </h2>
+            <p style={{ fontFamily: mono, fontSize: 11, color: "#8a7060", margin: "4px 0 0", letterSpacing: "0.02em" }}>
+              One monthly subscription per agent.
+            </p>
+          </div>
+          <span
+            style={{
+              fontFamily: mono,
+              fontSize: 11,
+              color: "#4a3a30",
+              padding: "5px 12px",
+              borderRadius: 999,
+              background: "rgba(42,31,25,0.05)",
+              border: "0.5px solid rgba(42,31,25,0.10)",
+              letterSpacing: "0.04em",
+            }}
+          >
+            $20<span style={{ color: "#8a7060" }}>/month per agent</span>
+          </span>
         </div>
 
         {subs.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#555555", margin: 0 }}>No agent subscriptions yet. Create an agent to start your first subscription.</p>
+          <p style={{ fontFamily: mono, fontSize: 13, color: "#8a7060", margin: 0, lineHeight: 1.7 }}>
+            No agent subscriptions yet. Create an agent from the overview to start your first one.
+          </p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {subs.map((s) => {
               const colors = STATUS_COLORS[s.status] ?? STATUS_COLORS.canceled;
               return (
                 <div
                   key={s.id}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, background: "#0A0A0A", border: "0.5px solid #1E1E1E", borderRadius: 8 }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    padding: "14px 16px",
+                    background: "rgba(42,31,25,0.025)",
+                    border: "0.5px solid rgba(42,31,25,0.10)",
+                    borderRadius: 12,
+                  }}
                 >
-                  <CheckCircle2 size={16} style={{ color: colors.fg, flexShrink: 0 }} />
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: colors.bg,
+                      border: `0.5px solid ${colors.fg}25`,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <CheckCircle2 size={16} style={{ color: colors.fg }} />
+                  </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 13, color: "#F0EEE8", margin: 0, fontWeight: 500 }}>
-                      {s.agentName ?? <span style={{ color: "#555555" }}>(deleted agent)</span>}
+                    <p style={{ fontFamily: serif, fontSize: 15, color: "#2a1f19", margin: 0, fontWeight: 600, letterSpacing: "-0.01em" }}>
+                      {s.agentName ?? <em style={{ color: "#8a7060", fontStyle: "italic", fontWeight: 500 }}>(deleted agent)</em>}
                     </p>
                     {s.currentPeriodEnd && (
-                      <p style={{ fontSize: 11, color: "#555555", margin: "2px 0 0" }}>
+                      <p style={{ fontFamily: mono, fontSize: 11, color: "#8a7060", margin: "3px 0 0", letterSpacing: "0.02em" }}>
                         {s.cancelAtPeriodEnd ? "Ends" : "Renews"}{" "}
-                        {new Date(s.currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {new Date(s.currentPeriodEnd).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                       </p>
                     )}
                   </div>
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 4, background: colors.bg, color: colors.fg, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  <span
+                    style={{
+                      fontFamily: mono,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                      background: colors.bg,
+                      color: colors.fg,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                    }}
+                  >
                     {s.cancelAtPeriodEnd ? "canceling" : s.status}
                   </span>
                 </div>
@@ -355,9 +570,9 @@ export function BillingContent() {
             })}
           </div>
         )}
-      </div>
+      </section>
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes billingSpin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
