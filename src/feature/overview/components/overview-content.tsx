@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Bot, Loader2, X, Sparkles, Star } from "lucide-react";
+import { Bot, Loader2, X, Sparkles, Star, CreditCard } from "lucide-react";
 import Link from "next/link";
 
 interface UserSkill {
@@ -146,6 +146,9 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   const [userSkills, setUserSkills] = useState<UserSkill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
 
+  // Billing — payment method gating
+  const [hasCard, setHasCard] = useState<boolean | null>(null);
+
   // Feedback modal
   const [feedbackAgentId, setFeedbackAgentId] = useState<string | null>(null);
   const [feedbackRating, setFeedbackRating] = useState(0);
@@ -208,10 +211,25 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     }
   }, []);
 
+  const fetchHasCard = useCallback(async () => {
+    try {
+      const res = await fetch("/api/stripe/payment-methods");
+      if (res.ok) {
+        const data = await res.json();
+        setHasCard((data.paymentMethods?.length ?? 0) > 0);
+      } else {
+        setHasCard(false);
+      }
+    } catch {
+      setHasCard(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAgents();
+    fetchHasCard();
     fetch("/models.json").then(r => r.json()).then(setModelsCatalog).catch(() => {});
-  }, [fetchAgents]);
+  }, [fetchAgents, fetchHasCard]);
 
   // Auto-refresh while any agent is still starting
   useEffect(() => {
@@ -291,6 +309,11 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.error === "missing_payment_method") {
+          setError(data.message ?? "Add a debit/credit card in Billing before creating an agent.");
+          setHasCard(false);
+          return;
+        }
         setError(data.error ?? "We couldn't add your bot. Please try again.");
         return;
       }
@@ -394,10 +417,55 @@ export function OverviewContent({ userName }: OverviewContentProps) {
             letterSpacing: "0.06em",
             textTransform: "uppercase",
             cursor: "pointer",
+            display: hasCard === false ? "none" : undefined,
           }}
         >
           + New Agent
         </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Link
+            href="/billing"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: "transparent",
+              color: "var(--foreground-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "9px 14px",
+              fontFamily: mono,
+              fontSize: 12,
+              fontWeight: 500,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              textDecoration: "none",
+            }}
+          >
+            <CreditCard size={13} /> Billing
+          </Link>
+
+          {hasCard === false && (
+            <Link
+              href="/billing"
+              style={{
+                background: "#FF4D00",
+                color: "#fff",
+                borderRadius: 8,
+                padding: "10px 20px",
+                fontFamily: mono,
+                fontSize: 12,
+                fontWeight: 500,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                textDecoration: "none",
+              }}
+            >
+              Add a card to create agents
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Agent cards */}

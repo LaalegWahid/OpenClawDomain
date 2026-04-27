@@ -21,7 +21,8 @@ ENV STRIPE_WEBHOOK_SECRET=whsec_placeholder
 ENV STRIPE_PRICE_ID=price_placeholder
 ENV TELEGRAM_WEBHOOK_SECRET=placeholder
 ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51SMuxbGzByQxF6vHsIAf5nzEeubrUJuUoSOlzFN03Mwt3xWpwiiAS8wtYl5jQ7MS5ikY47SOpqB2MprCvpd0xJ5V00XfrzCCF2
-
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_ZmluZXItc3RvcmstODcuY2xlcmsuYWNjb3VudHMuZGV2JA
+ENV CLERK_SECRET_KEY=sk_test_placeholder
 RUN pnpm build
 
 FROM --platform=linux/arm64 node:20-alpine AS runner

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, CreditCard, AlertTriangle, RefreshCw } from "lucide-react";
+import { Loader2, CreditCard, AlertTriangle, Plus, Star, Trash2, CheckCircle2 } from "lucide-react";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { getStripe } from "../../../shared/lib/stripe/client";
 
@@ -15,14 +15,28 @@ interface PaymentMethodData {
   isDefault: boolean;
 }
 
-interface SubData {
-  status: string | null;
+interface AgentSubData {
+  id: string;
+  agentId: string | null;
+  agentName: string | null;
+  status: string;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  canceledAt: string | null;
+  stripeSubscriptionId: string | null;
+  createdAt: string;
 }
 
-/* ── Change Card Form ──────────────────────────────────── */
-function ChangeCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
+const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
+  active:     { bg: "rgba(34,197,94,0.1)",  fg: "#22c55e" },
+  incomplete: { bg: "rgba(234,179,8,0.1)",  fg: "#eab308" },
+  past_due:   { bg: "rgba(255,77,0,0.1)",   fg: "#FF4D00" },
+  canceled:   { bg: "rgba(120,120,120,0.1)", fg: "#999999" },
+  unpaid:     { bg: "rgba(255,77,0,0.1)",   fg: "#FF4D00" },
+};
+
+/* ── Add Card Form (SetupIntent-based) ────────────────── */
+function AddCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [loading, setLoading] = useState(false);
@@ -39,33 +53,50 @@ function ChangeCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCanc
       const card = elements.getElement(CardElement);
       if (!card) return;
 
-      const { paymentMethod, error: pmError } = await stripe.createPaymentMethod({
-        type: "card",
-        card,
-      });
-
-      if (pmError) {
-        setError(pmError.message ?? "Invalid card details");
+      // Get a SetupIntent client secret from the server
+      const setupRes = await fetch("/api/stripe/setup-intent", { method: "POST" });
+      const setupData = await setupRes.json();
+      if (!setupRes.ok || !setupData.clientSecret) {
+        setError(setupData.error ?? "Could not start card setup.");
         setLoading(false);
         return;
       }
 
-      const res = await fetch("/api/stripe/update-card", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethodId: paymentMethod.id }),
+      const result = await stripe.confirmCardSetup(setupData.clientSecret, {
+        payment_method: { card },
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error ?? "We couldn't update your card. Please try again.");
+      if (result.error) {
+        setError(result.error.message ?? "Invalid card details");
+        setLoading(false);
+        return;
+      }
+
+      const pmId = typeof result.setupIntent.payment_method === "string"
+        ? result.setupIntent.payment_method
+        : result.setupIntent.payment_method?.id;
+      if (!pmId) {
+        setError("Card setup did not return a payment method.");
+        setLoading(false);
+        return;
+      }
+
+      const attachRes = await fetch("/api/stripe/payment-methods", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethodId: pmId }),
+      });
+
+      if (!attachRes.ok) {
+        const data = await attachRes.json().catch(() => ({}));
+        setError(data.error ?? "We couldn't save the card. Please try again.");
         setLoading(false);
         return;
       }
 
       onSuccess();
     } catch {
-      setError("We couldn't update your card. Please try again.");
+      setError("We couldn't save the card. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -74,24 +105,11 @@ function ChangeCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCanc
   return (
     <form onSubmit={handleSubmit} style={{ marginTop: "1rem" }}>
       {error && (
-        <div style={{
-          background: "rgba(255,77,0,0.06)",
-          border: "0.5px solid rgba(255,77,0,0.3)",
-          borderRadius: "8px",
-          padding: "10px 14px",
-          fontSize: "13px",
-          color: "#FF4D00",
-          marginBottom: "12px",
-        }}>
+        <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.3)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#FF4D00", marginBottom: 12 }}>
           {error}
         </div>
       )}
-      <div style={{
-        background: "#0A0A0A",
-        border: "0.5px solid #1E1E1E",
-        borderRadius: "8px",
-        padding: "12px 14px",
-      }}>
+      <div style={{ background: "#0A0A0A", border: "0.5px solid #1E1E1E", borderRadius: 8, padding: "12px 14px" }}>
         <CardElement
           options={{
             style: {
@@ -106,41 +124,20 @@ function ChangeCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCanc
           }}
         />
       </div>
-      <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
+      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
         <button
           type="submit"
           disabled={loading || !stripe}
-          style={{
-            background: loading ? "#2A2A2A" : "#FF4D00",
-            color: loading ? "#555555" : "#FFFFFF",
-            border: "none",
-            borderRadius: "8px",
-            padding: "10px 20px",
-            fontSize: "13px",
-            fontWeight: 500,
-            cursor: loading ? "not-allowed" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-          }}
+          style={{ background: loading ? "#2A2A2A" : "#FF4D00", color: loading ? "#555555" : "#FFFFFF", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 6 }}
         >
           {loading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null}
-          {loading ? "Updating…" : "Update card"}
+          {loading ? "Saving…" : "Save card"}
         </button>
         <button
           type="button"
           onClick={onCancel}
           disabled={loading}
-          style={{
-            background: "#1E1E1E",
-            color: "#F0EEE8",
-            border: "none",
-            borderRadius: "8px",
-            padding: "10px 20px",
-            fontSize: "13px",
-            fontWeight: 500,
-            cursor: "pointer",
-          }}
+          style={{ background: "#1E1E1E", color: "#F0EEE8", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
         >
           Cancel
         </button>
@@ -149,108 +146,29 @@ function ChangeCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCanc
   );
 }
 
-/* ── Cancel Confirmation Modal ─────────────────────────── */
-function CancelModal({ onConfirm, onClose, loading }: {
-  onConfirm: () => void;
-  onClose: () => void;
-  loading: boolean;
-}) {
-  return (
-    <div style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.7)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 50,
-    }}>
-      <div style={{
-        background: "#111111",
-        border: "0.5px solid #1E1E1E",
-        borderRadius: "16px",
-        padding: "2rem",
-        maxWidth: "400px",
-        width: "100%",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "1rem" }}>
-          <AlertTriangle size={20} style={{ color: "#FF4D00" }} />
-          <h3 style={{ fontSize: "16px", fontWeight: 500, color: "#F0EEE8" }}>
-            Cancel subscription?
-          </h3>
-        </div>
-        <p style={{ fontSize: "13px", color: "#999999", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-          Your subscription will remain active until the end of the current billing period.
-          After that, you&apos;ll lose access to all features. You can resume anytime before it expires.
-        </p>
-        <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-          <button
-            onClick={onClose}
-            disabled={loading}
-            style={{
-              background: "#1E1E1E",
-              color: "#F0EEE8",
-              border: "none",
-              borderRadius: "8px",
-              padding: "10px 20px",
-              fontSize: "13px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            Keep subscription
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            style={{
-              background: loading ? "#2A2A2A" : "#dc2626",
-              color: loading ? "#555555" : "#FFFFFF",
-              border: "none",
-              borderRadius: "8px",
-              padding: "10px 20px",
-              fontSize: "13px",
-              fontWeight: 500,
-              cursor: loading ? "not-allowed" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
-          >
-            {loading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null}
-            {loading ? "Canceling…" : "Yes, cancel"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Main Billing Content ──────────────────────────────── */
+/* ── Main Billing Content ────────────────────────────── */
 export function BillingContent() {
-  const [sub, setSub] = useState<SubData | null>(null);
   const [methods, setMethods] = useState<PaymentMethodData[]>([]);
-  const [loadingSub, setLoadingSub] = useState(true);
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [showChangeCard, setShowChangeCard] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
-
+  const [subs, setSubs] = useState<AgentSubData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const [subRes, pmRes] = await Promise.all([
-        fetch("/api/stripe/subscription"),
+      const [pmRes, subRes] = await Promise.all([
         fetch("/api/stripe/payment-methods"),
+        fetch("/api/stripe/agent-subscriptions"),
       ]);
-      const subData = await subRes.json();
       const pmData = await pmRes.json();
-      setSub(subData);
+      const subData = await subRes.json();
       setMethods(pmData.paymentMethods ?? []);
+      setSubs(subData.subscriptions ?? []);
     } catch {
       setFetchError("We couldn't load your billing info. Please refresh the page.");
     } finally {
-      setLoadingSub(false);
+      setLoading(false);
     }
   }, []);
 
@@ -258,28 +176,33 @@ export function BillingContent() {
     fetchData();
   }, [fetchData]);
 
-  async function handleCancel() {
-    setActionLoading(true);
+  async function handleSetDefault(pm: PaymentMethodData) {
+    if (pm.isDefault) return;
+    setActionLoading(pm.id);
     try {
-      await fetch("/api/stripe/cancel", { method: "POST" });
+      await fetch("/api/stripe/default-payment-method", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethodId: pm.stripePaymentMethodId }),
+      });
       await fetchData();
-      setShowCancelModal(false);
     } finally {
-      setActionLoading(false);
+      setActionLoading(null);
     }
   }
 
-  async function handleResume() {
-    setActionLoading(true);
+  async function handleRemove(pm: PaymentMethodData) {
+    if (!confirm(`Remove the ${pm.brand} card ending in ${pm.last4}?`)) return;
+    setActionLoading(pm.id);
     try {
-      await fetch("/api/stripe/resume", { method: "POST" });
+      await fetch(`/api/stripe/payment-methods/${pm.stripePaymentMethodId}`, { method: "DELETE" });
       await fetchData();
     } finally {
-      setActionLoading(false);
+      setActionLoading(null);
     }
   }
 
-  if (loadingSub) {
+  if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "4rem 0" }}>
         <Loader2 size={24} style={{ color: "#FF4D00", animation: "spin 1s linear infinite" }} />
@@ -290,199 +213,149 @@ export function BillingContent() {
 
   if (fetchError) {
     return (
-      <div style={{
-        background: "rgba(255,77,0,0.06)",
-        border: "0.5px solid rgba(255,77,0,0.3)",
-        borderRadius: "8px",
-        padding: "10px 14px",
-        fontSize: "13px",
-        color: "#FF4D00",
-        maxWidth: "640px",
-      }}>
+      <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.3)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#FF4D00", maxWidth: 640 }}>
         {fetchError}
       </div>
     );
   }
 
-  const isActive = sub?.status === "active";
-  const isCanceling = sub?.cancelAtPeriodEnd;
-  const displayPm = methods.find((m) => m.isDefault) ?? methods[0] ?? null;
+  const hasCard = methods.length > 0;
 
   return (
-    <div style={{ maxWidth: "640px" }}>
+    <div style={{ maxWidth: 640 }}>
+      <h1 style={{ fontSize: 22, fontWeight: 600, color: "#F0EEE8", margin: "0 0 4px" }}>Billing</h1>
+      <p style={{ fontSize: 13, color: "#999999", margin: "0 0 1.5rem" }}>
+        Manage cards and per-agent subscriptions. A debit/credit card on file is required to create new agents.
+      </p>
 
-      {/* Subscription Status */}
-      <div style={{
-        background: "#111111",
-        border: "0.5px solid #1E1E1E",
-        borderRadius: "12px",
-        padding: "1.5rem",
-        marginBottom: "1.5rem",
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-          <h2 style={{ fontSize: "14px", fontWeight: 500, color: "#F0EEE8" }}>Subscription</h2>
-          <span style={{
-            fontSize: "11px",
-            fontWeight: 600,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-            padding: "4px 10px",
-            borderRadius: "6px",
-            background: isActive
-              ? (isCanceling ? "rgba(234,179,8,0.1)" : "rgba(34,197,94,0.1)")
-              : "rgba(255,77,0,0.1)",
-            color: isActive
-              ? (isCanceling ? "#eab308" : "#22c55e")
-              : "#FF4D00",
-          }}>
-            {isCanceling ? "canceling" : (sub?.status ?? "none")}
-          </span>
-        </div>
-
-        <div style={{ fontSize: "13px", color: "#999999", marginBottom: "1rem" }}>
-          <span style={{ fontSize: "24px", fontWeight: 600, color: "#F0EEE8" }}>$20</span>
-          <span>/month</span>
-          {sub?.currentPeriodEnd && (
-            <span style={{ display: "block", marginTop: "4px", color: "#555555" }}>
-              {isCanceling ? "Access until" : "Next billing"}:{" "}
-              {new Date(sub.currentPeriodEnd).toLocaleDateString("en-US", {
-                month: "long", day: "numeric", year: "numeric",
-              })}
-            </span>
-          )}
-        </div>
-
-        {isCanceling && (
-          <div style={{
-            background: "rgba(234,179,8,0.06)",
-            border: "0.5px solid rgba(234,179,8,0.3)",
-            borderRadius: "8px",
-            padding: "10px 14px",
-            fontSize: "13px",
-            color: "#eab308",
-            marginBottom: "1rem",
-            lineHeight: 1.6,
-          }}>
-            Your subscription is set to cancel at the end of the current period.
-            You&apos;ll retain access until then.
+      {/* No-card warning */}
+      {!hasCard && (
+        <div style={{ background: "rgba(255,77,0,0.06)", border: "0.5px solid rgba(255,77,0,0.3)", borderRadius: 12, padding: "16px 18px", marginBottom: "1.5rem", display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <AlertTriangle size={18} style={{ color: "#FF4D00", flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 500, color: "#F0EEE8", margin: "0 0 4px" }}>No card on file</p>
+            <p style={{ fontSize: 12, color: "#999999", margin: 0, lineHeight: 1.5 }}>
+              You must register a debit or credit card before creating an agent. Each agent is billed monthly.
+            </p>
           </div>
-        )}
-
-        <div style={{ display: "flex", gap: "10px" }}>
-          {isActive && !isCanceling && (
-            <button
-              onClick={() => setShowCancelModal(true)}
-              style={{
-                background: "none",
-                border: "0.5px solid #333",
-                borderRadius: "8px",
-                padding: "10px 20px",
-                fontSize: "13px",
-                fontWeight: 500,
-                cursor: "pointer",
-                color: "#999999",
-              }}
-            >
-              Cancel subscription
-            </button>
-          )}
-          {isActive && isCanceling && (
-            <button
-              onClick={handleResume}
-              disabled={actionLoading}
-              style={{
-                background: actionLoading ? "#2A2A2A" : "#FF4D00",
-                color: actionLoading ? "#555555" : "#FFFFFF",
-                border: "none",
-                borderRadius: "8px",
-                padding: "10px 20px",
-                fontSize: "13px",
-                fontWeight: 500,
-                cursor: actionLoading ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
-              {actionLoading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null}
-              {actionLoading ? "Resuming…" : "Resume subscription"}
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
-      {/* Payment Method */}
-      <div style={{
-        background: "#111111",
-        border: "0.5px solid #1E1E1E",
-        borderRadius: "12px",
-        padding: "1.5rem",
-      }}>
+      {/* Payment Methods */}
+      <div style={{ background: "#111111", border: "0.5px solid #1E1E1E", borderRadius: 12, padding: "1.5rem", marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-          <h2 style={{ fontSize: "14px", fontWeight: 500, color: "#F0EEE8" }}>Payment Method</h2>
-          {!showChangeCard && (
+          <h2 style={{ fontSize: 14, fontWeight: 500, color: "#F0EEE8", margin: 0 }}>Cards</h2>
+          {!showAddCard && (
             <button
-              onClick={() => setShowChangeCard(true)}
-              style={{
-                background: "none",
-                border: "0.5px solid #1E1E1E",
-                borderRadius: "6px",
-                padding: "6px 12px",
-                fontSize: "12px",
-                color: "#F0EEE8",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
+              onClick={() => setShowAddCard(true)}
+              style={{ background: "none", border: "0.5px solid #1E1E1E", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#F0EEE8", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
             >
-              <RefreshCw size={11} /> Change
+              <Plus size={11} /> Add card
             </button>
           )}
         </div>
 
-        {displayPm ? (
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            padding: "12px",
-            background: "#0A0A0A",
-            border: "0.5px solid #1E1E1E",
-            borderRadius: "8px",
-          }}>
-            <CreditCard size={16} style={{ color: "#FF4D00" }} />
-            <span style={{ fontSize: "13px", color: "#F0EEE8", textTransform: "capitalize" }}>
-              {displayPm.brand ?? "Card"} •••• {displayPm.last4}
-            </span>
-            <span style={{ fontSize: "12px", color: "#555555" }}>
-              {String(displayPm.expMonth).padStart(2, "0")}/{displayPm.expYear}
-            </span>
-          </div>
+        {methods.length === 0 ? (
+          <p style={{ fontSize: 13, color: "#555555", margin: 0 }}>No payment methods on file.</p>
         ) : (
-          <p style={{ fontSize: "13px", color: "#555555" }}>No payment method on file.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {methods.map((pm) => (
+              <div
+                key={pm.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: 12,
+                  background: "#0A0A0A",
+                  border: pm.isDefault ? "0.5px solid rgba(255,77,0,0.4)" : "0.5px solid #1E1E1E",
+                  borderRadius: 8,
+                }}
+              >
+                <CreditCard size={16} style={{ color: pm.isDefault ? "#FF4D00" : "#999999", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 13, color: "#F0EEE8", textTransform: "capitalize" }}>
+                    {pm.brand ?? "Card"} •••• {pm.last4}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#555555", marginLeft: 10 }}>
+                    {String(pm.expMonth).padStart(2, "0")}/{pm.expYear}
+                  </span>
+                </div>
+                {pm.isDefault ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 4, background: "rgba(255,77,0,0.1)", color: "#FF4D00", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    <Star size={10} /> Default
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleSetDefault(pm)}
+                    disabled={actionLoading === pm.id}
+                    style={{ background: "none", border: "0.5px solid #1E1E1E", borderRadius: 6, padding: "5px 10px", fontSize: 11, color: "#F0EEE8", cursor: actionLoading === pm.id ? "not-allowed" : "pointer" }}
+                  >
+                    Set default
+                  </button>
+                )}
+                <button
+                  onClick={() => handleRemove(pm)}
+                  disabled={actionLoading === pm.id}
+                  title="Remove card"
+                  style={{ background: "none", border: "none", color: "#555555", cursor: actionLoading === pm.id ? "not-allowed" : "pointer", padding: 4, display: "flex" }}
+                >
+                  {actionLoading === pm.id ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Trash2 size={13} />}
+                </button>
+              </div>
+            ))}
+          </div>
         )}
 
-        {showChangeCard && (
+        {showAddCard && (
           <Elements stripe={getStripe()}>
-            <ChangeCardForm
-              onSuccess={() => {
-                setShowChangeCard(false);
-                fetchData();
-              }}
-              onCancel={() => setShowChangeCard(false)}
+            <AddCardForm
+              onSuccess={() => { setShowAddCard(false); fetchData(); }}
+              onCancel={() => setShowAddCard(false)}
             />
           </Elements>
         )}
       </div>
 
-      {showCancelModal && (
-        <CancelModal
-          onConfirm={handleCancel}
-          onClose={() => setShowCancelModal(false)}
-          loading={actionLoading}
-        />
-      )}
+      {/* Per-Agent Subscriptions */}
+      <div style={{ background: "#111111", border: "0.5px solid #1E1E1E", borderRadius: 12, padding: "1.5rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <h2 style={{ fontSize: 14, fontWeight: 500, color: "#F0EEE8", margin: 0 }}>Agent Subscriptions</h2>
+          <span style={{ fontSize: 11, color: "#555555" }}>$20/month per agent</span>
+        </div>
+
+        {subs.length === 0 ? (
+          <p style={{ fontSize: 13, color: "#555555", margin: 0 }}>No agent subscriptions yet. Create an agent to start your first subscription.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {subs.map((s) => {
+              const colors = STATUS_COLORS[s.status] ?? STATUS_COLORS.canceled;
+              return (
+                <div
+                  key={s.id}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, background: "#0A0A0A", border: "0.5px solid #1E1E1E", borderRadius: 8 }}
+                >
+                  <CheckCircle2 size={16} style={{ color: colors.fg, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, color: "#F0EEE8", margin: 0, fontWeight: 500 }}>
+                      {s.agentName ?? <span style={{ color: "#555555" }}>(deleted agent)</span>}
+                    </p>
+                    {s.currentPeriodEnd && (
+                      <p style={{ fontSize: 11, color: "#555555", margin: "2px 0 0" }}>
+                        {s.cancelAtPeriodEnd ? "Ends" : "Renews"}{" "}
+                        {new Date(s.currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </p>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 4, background: colors.bg, color: colors.fg, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    {s.cancelAtPeriodEnd ? "canceling" : s.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
