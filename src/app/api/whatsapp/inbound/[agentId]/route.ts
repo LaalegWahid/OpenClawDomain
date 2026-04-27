@@ -14,33 +14,21 @@ import {
 } from "../../../../../shared/lib/agents/document";
 import { env } from "../../../../../shared/config/env";
 import { getServiceEnabled } from "../../../../../shared/lib/service/status";
+import { getAgentErrorMessage } from "../../../../../shared/lib/agents/errors";
+import { withChatQueue, claimIncomingMessage } from "../../../../../shared/lib/agents/chat-queue";
 
 const MAX_HISTORY = 20;
 
-function getAgentErrorMessage(errMsg: string, err: unknown): string {
-  if (errMsg.includes("ECONNREFUSED") || errMsg.includes("fetch failed")) {
-    return "The agent is starting up. Please try again in a few seconds.";
-  }
-  if (err instanceof Error && err.name === "TimeoutError") {
-    return "The agent took too long to respond. The AI model may be overloaded. Please try again shortly.";
-  }
-  if (errMsg.includes("403") && errMsg.toLowerCase().includes("key limit")) {
-    return "The AI provider's API key has reached its usage limit. Please contact the administrator or try again later.";
-  }
-  if (errMsg.includes("403")) {
-    return "The AI provider rejected the request (authorization issue). Please check your API key settings.";
-  }
-  if (errMsg.includes("429") || errMsg.toLowerCase().includes("rate limit")) {
-    return "The AI provider is rate-limiting requests. Please wait a moment and try again.";
-  }
-  if (errMsg.includes("500") || errMsg.includes("502") || errMsg.includes("503")) {
-    return "The AI provider is experiencing issues. Please try again in a few minutes.";
-  }
-  if (errMsg.includes("maximum iterations")) {
-    return "The agent's response was too complex to complete. Please try a simpler question.";
-  }
-  return "Something went wrong while processing your message. Please try again.";
-}
+type WaReply =
+  | { ok: true }
+  | { type: "text"; text: string }
+  | {
+      type: "document";
+      document: string;
+      filename: string;
+      mimetype: string;
+      caption?: string;
+    };
 
 export async function POST(
   req: Request,
@@ -59,20 +47,41 @@ export async function POST(
     return NextResponse.json({ type: "text", text: "Service temporarily unavailable." });
   }
 
-  // Parse body — must be inside a try so a malformed request never returns HTML 500
-  let jid: string, text: string, fromMe: boolean;
+  let jid: string, text: string, fromMe: boolean, messageId: string;
   try {
-    const body = await req.json() as { jid: string; text: string; pushName?: string; fromMe?: boolean };
+    const body = await req.json() as {
+      jid: string;
+      text: string;
+      pushName?: string;
+      fromMe?: boolean;
+      messageId?: string;
+    };
     jid = body.jid;
     text = body.text;
     fromMe = body.fromMe === true;
+    messageId = body.messageId ?? "";
   } catch {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
   if (!jid || !text?.trim()) return NextResponse.json({ ok: true });
 
-  // Check allowed sender filter
+  // Dedup: drop the message if we've already seen it. The relay should send
+  // a unique messageId; if it doesn't (older relay), skip dedup.
+  if (messageId) {
+    const claimed = await claimIncomingMessage({
+      agentId,
+      chatId: jid,
+      source: "whatsapp",
+      externalId: messageId,
+    });
+    if (!claimed) {
+      logger.info({ agentId, jid, messageId }, "WhatsApp dedup: duplicate message dropped");
+      return NextResponse.json({ ok: true });
+    }
+  }
+
+  // Allowed-sender filter
   const [waChannel] = await db.select().from(agentChannel)
     .where(and(eq(agentChannel.agentId, agentId), eq(agentChannel.platform, "whatsapp")))
     .limit(1);
@@ -87,15 +96,11 @@ export async function POST(
 
   if (hasFilter) {
     if (fromMe) {
-      // fromMe=true means the owner typed this in their own "message me" chat.
-      // Allow only if the owner explicitly enabled allowOwnerChat.
       if (!creds.allowOwnerChat) {
         logger.info({ agentId, jid }, "WhatsApp message ignored — owner chat not enabled");
         return NextResponse.json({ ok: true });
       }
     } else {
-      // Message from someone else — check against the allowed numbers list.
-      // JIDs can be @s.whatsapp.net or @lid (modern linked-device contacts).
       const incomingNum = jid.split("@")[0];
       const isAllowed = allowedJids.some(
         (a) => a === jid || a.split("@")[0] === incomingNum,
@@ -109,7 +114,6 @@ export async function POST(
 
   logger.info({ agentId, jid, text }, "WhatsApp inbound message received");
 
-  // Intercept /cancel or /stop — do NOT forward to the agent.
   if (isCancelCommand(text)) {
     const cancelled = await cancelChatRequest(agentId, jid);
     return NextResponse.json({
@@ -128,16 +132,35 @@ export async function POST(
   if (found.status === "error")
     return NextResponse.json({ type: "text", text: "This agent encountered an error. Please check the dashboard." });
 
+  // Per-chat queue: a new message from the same JID waits for the prior
+  // one to finish before processing.
+  const containerId = found.containerId;
+  const agentType = (found.type as AgentType) || "operations";
+
+  const reply = await withChatQueue(`whatsapp:${agentId}:${jid}`, () =>
+    processWhatsappMessage({ agentId, jid, text, containerId, agentType }),
+  );
+
+  return NextResponse.json(reply);
+}
+
+async function processWhatsappMessage(args: {
+  agentId: string;
+  jid: string;
+  text: string;
+  containerId: string;
+  agentType: AgentType;
+}): Promise<WaReply> {
+  const { agentId, jid, text, containerId, agentType } = args;
+
   const [session] = await db
     .select().from(chatSession)
     .where(and(eq(chatSession.agentId, agentId), eq(chatSession.chatId, jid)))
     .limit(1);
 
   const history: ChatMessage[] = (session?.history as ChatMessage[] | null) ?? [];
-  const agentType = (found.type as AgentType) || "operations";
   const docFormat = detectDocumentRequest(text);
 
-  // Create log entry
   const [logEntry] = await db.insert(agentLog).values({
     agentId,
     source: "whatsapp",
@@ -150,14 +173,14 @@ export async function POST(
   try {
     const result = docFormat
       ? await sendDocumentCommand(
-          found.containerId,
+          containerId,
           buildDocumentSystemInstruction(agentType),
           rewriteAsContentPrompt(text),
           history,
           abortController.signal,
         )
       : await sendCommand(
-          found.containerId, text,
+          containerId, text,
           history.length > 0 ? history : undefined,
           agentType,
           abortController.signal,
@@ -198,24 +221,22 @@ export async function POST(
       const pdfBuffer = await generatePdf(contentSource, pdfTitle, agentType);
       logger.info({ agentId, jid, filename }, "WhatsApp PDF generated");
       cleanupChatAbort(agentId, jid, logEntry.id);
-      return NextResponse.json({
+      return {
         type: "document",
         document: pdfBuffer.toString("base64"),
         filename: `${filename}.pdf`,
         mimetype: "application/pdf",
         caption: "📄 Here is your document.",
-      });
+      };
     } else {
       cleanupChatAbort(agentId, jid, logEntry.id);
-      return NextResponse.json({ type: "text", text: responseText });
+      return { type: "text", text: responseText };
     }
   } catch (err) {
     const isAbort = err instanceof Error && err.name === "AbortError";
     if (isAbort) {
-      // The /cancel webhook already replied "✋ Cancelled." — stay silent here
-      // so the user doesn't receive a duplicate message.
       cleanupChatAbort(agentId, jid, logEntry.id);
-      return NextResponse.json({ ok: true });
+      return { ok: true };
     }
     await db.update(agentLog).set({
       status: "error",
@@ -225,7 +246,6 @@ export async function POST(
 
     logger.error({ agentId, jid, err }, "Failed to process WhatsApp message");
     const errMsg = err instanceof Error ? err.message : "";
-    // Inner try-catch: a DB insert failure must not prevent the JSON response
     try {
       await db.insert(agentActivity).values({
         agentId, type: "error",
@@ -235,9 +255,9 @@ export async function POST(
       logger.error({ agentId, jid, dbErr }, "Failed to record WhatsApp error activity");
     }
     cleanupChatAbort(agentId, jid, logEntry.id);
-    return NextResponse.json({
+    return {
       type: "text",
       text: getAgentErrorMessage(errMsg, err),
-    });
+    };
   }
 }

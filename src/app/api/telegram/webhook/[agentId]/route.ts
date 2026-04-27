@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db } from "../../../../../shared/lib/drizzle";
 import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
 import { logger } from "../../../../../shared/lib/logger";
@@ -19,6 +19,7 @@ import {
 import { env } from "../../../../../shared/config/env";
 import { getServiceEnabled } from "../../../../../shared/lib/service/status";
 import { getAgentErrorMessage } from "../../../../../shared/lib/agents/errors";
+import { withChatQueue, claimIncomingMessage } from "../../../../../shared/lib/agents/chat-queue";
 
 const MAX_HISTORY = 20;
 
@@ -40,19 +41,37 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
-  if (!found) return NextResponse.json({ ok: true });
-
   const body = await req.json();
   const message = body?.message;
   if (!message?.text) return NextResponse.json({ ok: true });
 
   const chatId = String(message.chat.id);
   const text = message.text.trim();
+  const updateId = body?.update_id != null ? String(body.update_id) : "";
+
+  // Dedup webhook retries by Telegram update_id. If we've already accepted
+  // this update, drop it. Cancel commands and status-replies are also
+  // protected so users never see duplicates of those either.
+  if (updateId) {
+    const claimed = await claimIncomingMessage({
+      agentId,
+      chatId,
+      source: "telegram",
+      externalId: updateId,
+    });
+    if (!claimed) {
+      logger.info({ agentId, chatId, updateId }, "Telegram dedup: duplicate update dropped");
+      return NextResponse.json({ ok: true });
+    }
+  }
+
+  const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
+  if (!found) return NextResponse.json({ ok: true });
 
   logger.info({ agentId, chatId, text }, "Webhook message received");
 
-  // Intercept /cancel or /stop — do NOT forward to the agent.
+  // Intercept /cancel or /stop — handle synchronously so the user gets
+  // immediate feedback and the cancel takes effect right away.
   if (isCancelCommand(text)) {
     const cancelled = await cancelChatRequest(agentId, chatId);
     await sendMessage(
@@ -76,6 +95,32 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
+  // Fast-ACK: return 200 to Telegram immediately so it doesn't retry,
+  // then process the message in the background. Per-chat queue serializes
+  // multiple messages from the same user.
+  const containerId = found.containerId;
+  const botToken = found.botToken;
+  const agentType = (found.type as AgentType) || "operations";
+
+  after(async () => {
+    await withChatQueue(`telegram:${agentId}:${chatId}`, () =>
+      processTelegramMessage({ agentId, chatId, text, containerId, botToken, agentType }),
+    );
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
+async function processTelegramMessage(args: {
+  agentId: string;
+  chatId: string;
+  text: string;
+  containerId: string;
+  botToken: string;
+  agentType: AgentType;
+}) {
+  const { agentId, chatId, text, containerId, botToken, agentType } = args;
+
   const [session] = await db
     .select()
     .from(chatSession)
@@ -83,10 +128,8 @@ export async function POST(
     .limit(1);
 
   const history: ChatMessage[] = (session?.history as ChatMessage[] | null) ?? [];
-  const agentType = (found.type as AgentType) || "operations";
   const docFormat = detectDocumentRequest(text);
 
-  // Create log entry
   const [logEntry] = await db.insert(agentLog).values({
     agentId,
     source: "telegram",
@@ -96,25 +139,25 @@ export async function POST(
   const startTime = Date.now();
   const abortController = registerChatAbort(agentId, chatId, logEntry.id);
 
-  // Show "typing..." in Telegram while the agent is generating. The action
-  // expires after ~5s, so refresh it every 4s until the response is ready.
+  // Show "typing..." while the agent is generating. The action expires after
+  // ~5s, so refresh it every 4s until the response is ready.
   const typingAction: "typing" | "upload_document" = docFormat ? "upload_document" : "typing";
-  sendChatAction(found.botToken, chatId, typingAction).catch(() => {});
+  sendChatAction(botToken, chatId, typingAction).catch(() => {});
   const typingInterval = setInterval(() => {
-    sendChatAction(found.botToken, chatId, typingAction).catch(() => {});
+    sendChatAction(botToken, chatId, typingAction).catch(() => {});
   }, 4000);
 
   try {
     const result = docFormat
       ? await sendDocumentCommand(
-          found.containerId,
+          containerId,
           buildDocumentSystemInstruction(agentType),
           rewriteAsContentPrompt(text),
           history,
           abortController.signal,
         )
       : await sendCommand(
-          found.containerId,
+          containerId,
           text,
           history.length > 0 ? history : undefined,
           agentType,
@@ -132,7 +175,6 @@ export async function POST(
       completedAt: new Date(),
     }).where(eq(agentLog.id, logEntry.id));
 
-    // Save history with the original user text so conversation context stays natural
     const updatedHistory: ChatMessage[] = [
       ...history,
       { role: "user" as const, content: text },
@@ -150,8 +192,6 @@ export async function POST(
         const filename = extractFilename(text, agentType);
         const clean = stripConversationalFiller(responseText);
 
-        // If the agent somehow still gave us too little content, fall back to
-        // the last real assistant turn from history
         let contentSource = clean;
         if (!isUsableContent(clean)) {
           logger.warn({ agentId, contentLength: clean.length }, "Document response too short, falling back to history");
@@ -163,10 +203,10 @@ export async function POST(
         logger.info({ agentId, chatId, filename, contentLength: contentSource.length }, "Generating PDF");
 
         const pdfBuffer = await generatePdf(contentSource, pdfTitle, agentType);
-        await sendDocument(found.botToken, chatId, pdfBuffer, `${filename}.pdf`, "📄 Here is your document.");
+        await sendDocument(botToken, chatId, pdfBuffer, `${filename}.pdf`, "📄 Here is your document.");
         logger.info({ agentId, chatId, filename }, "Document sent");
       } else {
-        await sendMessage(found.botToken, chatId, responseText);
+        await sendMessage(botToken, chatId, responseText);
       }
     } catch (err) {
       logger.error({ agentId, chatId, err }, "Failed to deliver response");
@@ -175,15 +215,13 @@ export async function POST(
         type: "error",
         message: `Failed to deliver to chat ${chatId}: ${err instanceof Error ? err.message : "Unknown"}`,
       });
-      // Fallback: send the raw text so the user isn't left with no response
       if (docFormat) {
-        await sendMessage(found.botToken, chatId, responseText).catch(() => {});
+        await sendMessage(botToken, chatId, responseText).catch(() => {});
       }
     }
   } catch (err) {
     clearInterval(typingInterval);
     const isAbort = err instanceof Error && err.name === "AbortError";
-    // If aborted, cancelChatRequest already marked the log; don't clobber it.
     if (!isAbort) {
       await db.update(agentLog).set({
         status: "error",
@@ -194,11 +232,9 @@ export async function POST(
       logger.error({ agentId, err }, "Failed to reach agent container");
       const errMsg = err instanceof Error ? err.message : "";
       const userMessage = getAgentErrorMessage(errMsg, err);
-      await sendMessage(found.botToken, chatId, userMessage).catch(() => {});
+      await sendMessage(botToken, chatId, userMessage).catch(() => {});
     }
   } finally {
     cleanupChatAbort(agentId, chatId, logEntry.id);
   }
-
-  return NextResponse.json({ ok: true });
 }

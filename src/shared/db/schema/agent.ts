@@ -122,6 +122,27 @@ export const agentMcp = pgTable(
   (table) => [index("agent_mcp_agentId_idx").on(table.agentId)],
 );
 
+/**
+ * Tracks already-processed inbound messages to deduplicate webhook retries.
+ * Telegram retries the webhook on slow responses; without this, users get
+ * the same answer multiple times. Unique on (agentId, source, externalId).
+ */
+export const incomingMessage = pgTable(
+  "incoming_message",
+  {
+    id: uuid("id").default(sql`pg_catalog.gen_random_uuid()`).primaryKey(),
+    agentId: uuid("agent_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    source: text("source").notNull(), // "telegram" | "whatsapp"
+    externalId: text("external_id").notNull(), // Telegram update_id or WhatsApp message key
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("incoming_message_unique_idx").on(table.agentId, table.source, table.externalId),
+    index("incoming_message_createdAt_idx").on(table.createdAt),
+  ],
+);
+
 export const whatsappLinkSession = pgTable(
   "whatsapp_link_session",
   {
