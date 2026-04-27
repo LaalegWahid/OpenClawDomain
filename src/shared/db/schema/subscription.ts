@@ -9,6 +9,7 @@ import {
   integer,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
+import { agent } from "./agent";
 
 export const processedStripeEvent = pgTable(
   "processed_stripe_event",
@@ -78,10 +79,57 @@ export const paymentMethod = pgTable(
   ],
 );
 
+export const agentSubscription = pgTable(
+  "agent_subscription",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    agentId: uuid("agent_id")
+      .unique()
+      .references(() => agent.id, { onDelete: "set null" }),
+    stripeSubscriptionId: text("stripe_subscription_id").unique(),
+    stripePriceId: text("stripe_price_id"),
+    status: text("status", {
+      enum: ["incomplete", "active", "past_due", "canceled", "unpaid"],
+    })
+      .default("incomplete")
+      .notNull(),
+    currentPeriodStart: timestamp("current_period_start"),
+    currentPeriodEnd: timestamp("current_period_end"),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
+    canceledAt: timestamp("canceled_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("agent_subscription_userId_idx").on(table.userId),
+    index("agent_subscription_agentId_idx").on(table.agentId),
+    index("agent_subscription_stripeSubscriptionId_idx").on(table.stripeSubscriptionId),
+  ],
+);
+
 export const subscriptionRelations = relations(subscription, ({ one }) => ({
   user: one(user, {
     fields: [subscription.userId],
     references: [user.id],
+  }),
+}));
+
+export const agentSubscriptionRelations = relations(agentSubscription, ({ one }) => ({
+  user: one(user, {
+    fields: [agentSubscription.userId],
+    references: [user.id],
+  }),
+  agent: one(agent, {
+    fields: [agentSubscription.agentId],
+    references: [agent.id],
   }),
 }));
 

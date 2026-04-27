@@ -7,6 +7,7 @@ import { stopContainer } from "../../../../shared/lib/agents/docker";
 import { deleteWebhook } from "../../../../shared/lib/telegram/bot";
 import { logger } from "../../../../shared/lib/logger";
 import { encryptIfPresent } from "../../../../shared/lib/crypto";
+import { cancelAgentSubscription } from "../../../../shared/lib/stripe/stripe.service";
 
 export async function GET(
   req: Request,
@@ -150,6 +151,13 @@ export async function DELETE(
       await deleteWebhook(found.botToken);
     } catch (err) {
       logger.warn({ agentId: id, err }, "Failed to delete webhook");
+    }
+
+    // Cancel the agent's Stripe subscription (DB row stays, status flips to canceled)
+    try {
+      await cancelAgentSubscription(id);
+    } catch (err) {
+      logger.warn({ agentId: id, err }, "Failed to cancel agent subscription");
     }
 
     await db.delete(agent).where(eq(agent.id, id));

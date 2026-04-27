@@ -10,6 +10,11 @@ RUN npm install -g pnpm
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# NEXT_PUBLIC_* vars are inlined into the client bundle at BUILD time.
+# Pass them via --build-arg or set sensible defaults here.
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51SMuxbGzByQxF6vHsIAf5nzEeubrUJuUoSOlzFN03Mwt3xWpwiiAS8wtYl5jQ7MS5ikY47SOpqB2MprCvpd0xJ5V00XfrzCCF2
+
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=http://placeholder
 ENV BETTER_AUTH_SECRET=placeholderplaceholderplaceholder32
@@ -20,7 +25,8 @@ ENV STRIPE_SECRET_KEY=sk_test_placeholder
 ENV STRIPE_WEBHOOK_SECRET=whsec_placeholder
 ENV STRIPE_PRICE_ID=price_placeholder
 ENV TELEGRAM_WEBHOOK_SECRET=placeholder
-ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51SMuxbGzByQxF6vHsIAf5nzEeubrUJuUoSOlzFN03Mwt3xWpwiiAS8wtYl5jQ7MS5ikY47SOpqB2MprCvpd0xJ5V00XfrzCCF2
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
 RUN pnpm build
 

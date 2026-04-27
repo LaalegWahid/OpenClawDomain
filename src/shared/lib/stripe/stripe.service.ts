@@ -1,7 +1,13 @@
 import { eq, and } from "drizzle-orm";
 import { stripe } from "./index";
 import { db } from "../drizzle";
-import { paymentMethod, subscription, user, userProfile } from "../../db/schema";
+import {
+  paymentMethod,
+  subscription,
+  agentSubscription,
+  user,
+  userProfile,
+} from "../../db/schema";
 import { env } from "../../config/env";
 import { logger } from "../logger";
 
@@ -404,4 +410,118 @@ export async function createSetupIntent(userId: string) {
     customer: customerId,
     payment_method_types: ["card"],
   });
+}
+
+// ─── Per-agent subscriptions ──────────────────────────────────────────────────
+
+export async function getDefaultPaymentMethod(userId: string) {
+  const methods = await getSavedPaymentMethods(userId);
+  return methods.find((m) => m.isDefault) ?? methods[0] ?? null;
+}
+
+export async function hasUsablePaymentMethod(userId: string): Promise<boolean> {
+  const pm = await getDefaultPaymentMethod(userId);
+  return !!pm;
+}
+
+export async function createAgentSubscription(
+  userId: string,
+  agentId: string,
+): Promise<{ status: string; subscriptionId: string; clientSecret?: string }> {
+  const customerId = await ensureStripeCustomer(userId);
+  const pm = await getDefaultPaymentMethod(userId);
+  if (!pm) {
+    throw new Error("NoPaymentMethod");
+  }
+
+  const sub = await stripe.subscriptions.create({
+    customer: customerId,
+    items: [{ price: env.STRIPE_PRICE_ID }],
+    default_payment_method: pm.stripePaymentMethodId,
+    metadata: { userId, agentId },
+    expand: ["latest_invoice.payment_intent"],
+  });
+
+  await db.insert(agentSubscription).values({
+    userId,
+    agentId,
+    stripeSubscriptionId: sub.id,
+    stripePriceId: sub.items.data[0]?.price.id ?? null,
+    status: sub.status as "incomplete" | "active" | "past_due" | "canceled" | "unpaid",
+    currentPeriodStart: sub.items.data[0]?.current_period_start
+      ? new Date(sub.items.data[0].current_period_start * 1000)
+      : null,
+    currentPeriodEnd: sub.items.data[0]?.current_period_end
+      ? new Date(sub.items.data[0].current_period_end * 1000)
+      : null,
+    cancelAtPeriodEnd: sub.cancel_at_period_end,
+  });
+
+  const latestInvoice = sub.latest_invoice as unknown as Record<string, unknown> | null;
+  if (latestInvoice && typeof latestInvoice !== "string") {
+    const paymentIntent = latestInvoice.payment_intent as Record<string, unknown> | string | null;
+    if (paymentIntent && typeof paymentIntent !== "string" && paymentIntent.status === "requires_action") {
+      return {
+        status: "requires_action",
+        subscriptionId: sub.id,
+        clientSecret: paymentIntent.client_secret as string,
+      };
+    }
+  }
+
+  return { status: sub.status, subscriptionId: sub.id };
+}
+
+export async function syncAgentSubscription(stripeSubscriptionId: string) {
+  const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  const agentIdMeta = stripeSub.metadata?.agentId;
+  if (!agentIdMeta) return false;
+
+  const values = {
+    stripePriceId: stripeSub.items.data[0]?.price.id ?? null,
+    status: stripeSub.status as "incomplete" | "active" | "past_due" | "canceled" | "unpaid",
+    currentPeriodStart: stripeSub.items.data[0]?.current_period_start
+      ? new Date(stripeSub.items.data[0].current_period_start * 1000)
+      : null,
+    currentPeriodEnd: stripeSub.items.data[0]?.current_period_end
+      ? new Date(stripeSub.items.data[0].current_period_end * 1000)
+      : null,
+    cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
+    canceledAt: stripeSub.canceled_at ? new Date(stripeSub.canceled_at * 1000) : null,
+  };
+
+  await db
+    .update(agentSubscription)
+    .set(values)
+    .where(eq(agentSubscription.stripeSubscriptionId, stripeSubscriptionId));
+
+  return true;
+}
+
+export async function cancelAgentSubscription(agentId: string) {
+  const [row] = await db
+    .select()
+    .from(agentSubscription)
+    .where(eq(agentSubscription.agentId, agentId));
+
+  if (!row?.stripeSubscriptionId) return;
+
+  // Cancel immediately on agent deletion
+  try {
+    await stripe.subscriptions.cancel(row.stripeSubscriptionId);
+  } catch (err) {
+    logger.warn({ err, agentId }, "Stripe cancel failed (will still mark canceled in DB)");
+  }
+
+  await db
+    .update(agentSubscription)
+    .set({ status: "canceled", canceledAt: new Date(), cancelAtPeriodEnd: false })
+    .where(eq(agentSubscription.agentId, agentId));
+}
+
+export async function getAgentSubscriptionsForUser(userId: string) {
+  return db
+    .select()
+    .from(agentSubscription)
+    .where(eq(agentSubscription.userId, userId));
 }
