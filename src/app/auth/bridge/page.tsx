@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth, useClerk } from "@clerk/nextjs";
 
 const serif = "var(--serif), 'Cormorant Garamond', Georgia, serif";
 const mono = "var(--mono), 'JetBrains Mono', monospace";
 
 export default function BridgePage() {
-  const router = useRouter();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { signOut } = useClerk();
   const ran = useRef(false);
@@ -33,10 +31,9 @@ export default function BridgePage() {
         setError(body.error ?? `bridge_failed_${res.status}`);
         return;
       }
-      await signOut({ redirectUrl: undefined as unknown as string });
-      router.replace("/overview");
+      await signOut({ redirectUrl: "/overview" });
     })();
-  }, [isLoaded, isSignedIn, getToken, signOut, router]);
+  }, [isLoaded, isSignedIn, getToken, signOut]);
 
   return (
     <main
