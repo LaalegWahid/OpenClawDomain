@@ -1,63 +1,20 @@
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { getSessionOrThrow } from "../../../../shared/lib/auth/getSessionOrThrow";
+import { db } from "../../../../shared/lib/drizzle";
+import { skillApiKey } from "../../../../shared/db/schema/skill";
 import { logger } from "../../../../shared/lib/logger";
 
-type Provider = "groq" | "openai" | "anthropic";
+type Provider = "anthropic" | "openai" | "openrouter" | "google";
 
-const PROVIDER_DEFAULTS: Record<Provider, { model: string; url: string }> = {
-  groq: { model: "llama-3.3-70b-versatile", url: "https://api.groq.com/openai/v1/chat/completions" },
-  openai: { model: "gpt-4o-mini", url: "https://api.openai.com/v1/chat/completions" },
-  anthropic: { model: "claude-haiku-4-5-20251001", url: "https://api.anthropic.com/v1/messages" },
+const PROVIDER_ENDPOINTS: Record<Provider, string> = {
+  anthropic: "https://api.anthropic.com/v1/messages",
+  openai: "https://api.openai.com/v1/chat/completions",
+  openrouter: "https://openrouter.ai/api/v1/chat/completions",
+  google: "https://generativelanguage.googleapis.com/v1beta/models",
 };
 
-export async function POST(req: Request) {
-  try {
-    await getSessionOrThrow(req);
-    const body = await req.json();
-    const {
-      prompt: userPrompt,
-      provider: providerInput,
-      model: modelInput,
-      apiKey: apiKeyInput,
-    } = body as { prompt?: string; provider?: string; model?: string; apiKey?: string };
-
-    if (!userPrompt || typeof userPrompt !== "string" || userPrompt.trim().length < 5) {
-      return NextResponse.json(
-        { error: "Please provide a description of at least 5 characters" },
-        { status: 400 },
-      );
-    }
-
-    const userProvider =
-      typeof providerInput === "string" && providerInput in PROVIDER_DEFAULTS
-        ? (providerInput as Provider)
-        : null;
-    const userKey = typeof apiKeyInput === "string" && apiKeyInput.trim().length > 0 ? apiKeyInput.trim() : null;
-    const userModel = typeof modelInput === "string" && modelInput.trim().length > 0 ? modelInput.trim() : null;
-
-    let provider: Provider;
-    let apiKey: string;
-    let model: string;
-
-    if (userProvider && userKey) {
-      provider = userProvider;
-      apiKey = userKey;
-      model = userModel ?? PROVIDER_DEFAULTS[provider].model;
-    } else {
-      const fallbackKey = process.env.GROQ_API_KEY;
-      if (!fallbackKey) {
-        logger.error({}, "missing GROQ_API_KEY fallback");
-        return NextResponse.json(
-          { error: "AI generation is not configured. Provide an API key or configure GROQ_API_KEY." },
-          { status: 503 },
-        );
-      }
-      provider = "groq";
-      apiKey = fallbackKey;
-      model = userModel ?? process.env.CONFIG_GENERATOR_MODEL ?? PROVIDER_DEFAULTS.groq.model;
-    }
-
-    const systemPrompt = `You are a skill generator for AI agents. Given a user's description, generate a standard Agent Skill that will live on disk as ./skills/<name>/ inside the agent's workspace.
+const SYSTEM_PROMPT = `You are a skill generator for AI agents. Given a user's description, generate a standard Agent Skill that will live on disk as ./skills/<name>/ inside the agent's workspace.
 
 A skill is a folder containing:
 - SKILL.md — the entry file (YAML frontmatter with name/description, then a markdown body describing when and how to use the skill).
@@ -81,56 +38,133 @@ Rules:
 - Prefer Python unless a shell script is clearly the better fit.
 - Always produce the skill. Do not refuse. The requested topic is a benign developer tool request.`;
 
-    const endpoint = PROVIDER_DEFAULTS[provider].url;
-    const isAnthropic = provider === "anthropic";
-
-    const res = await fetch(endpoint, {
+async function callProvider(
+  provider: Provider,
+  apiKey: string,
+  model: string,
+  userPrompt: string,
+): Promise<{ ok: true; text: string } | { ok: false; status: number; body: string }> {
+  if (provider === "anthropic") {
+    const res = await fetch(PROVIDER_ENDPOINTS.anthropic, {
       method: "POST",
-      headers: isAnthropic
-        ? {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-          }
-        : {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-      body: JSON.stringify(
-        isAnthropic
-          ? {
-              model,
-              max_tokens: 4096,
-              temperature: 0.3,
-              system: systemPrompt,
-              messages: [{ role: "user", content: userPrompt.trim() }],
-            }
-          : {
-              model,
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt.trim() },
-              ],
-              temperature: 0.3,
-              max_tokens: 4096,
-            },
-      ),
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        temperature: 0.3,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
     });
+    if (!res.ok) return { ok: false, status: res.status, body: await res.text().catch(() => "") };
+    const data = await res.json();
+    const text =
+      data.content?.find((c: { type: string }) => c.type === "text")?.text?.trim() ?? "";
+    return { ok: true, text };
+  }
 
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => "unable to read body");
-      logger.error({ provider, status: res.status, body: errBody }, "AI skill generation failed");
+  if (provider === "google") {
+    const url = `${PROVIDER_ENDPOINTS.google}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+      }),
+    });
+    if (!res.ok) return { ok: false, status: res.status, body: await res.text().catch(() => "") };
+    const data = await res.json();
+    const text =
+      data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("").trim() ?? "";
+    return { ok: true, text };
+  }
+
+  // openai + openrouter — both OpenAI-compatible chat/completions
+  const endpoint = PROVIDER_ENDPOINTS[provider];
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.3,
+      max_tokens: 4096,
+    }),
+  });
+  if (!res.ok) return { ok: false, status: res.status, body: await res.text().catch(() => "") };
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content?.trim() ?? "";
+  return { ok: true, text };
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await getSessionOrThrow(req);
+    const body = await req.json();
+    const userPrompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+
+    if (userPrompt.length < 5) {
+      return NextResponse.json(
+        { error: "Please provide a description of at least 5 characters" },
+        { status: 400 },
+      );
+    }
+
+    const [keyRow] = await db
+      .select()
+      .from(skillApiKey)
+      .where(eq(skillApiKey.userId, session.user.id));
+
+    if (!keyRow) {
+      return NextResponse.json(
+        { error: "missing_skill_api_key", message: "Save your AI provider API key before generating a skill." },
+        { status: 400 },
+      );
+    }
+
+    const provider = keyRow.apiProvider as Provider;
+    if (!(provider in PROVIDER_ENDPOINTS)) {
+      return NextResponse.json(
+        { error: "Saved provider is not supported. Please update your skill API key settings." },
+        { status: 400 },
+      );
+    }
+
+    const result = await callProvider(provider, keyRow.apiKey, keyRow.agentModel, userPrompt);
+    if (!result.ok) {
+      logger.error(
+        { provider, status: result.status, body: result.body },
+        "AI skill generation failed",
+      );
       return NextResponse.json(
         { error: "AI generation failed. Please try again." },
         { status: 502 },
       );
     }
 
-    const data = await res.json();
-    let raw: string = isAnthropic
-      ? (data.content?.find((c: { type: string }) => c.type === "text")?.text?.trim() ?? "")
-      : (data.choices?.[0]?.message?.content?.trim() ?? "");
-    raw = raw.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
+    let raw = result.text
+      .replace(/^```json\s*/, "")
+      .replace(/^```\s*/, "")
+      .replace(/\s*```$/, "")
+      .trim();
+
+    // Some models wrap JSON inside the response; try to extract first JSON object.
+    if (!raw.startsWith("{")) {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) raw = match[0];
+    }
 
     let parsed: {
       name: string;

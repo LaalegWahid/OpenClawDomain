@@ -71,6 +71,20 @@
       "when": 1775926497535,
       "tag": "0009_watery_husk",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777593600000,
+      "tag": "0010_add_agent_creation_feedback",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1777680000000,
+      "tag": "0011_add_skill_api_key",
+      "breakpoints": true
     }
   ]
 }
