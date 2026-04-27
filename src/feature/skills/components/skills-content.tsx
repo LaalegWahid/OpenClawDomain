@@ -725,9 +725,7 @@ export function SkillsContent() {
                   <div style={{ width: "45%", height: 11, ...skeleton }} />
                   <div style={{ width: 52, height: 18, borderRadius: 4, marginTop: 2, ...skeleton }} />
                 </div>
-                <div style={{ height: "1px",display: "flex",flexDirection: "row", background: "var(--border)" }} />
-                <div style={{ width: "50%", height: 36, borderRadius: 8, ...skeleton }} />
-                <div style={{ width: "50%", height: 36, borderRadius: 8, ...skeleton }} />
+               
 
               </div>
             ))}

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { signIn } from "../actions/auth.actions";
-import { useSignIn } from "@clerk/nextjs";
+import { useAuth, useClerk, useSignIn } from "@clerk/nextjs";
 
 const mono  = "var(--mono), 'JetBrains Mono', monospace";
 const serif = "var(--serif), 'Cormorant Garamond', Georgia, serif";
@@ -55,6 +55,8 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/overview";
   const { signIn: clerkSignIn, fetchStatus } = useSignIn();
+  const { isSignedIn } = useAuth();
+  const { signOut } = useClerk();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -84,6 +86,9 @@ export function LoginForm() {
     }
 
     try {
+      if (isSignedIn) {
+        await signOut();
+      }
       const { error: ssoErr } = await clerkSignIn.sso({
         strategy: "oauth_google",
         redirectCallbackUrl: "/sso-callback",
