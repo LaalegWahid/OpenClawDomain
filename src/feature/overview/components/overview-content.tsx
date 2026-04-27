@@ -404,7 +404,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       {loading ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "16px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div key={i} style={{ background: "f8f2ed", border: "1px solid var(--border)", borderRadius: "16px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div style={{ width: 40, height: 40, borderRadius: 10, ...skeleton }} />
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
