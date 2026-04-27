@@ -77,7 +77,7 @@ interface OverviewContentProps {
   userName?: string | null;
 }
 
-const MAX_BOTS = 3;
+// const MAX_BOTS = 3;
 
 const inputStyle: React.CSSProperties = {
   background: "var(--surface-2)",
@@ -376,15 +376,15 @@ export function OverviewContent({ userName }: OverviewContentProps) {
             {userName ? `Welcome back, ${userName}.` : "Welcome back."}
           </h1>
           <p style={{ fontFamily: mono, fontSize: "12px", color: "var(--foreground-3)", lineHeight: 1.6, letterSpacing: "0.02em", margin: 0 }}>
-            {activeAgents.length} of {MAX_BOTS} agents active — Telegram, Discord &amp; WhatsApp
+             agents active — Telegram, Discord &amp; WhatsApp
           </p>
         </div>
 
         <button
           onClick={() => { resetForm(); fetchUserSkills(); setShowModal(true); }}
           style={{
-            background: activeAgents.length >= MAX_BOTS ? "var(--surface-2)" : "#FF4D00",
-            color: activeAgents.length >= MAX_BOTS ? "var(--foreground-3)" : "#fff",
+            background:  "#FF4D00",
+            color: "#fff" ,
             border: "none",
             borderRadius: "8px",
             padding: "10px 20px",
@@ -393,7 +393,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
             fontWeight: 500,
             letterSpacing: "0.06em",
             textTransform: "uppercase",
-            cursor: activeAgents.length >= MAX_BOTS ? "not-allowed" : "pointer",
+            cursor: "pointer",
           }}
         >
           + New Agent
@@ -404,7 +404,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
       {loading ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "16px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div key={i} style={{ background: "f8f2ed", border: "1px solid var(--border)", borderRadius: "16px", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div style={{ width: 40, height: 40, borderRadius: 10, ...skeleton }} />
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
