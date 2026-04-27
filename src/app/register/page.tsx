@@ -25,7 +25,7 @@ export default function RegisterPage() {
       }} />
 
       {/* Form card */}
-      <div style={{ position: 'relative', width: '100%', maxWidth: '400px' }}>
+      <div style={{ position: 'relative', width: '100%', maxWidth: '480px' }}>
         <RegisterForm />
       </div>
     </div>
