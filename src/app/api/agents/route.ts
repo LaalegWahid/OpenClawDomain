@@ -13,10 +13,7 @@ import { startDiscordBot } from "../../../shared/lib/discord/manager";
 import { logger } from "../../../shared/lib/logger";
 import { env } from "../../../shared/config/env";
 import { encryptIfPresent, decryptIfPresent } from "../../../shared/lib/crypto";
-import {
-  hasUsablePaymentMethod,
-  createAgentSubscription,
-} from "../../../shared/lib/stripe/stripe.service";
+import { createAgentSubscription } from "../../../shared/lib/stripe/stripe.service";
 
 async function linkSkillsToAgent(agentId: string, userId: string, skillIds?: string[]) {
   if (!skillIds || skillIds.length === 0) return;
@@ -69,14 +66,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid platform" }, { status: 400 });
     }
 
-    // Require a payment method on file before any container or Stripe call
-    const canBill = await hasUsablePaymentMethod(session.user.id);
-    if (!canBill) {
-      return NextResponse.json(
-        { error: "missing_payment_method", message: "Add a debit/credit card in Billing before creating an agent." },
-        { status: 402 },
-      );
-    }
+    // Payment method check temporarily disabled
+    // const canBill = await hasUsablePaymentMethod(session.user.id);
+    // if (!canBill) {
+    //   return NextResponse.json(
+    //     { error: "missing_payment_method", message: "Add a debit/credit card in Billing before creating an agent." },
+    //     { status: 402 },
+    //   );
+    // }
 
     // Encrypt any per-agent API keys from the request body
     const encryptedKeys = extractEncryptedKeys(body);
