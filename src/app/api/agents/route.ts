@@ -185,17 +185,11 @@ export async function POST(req: Request) {
           })
           .returning();
 
+        // Subscription creation temporarily disabled
         try {
           await createAgentSubscription(session.user.id, newAgent.id);
         } catch (subErr) {
-          await db.delete(agent).where(eq(agent.id, newAgent.id));
-          await stopContainer(containerId).catch(() => {});
-          await deleteWebhook(botToken).catch(() => {});
-          logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
-          return NextResponse.json(
-            { error: "Failed to create subscription for this agent. Please verify your card and try again." },
-            { status: 500 },
-          );
+          logger.warn({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed (ignored)");
         }
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Telegram` });
@@ -287,16 +281,11 @@ export async function POST(req: Request) {
           })
           .returning();
 
+        // Subscription creation temporarily disabled
         try {
           await createAgentSubscription(session.user.id, newAgent.id);
         } catch (subErr) {
-          await db.delete(agent).where(eq(agent.id, newAgent.id));
-          await stopContainer(containerId).catch(() => {});
-          logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
-          return NextResponse.json(
-            { error: "Failed to create subscription for this agent. Please verify your card and try again." },
-            { status: 500 },
-          );
+          logger.warn({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed (ignored)");
         }
 
         await db.insert(agentChannel).values({ agentId: newAgent.id, platform: "discord", credentials: { botToken: discordToken } });
@@ -362,16 +351,11 @@ export async function POST(req: Request) {
           })
           .returning();
 
+        // Subscription creation temporarily disabled
         try {
           await createAgentSubscription(session.user.id, newAgent.id);
         } catch (subErr) {
-          await db.delete(agent).where(eq(agent.id, newAgent.id));
-          await stopContainer(containerId).catch(() => {});
-          logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
-          return NextResponse.json(
-            { error: "Failed to create subscription for this agent. Please verify your card and try again." },
-            { status: 500 },
-          );
+          logger.warn({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed (ignored)");
         }
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched — link WhatsApp to activate` });
