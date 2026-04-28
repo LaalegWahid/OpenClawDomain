@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "./shared/lib/auth/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-const PUBLIC_ROUTES = [
+const isPublicRoute = createRouteMatcher([
   "/",
   "/login",
   "/register",
@@ -13,35 +14,36 @@ const PUBLIC_ROUTES = [
   "/contact",
   "/terms",
   "/privacy",
-];
+  "/sso-callback(.*)",
+  "/auth/bridge(.*)",
+  "/api/auth(.*)",
+  "/api/debug(.*)",
+  "/",
+]);
 
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+export default clerkMiddleware(async (_clerkAuth, req: NextRequest) => {
+  const path = req.nextUrl.pathname;
+  const cookieNames = req.cookies.getAll().map(c => c.name);
+  // console.log(`[proxy] → ${req.method} ${path} cookies=${JSON.stringify(cookieNames)}`);
 
-  const session = await auth.api.getSession({ headers: request.headers });
-  const isAuthenticated = session?.user;
-  const isPublicRoute = PUBLIC_ROUTES.some(
-    (route) => pathname === route || (route !== "/" && pathname.startsWith(route + "/")),
-  );
-
-  if ((pathname === "/login" || pathname === "/register") && isAuthenticated) {
-    return NextResponse.redirect(new URL("/overview", request.url));
+  if (isPublicRoute(req)) {
+    // console.log(`[proxy] ← ${path} PUBLIC`);
+    return NextResponse.next();
   }
 
-  if (pathname.startsWith("/admin") && session?.user?.role !== "admin") {
-    return NextResponse.redirect(
-      new URL(`/login?callbackUrl=${encodeURIComponent(pathname)}`, request.url)
-    );
+  const session = req.cookies.get("better-auth.session_token")
+    ?? req.cookies.get("__Secure-better-auth.session_token");
+
+  if (session) {
+    // console.log(`[proxy] ← ${path} BETTER-AUTH SESSION`);
+    return NextResponse.next();
   }
 
-  if (!isPublicRoute && !isAuthenticated) {
-    return NextResponse.redirect(
-      new URL(`/login?callbackUrl=${encodeURIComponent(pathname)}`, request.url)
-    );
-  }
-
-  return NextResponse.next();
-}
+  const loginUrl = new URL("/login", req.url);
+  loginUrl.searchParams.set("callbackUrl", path);
+  // console.log(`[proxy] ← ${path} NO SESSION → /login`);
+  return NextResponse.redirect(loginUrl);
+});
 
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)" ],

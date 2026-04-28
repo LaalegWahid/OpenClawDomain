@@ -3,9 +3,18 @@ import { eq } from "drizzle-orm";
 import { stripe } from "../../../../shared/lib/stripe";
 import { logger } from "../../../../shared/lib/logger";
 import { db } from "../../../../shared/lib/drizzle";
-import { processedStripeEvent, subscription } from "../../../../shared/db/schema";
-import { syncSubscription } from "../../../../shared/lib/stripe/stripe.service";
+import { processedStripeEvent, subscription, agentSubscription } from "../../../../shared/db/schema";
+import { syncSubscription, syncAgentSubscription } from "../../../../shared/lib/stripe/stripe.service";
 import { env } from "../../../../shared/config/env";
+
+async function dispatchSubscriptionSync(stripeSubscriptionId: string) {
+  const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  if (stripeSub.metadata?.agentId) {
+    await syncAgentSubscription(stripeSubscriptionId);
+  } else {
+    await syncSubscription(stripeSubscriptionId);
+  }
+}
 
 export async function POST(req: Request) {
   let event;
@@ -36,19 +45,28 @@ export async function POST(req: Request) {
           const subId = typeof session.subscription === "string"
             ? session.subscription
             : session.subscription.id;
-          await syncSubscription(subId);
+          await dispatchSubscriptionSync(subId);
         }
         break;
       }
       case "customer.subscription.updated": {
-        await syncSubscription(event.data.object.id);
+        await dispatchSubscriptionSync(event.data.object.id);
         break;
       }
       case "customer.subscription.deleted": {
-        await db
-          .update(subscription)
-          .set({ status: "canceled", canceledAt: new Date() })
-          .where(eq(subscription.stripeSubscriptionId, event.data.object.id));
+        const stripeSubId = event.data.object.id;
+        const isAgentSub = !!event.data.object.metadata?.agentId;
+        if (isAgentSub) {
+          await db
+            .update(agentSubscription)
+            .set({ status: "canceled", canceledAt: new Date() })
+            .where(eq(agentSubscription.stripeSubscriptionId, stripeSubId));
+        } else {
+          await db
+            .update(subscription)
+            .set({ status: "canceled", canceledAt: new Date() })
+            .where(eq(subscription.stripeSubscriptionId, stripeSubId));
+        }
         break;
       }
       case "invoice.payment_failed": {
@@ -57,10 +75,15 @@ export async function POST(req: Request) {
           ? invoice.subscription
           : invoice.subscription?.id;
         if (subId) {
+          // Try both — only the matching row will update
           await db
             .update(subscription)
             .set({ status: "past_due" })
             .where(eq(subscription.stripeSubscriptionId, subId));
+          await db
+            .update(agentSubscription)
+            .set({ status: "past_due" })
+            .where(eq(agentSubscription.stripeSubscriptionId, subId));
         }
         break;
       }

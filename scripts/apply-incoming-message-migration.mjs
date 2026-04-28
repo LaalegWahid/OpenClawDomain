@@ -11,7 +11,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-const file = resolve(__dirname, '../src/shared/db/migrations/0012_incoming_message.sql');
+const file = resolve(__dirname, '../src/shared/db/migrations/0013_incoming_message.sql');
 const ddl = readFileSync(file, 'utf8');
 
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL });

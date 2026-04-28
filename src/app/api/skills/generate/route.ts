@@ -155,11 +155,22 @@ export async function POST(req: Request) {
     }
 
     let raw = result.text
-      .replace(/^```json\s*/, "")
-      .replace(/^```\s*/, "")
-      .replace(/\s*```$/, "")
-      .trim();
-
+  .replace(/^```json\s*/, "")
+  .replace(/^```\s*/, "")
+  .replace(/\s*```$/, "")
+  .trim();
+raw = raw
+  .replace(/\u00e2\u0080\u0099/g, "'")  // RIGHT SINGLE QUOTATION MARK
+  .replace(/\u00e2\u0080\u009c/g, '"')  // LEFT DOUBLE QUOTATION MARK
+  .replace(/\u00e2\u0080\u009d/g, '"')  // RIGHT DOUBLE QUOTATION MARK
+  .replace(/\u00e2\u0080\u0093/g, "-")  // EN DASH
+  .replace(/\u00e2\u0080\u0094/g, "-")  // EM DASH
+  .replace(/\u00d4\u00c7\u00e6/g, "-")  // mojibake EM DASH  (ÔÇæ)
+  .replace(/\u00d4\u00c7\u00aa/g, '"')  // mojibake LEFT DOUBLE QUOTATION MARK
+  .replace(/\u00d4\u00c7\u00ab/g, '"')  // mojibake RIGHT DOUBLE QUOTATION MARK
+  .replace(/\u00d4\u00c7\u00f4/g, "'") // mojibake RIGHT SINGLE QUOTATION MARK
+  // Generic safety net: drop C1 control-range bytes that break JSON.parse.
+  .replace(/[\u0080-\u009f]/g, "");
     // Some models wrap JSON inside the response; try to extract first JSON object.
     if (!raw.startsWith("{")) {
       const match = raw.match(/\{[\s\S]*\}/);

@@ -13,6 +13,10 @@ import { startDiscordBot } from "../../../shared/lib/discord/manager";
 import { logger } from "../../../shared/lib/logger";
 import { env } from "../../../shared/config/env";
 import { encryptIfPresent, decryptIfPresent } from "../../../shared/lib/crypto";
+import {
+  hasUsablePaymentMethod,
+  createAgentSubscription,
+} from "../../../shared/lib/stripe/stripe.service";
 
 async function linkSkillsToAgent(agentId: string, userId: string, skillIds?: string[]) {
   if (!skillIds || skillIds.length === 0) return;
@@ -63,6 +67,15 @@ export async function POST(req: Request) {
 
     if (!["telegram", "discord", "whatsapp"].includes(platform)) {
       return NextResponse.json({ error: "Invalid platform" }, { status: 400 });
+    }
+
+    // Require a payment method on file before any container or Stripe call
+    const canBill = await hasUsablePaymentMethod(session.user.id);
+    if (!canBill) {
+      return NextResponse.json(
+        { error: "missing_payment_method", message: "Add a debit/credit card in Billing before creating an agent." },
+        { status: 402 },
+      );
     }
 
     // Encrypt any per-agent API keys from the request body
@@ -175,6 +188,19 @@ export async function POST(req: Request) {
           })
           .returning();
 
+        try {
+          await createAgentSubscription(session.user.id, newAgent.id);
+        } catch (subErr) {
+          await db.delete(agent).where(eq(agent.id, newAgent.id));
+          await stopContainer(containerId).catch(() => {});
+          await deleteWebhook(botToken).catch(() => {});
+          logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
+          return NextResponse.json(
+            { error: "Failed to create subscription for this agent. Please verify your card and try again." },
+            { status: 500 },
+          );
+        }
+
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Telegram` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
 
@@ -264,6 +290,18 @@ export async function POST(req: Request) {
           })
           .returning();
 
+        try {
+          await createAgentSubscription(session.user.id, newAgent.id);
+        } catch (subErr) {
+          await db.delete(agent).where(eq(agent.id, newAgent.id));
+          await stopContainer(containerId).catch(() => {});
+          logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
+          return NextResponse.json(
+            { error: "Failed to create subscription for this agent. Please verify your card and try again." },
+            { status: 500 },
+          );
+        }
+
         await db.insert(agentChannel).values({ agentId: newAgent.id, platform: "discord", credentials: { botToken: discordToken } });
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Discord` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
@@ -326,6 +364,18 @@ export async function POST(req: Request) {
             profileImage: profileImage || null,
           })
           .returning();
+
+        try {
+          await createAgentSubscription(session.user.id, newAgent.id);
+        } catch (subErr) {
+          await db.delete(agent).where(eq(agent.id, newAgent.id));
+          await stopContainer(containerId).catch(() => {});
+          logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
+          return NextResponse.json(
+            { error: "Failed to create subscription for this agent. Please verify your card and try again." },
+            { status: 500 },
+          );
+        }
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched — link WhatsApp to activate` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
