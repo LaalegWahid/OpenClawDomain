@@ -130,11 +130,39 @@ export async function getVisitStats(days = 30): Promise<VisitStats> {
       if (!nextToken) break;
     }
 
-    const sessionIds = new Set<string>();
+    // RUM emits a page_view_event on every route/hash/query change, so one
+    // real visit can produce many events. Collapse to one per session+page
+    // per 30-min window, keeping the earliest timestamp as canonical.
+    const BUCKET_MS = 30 * 60 * 1000;
+    const dedup = new Map<string, RawRumEvent>();
 
     for (const e of events) {
       const ts = Number(e.event_timestamp);
       if (!Number.isFinite(ts)) continue;
+
+      const user = safeParse<ParsedUser>(e.user_details);
+      const meta = safeParse<ParsedMeta>(e.metadata);
+      const details = safeParse<ParsedDetails>(e.event_details);
+
+      const sessionId = user.sessionId ?? "";
+      const pageId = details.pageId ?? meta.pageId ?? "";
+      const bucket = Math.floor(ts / BUCKET_MS);
+      const key =
+        sessionId && pageId
+          ? `${sessionId}|${pageId}|${bucket}`
+          : `__raw__|${ts}|${dedup.size}`;
+
+      const existing = dedup.get(key);
+      if (!existing || ts < Number(existing.event_timestamp)) {
+        dedup.set(key, e);
+      }
+    }
+
+    const uniqueEvents = [...dedup.values()];
+    const sessionIds = new Set<string>();
+
+    for (const e of uniqueEvents) {
+      const ts = Number(e.event_timestamp);
       const key = dayKey(ts);
       if (dailyMap.has(key)) dailyMap.set(key, (dailyMap.get(key) ?? 0) + 1);
 
@@ -142,7 +170,7 @@ export async function getVisitStats(days = 30): Promise<VisitStats> {
       if (user.sessionId) sessionIds.add(user.sessionId);
     }
 
-    const recent: RecentVisit[] = [...events]
+    const recent: RecentVisit[] = [...uniqueEvents]
       .sort((a, b) => Number(b.event_timestamp) - Number(a.event_timestamp))
       .slice(0, 50)
       .map((e) => {
@@ -187,7 +215,7 @@ export async function getVisitStats(days = 30): Promise<VisitStats> {
       .map(([day, count]) => ({ day, count }));
 
     return {
-      totalVisits: events.length,
+      totalVisits: uniqueEvents.length,
       uniqueSessions: sessionIds.size,
       dailyVisits,
       recent,
