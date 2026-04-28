@@ -61,7 +61,7 @@ export default function Loading() {
             letterSpacing: "-0.02em",
           }}
         >
-          Initialising <em style={{ fontStyle: "italic", color: "#FF4D00" }}>agents…</em>
+          Initialising <em style={{ fontStyle: "italic", color: "#FF4D00" }}>workspace...</em>
         </h1>
         <p style={{ fontFamily: mono, fontSize: 12, color: "#8a7060", margin: 0, lineHeight: 1.6 }}>
           Preparing your workspace.
