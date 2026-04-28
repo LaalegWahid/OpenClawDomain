@@ -1,42 +1,27 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
-import { Send, Download, Bot, ChevronDown, RotateCcw, Square } from "lucide-react";
+import { Send, Bot, ChevronDown, Square } from "lucide-react";
 import { getAgentErrorMessage } from "../../../shared/lib/agents/errors";
-
-const mono = "var(--mono), 'JetBrains Mono', monospace";
-
-// Slightly longer than the server-side gateway timeout (120s in docker.ts) so
-// that the server normally resolves its own timeout first and returns a
-// friendly bubble. The client timeout is a last-resort safety net in case the
-// Next.js route handler itself hangs.
-const CLIENT_TIMEOUT_MS = 150_000;
-
-// Textarea autogrow bounds. With fontSize 13 and lineHeight 18, one row is
-// 18px — so the textarea grows freely from 1 row up to 10 rows (180px of
-// content + 20px vertical padding = 200px), then scrolls.
-const TEXTAREA_LINE_HEIGHT = 18;
-const TEXTAREA_MAX_ROWS = 10;
-const TEXTAREA_VERTICAL_PADDING = 20;
-const TEXTAREA_MAX_HEIGHT = TEXTAREA_LINE_HEIGHT * TEXTAREA_MAX_ROWS + TEXTAREA_VERTICAL_PADDING;
-
-interface ChatDocument {
-  data: string;
-  filename: string;
-}
-
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-  document?: ChatDocument;
-}
-
-interface AgentOption {
-  id: string;
-  name: string;
-  status: string;
-  type?: string;
-}
+import {
+  clearChatHistory,
+  fetchAgents as fetchAgentsAction,
+  fetchHistory,
+  sendChatMessage,
+} from "../actions/chat.actions";
+import {
+  ACCENT,
+  CLIENT_TIMEOUT_MS,
+  ChatMessageBubble,
+  ChatStyles,
+  ResetButton,
+  TEXTAREA_LINE_HEIGHT,
+  TEXTAREA_MAX_HEIGHT,
+  ThinkingIndicator,
+  mono,
+  type AgentOption,
+  type ChatMessage,
+} from "./shared";
 
 export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaultAgentId?: string; hideHeader?: boolean } = {}) {
   const [agents, setAgents] = useState<AgentOption[]>([]);
@@ -67,14 +52,8 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
       setLoadingAgents(false);
       return;
     }
-    fetch("/api/agents")
-      .then((r) => r.json())
-      .then((data) => {
-        const list: AgentOption[] = (data.agents ?? []).map(
-          (a: { id: string; name: string; status: string; type?: string }) => ({
-            id: a.id, name: a.name, status: a.status, type: a.type,
-          }),
-        );
+    fetchAgentsAction()
+      .then((list) => {
         setAgents(list);
         const active = list.find((a) => a.status === "active");
         if (active) setSelectedAgentId(active.id);
@@ -89,11 +68,8 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
     if (!selectedAgentId) return;
     setMessages([]);
     setError(null);
-    fetch(`/api/agents/${selectedAgentId}/chat`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.history) setMessages(data.history);
-      })
+    fetchHistory(selectedAgentId)
+      .then(setMessages)
       .catch(() => setError("Failed to load chat history"));
   }, [selectedAgentId]);
 
@@ -131,19 +107,8 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
     }, CLIENT_TIMEOUT_MS);
 
     try {
-      const res = await fetch(`/api/agents/${selectedAgentId}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-        signal: controller.signal,
-      });
+      const data = await sendChatMessage(selectedAgentId, text, controller.signal);
 
-      const data: { reply?: string; document?: ChatDocument; error?: string } =
-        await res.json().catch(() => ({}));
-
-      // If the server returned a reply (even an error translated to friendly
-      // text), render it as an assistant bubble — mirrors the Telegram bot
-      // behavior where the user's message stays and the bot always replies.
       if (typeof data.reply === "string") {
         const reply = data.reply;
         setMessages((prev) => [
@@ -157,29 +122,20 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
         return;
       }
 
-      // Sticky state issues (agent stopped, service disabled, aborted): the
-      // server sent a user-actionable message in `error` — show it as a banner.
-      if (!res.ok && data.error && (res.status === 400 || res.status === 499 || res.status === 503)) {
+      // Sticky state issues: server sent user-actionable message in `error` — show as banner.
+      if (!data.ok && data.error && (data.status === 400 || data.status === 499 || data.status === 503)) {
         setError(data.error);
         return;
       }
 
-      // Everything else without a reply (5xx upstream, unexpected payload):
-      // translate via the same helper Telegram uses and render as a bubble.
-      const synthetic = `HTTP ${res.status} ${data.error ?? ""}`.trim();
+      const synthetic = `HTTP ${data.status} ${data.error ?? ""}`.trim();
       appendAssistantBubble(getAgentErrorMessage(synthetic, null));
     } catch (err) {
-      // The reason passed to controller.abort() (TimeoutError or default
-      // AbortError) is surfaced via signal.reason — use it so the helper can
-      // route to the whimsical-timeout-word branch instead of a generic msg.
       const thrown = controller.signal.aborted ? controller.signal.reason ?? err : err;
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
         setError("You're offline. Check your connection and try again.");
         return;
       }
-      // Network-level failure (server unreachable, user-cancelled, timeout,
-      // DNS, etc.) gets the same Telegram-style friendly translation as a
-      // bubble.
       const errMsg = thrown instanceof Error ? thrown.message : "";
       appendAssistantBubble(getAgentErrorMessage(errMsg, thrown));
     } finally {
@@ -197,7 +153,7 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
   const handleReset = async () => {
     if (!selectedAgentId) return;
     try {
-      await fetch(`/api/agents/${selectedAgentId}/chat`, { method: "DELETE" });
+      await clearChatHistory(selectedAgentId);
       setMessages([]);
     } catch {
       setError("Failed to clear conversation");
@@ -216,9 +172,10 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "5rem 0" }}>
         <div style={{
           width: 24, height: 24, border: "2px solid var(--border)",
-          borderTopColor: "#FF4D00", borderRadius: "50%",
+          borderTopColor: ACCENT, borderRadius: "50%",
           animation: "spin 1s linear infinite",
         }} />
+        <ChatStyles />
       </div>
     );
   }
@@ -233,6 +190,8 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
       </div>
     );
   }
+
+  const inputDisabled = !isActive || sending;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, flex: 1 }}>
@@ -268,45 +227,13 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
               <ChevronDown size={14} color="var(--foreground-3)" style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
             </div>
           </div>
-          {messages.length > 0 && (
-            <button
-              onClick={handleReset}
-              title="Clear conversation"
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "9px 14px", border: "1px solid var(--border)", borderRadius: 8,
-                background: "var(--surface)", cursor: "pointer",
-                fontFamily: mono, fontSize: 11, fontWeight: 500,
-                letterSpacing: "0.04em", textTransform: "uppercase",
-                color: "var(--foreground-2)", transition: "border-color 0.15s",
-                flexShrink: 0,
-              }}
-            >
-              <RotateCcw size={12} />
-              Reset
-            </button>
-          )}
+          {messages.length > 0 && <ResetButton onClick={handleReset} />}
         </div>
       )}
 
-      {/* Reset button when hideHeader but messages exist */}
       {hideHeader && messages.length > 0 && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10, flexShrink: 0 }}>
-          <button
-            onClick={handleReset}
-            title="Clear conversation"
-            style={{
-              display: "flex", alignItems: "center", gap: 5,
-              padding: "7px 12px", border: "1px solid var(--border)", borderRadius: 8,
-              background: "var(--surface)", cursor: "pointer",
-              fontFamily: mono, fontSize: 10, fontWeight: 500,
-              letterSpacing: "0.04em", textTransform: "uppercase",
-              color: "var(--foreground-2)", transition: "border-color 0.15s",
-            }}
-          >
-            <RotateCcw size={11} />
-            Reset
-          </button>
+          <ResetButton onClick={handleReset} compact />
         </div>
       )}
 
@@ -332,63 +259,10 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
           )}
 
           {messages.map((msg, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
-              <div style={{
-                maxWidth: "80%",
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontSize: 13,
-                fontFamily: mono,
-                lineHeight: 1.6,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                ...(msg.role === "user"
-                  ? {
-                      background: "rgba(255,77,0,0.08)",
-                      color: "var(--foreground)",
-                      border: "1px solid rgba(255,77,0,0.15)",
-                    }
-                  : {
-                      background: "var(--surface-2)",
-                      color: "var(--foreground)",
-                      border: "1px solid var(--border)",
-                    }),
-              }}>
-                {msg.content}
-                {msg.document && (
-                  <a
-                    href={msg.document.data}
-                    download={msg.document.filename}
-                    style={{
-                      marginTop: 8, display: "flex", alignItems: "center", gap: 6,
-                      borderRadius: 6, border: "1px solid rgba(255,77,0,0.25)",
-                      background: "rgba(255,77,0,0.06)", padding: "6px 10px",
-                      fontSize: 11, color: "#FF4D00", textDecoration: "none",
-                      width: "fit-content", transition: "background 0.15s",
-                    }}
-                  >
-                    <Download size={13} />
-                    {msg.document.filename}
-                  </a>
-                )}
-              </div>
-            </div>
+            <ChatMessageBubble key={i} msg={msg} />
           ))}
 
-          {/* Thinking indicator */}
-          {sending && (
-            <div style={{ display: "flex", justifyContent: "flex-start" }}>
-              <div style={{
-                background: "var(--surface-2)", border: "1px solid var(--border)",
-                borderRadius: 10, padding: "12px 16px",
-                display: "flex", alignItems: "center", gap: 4,
-              }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--foreground-3)", animation: "bounce 1s infinite", animationDelay: "0ms" }} />
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--foreground-3)", animation: "bounce 1s infinite", animationDelay: "150ms" }} />
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--foreground-3)", animation: "bounce 1s infinite", animationDelay: "300ms" }} />
-              </div>
-            </div>
-          )}
+          {sending && <ThinkingIndicator />}
         </div>
 
         {/* Error */}
@@ -419,7 +293,7 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
                   ? `Agent is ${selectedAgent.status}`
                   : "Select an agent"
             }
-            disabled={!isActive || sending}
+            disabled={inputDisabled}
             rows={1}
             style={{
               flex: 1, resize: "none",
@@ -430,10 +304,10 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
               outline: "none",
               maxHeight: TEXTAREA_MAX_HEIGHT, overflowY: "auto",
               transition: "border-color 0.15s",
-              opacity: (!isActive || sending) ? 0.4 : 1,
-              cursor: (!isActive || sending) ? "not-allowed" : "text",
+              opacity: inputDisabled ? 0.4 : 1,
+              cursor: inputDisabled ? "not-allowed" : "text",
             }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "#FF4D00"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = ACCENT; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
           />
           {sending ? (
@@ -441,7 +315,7 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
               onClick={handleCancel}
               title="Stop generating"
               style={{
-                background: "#FF4D00", color: "#fff",
+                background: ACCENT, color: "#fff",
                 border: "none", borderRadius: 8,
                 padding: "10px 14px", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -455,7 +329,7 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
               onClick={handleSend}
               disabled={!input.trim() || !isActive}
               style={{
-                background: (!input.trim() || !isActive) ? "var(--surface-2)" : "#FF4D00",
+                background: (!input.trim() || !isActive) ? "var(--surface-2)" : ACCENT,
                 color: (!input.trim() || !isActive) ? "var(--foreground-3)" : "#fff",
                 border: "none", borderRadius: 8,
                 padding: "10px 14px", cursor: (!input.trim() || !isActive) ? "not-allowed" : "pointer",
@@ -469,13 +343,7 @@ export function ChatPageContent({ defaultAgentId, hideHeader = false }: { defaul
         </div>
       </div>
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes bounce {
-          0%, 100% { transform: translateY(0); opacity: 0.4; }
-          50% { transform: translateY(-4px); opacity: 1; }
-        }
-      `}</style>
+      <ChatStyles />
     </div>
   );
 }
