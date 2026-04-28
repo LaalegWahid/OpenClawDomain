@@ -38,6 +38,8 @@ export const user = pgTable("user", {
   pricing: decimal("pricing", { precision: 10, scale: 2 }),
   lastLoginAt: timestamp("last_login_at"),
   deletedAt: timestamp("deleted_at"),
+  referralCode: text("referral_code").unique(),
+  freeAgentCredits: integer("free_agent_credits").default(0).notNull(),
 });
 
 export const userProfile = pgTable("user_profile", {

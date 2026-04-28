@@ -65,3 +65,5 @@ docker_build_push.sh
 deploy-commands.md
 aws_cred.txt
 /mcp-test-server
+# clerk configuration (can include secrets)
+/.clerk/

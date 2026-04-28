@@ -92,6 +92,13 @@
       "when": 1777766400000,
       "tag": "0012_add_agent_subscription",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1777389370885,
+      "tag": "0013_many_salo",
+      "breakpoints": true
     }
   ]
 }
