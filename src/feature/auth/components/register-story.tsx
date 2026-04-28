@@ -12,18 +12,30 @@ const INK     = "#2a1f19";
 const MUTED   = "#8a7060";
 const BORDER  = "rgba(42,31,25,0.12)";
 
+const Gradient = ({ children }: { children: React.ReactNode }) => (
+  <span style={{
+    background: "linear-gradient(135deg, #FF4D00 0%, #ff8c00 100%)",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    backgroundClip: "text",
+    color: "transparent",
+  }}>
+    {children}
+  </span>
+);
+
 const slides = [
   {
     num: "01",
     eyebrow: "Launch Fast",
-    line1: "Deploy your agent",
+    line1: <>Deploy your <Gradient>agent</Gradient></>,
     line2: "in less than 2 minutes.",
     italic: true,
   },
   {
     num: "02",
     eyebrow: "Limitless",
-    line1: "Add any skill",
+    line1: <>Add any <Gradient>skill</Gradient></>,
     line2: "you want to the agent.",
     italic: true,
   },
@@ -31,7 +43,7 @@ const slides = [
     num: "03",
     eyebrow: "Rewards",
     line1: "Bring 5 customers,",
-    line2: "get 1 month free.",
+    line2: <>get one <Gradient>free month</Gradient>.</>,
     italic: true,
   },
 ];
@@ -106,6 +118,11 @@ const clawPositions = [
 
 function FloatingClaws({ activeSlide, isForm }: { activeSlide: number, isForm: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const slideRef = useRef(activeSlide);
+  const isFormRef = useRef(isForm);
+
+  slideRef.current = activeSlide;
+  isFormRef.current = isForm;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -143,7 +160,7 @@ function FloatingClaws({ activeSlide, isForm }: { activeSlide: number, isForm: b
 
       ctx.clearRect(0, 0, cw, ch);
 
-      const globalAlphaMult = isForm ? 0.15 : 1;
+      const globalAlphaMult = isFormRef.current ? 0.15 : 1;
       const sizeMul = cw < 640 ? 0.6 : cw < 900 ? 0.8 : 1;
 
       for (let i = 0; i < clawPositions.length; i++) {
@@ -160,14 +177,8 @@ function FloatingClaws({ activeSlide, isForm }: { activeSlide: number, isForm: b
         const driftX = Math.cos(t * 0.15 + i * 2) * (baseS * 0.15);
         const driftY = Math.sin(t * 0.2 + i * 2) * (baseS * 0.15);
 
-        // Parallax shift that reacts to slides
-        // Multiply by (baseS / 200) to give deeper items more movement
-        const parallaxDepth = (baseS / 200);
-        const slideShiftX = activeSlide * (cw * -0.04) * parallaxDepth; 
-        const slideShiftY = activeSlide * (ch * 0.02) * parallaxDepth;
-
-        const cx = (parseFloat(m.l) / 100) * cw + driftX + slideShiftX;
-        const cy = (parseFloat(m.t) / 100) * ch + driftY + slideShiftY;
+        const cx = (parseFloat(m.l) / 100) * cw + driftX;
+        const cy = (parseFloat(m.t) / 100) * ch + driftY;
 
         ctx.save();
         ctx.translate(cx, cy);
@@ -201,7 +212,7 @@ function FloatingClaws({ activeSlide, isForm }: { activeSlide: number, isForm: b
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', resize);
     };
-  }, [activeSlide, isForm]);
+  }, []); // Empty dependency array ensures it never reloads
 
   return (
     <canvas
@@ -225,17 +236,26 @@ export function RegisterStory() {
 
   const [index, setIndex] = useState(0);
   const [showForm, setShowForm] = useState(false);
-  const [fading, setFading] = useState(false);
+  const [pageFading, setPageFading] = useState(false);
+  const [textFading, setTextFading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function transitionTo(next: number | "form") {
     if (timerRef.current) clearTimeout(timerRef.current);
-    setFading(true);
-    setTimeout(() => {
-      if (next === "form") setShowForm(true);
-      else setIndex(next);
-      setFading(false);
-    }, 400);
+    
+    if (next === "form") {
+      setPageFading(true);
+      setTimeout(() => {
+        setShowForm(true);
+        setPageFading(false);
+      }, 400);
+    } else {
+      setTextFading(true);
+      setTimeout(() => {
+        setIndex(next);
+        setTextFading(false);
+      }, 400);
+    }
   }
 
   useEffect(() => {
@@ -255,7 +275,7 @@ export function RegisterStory() {
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
         padding: "1.5rem", position: "relative",
-        opacity: fading ? 0 : 1,
+        opacity: pageFading ? 0 : 1,
         transition: "opacity 0.4s ease",
       }}>
         <DotGrid />
@@ -275,7 +295,7 @@ export function RegisterStory() {
       display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center",
       padding: "2rem", position: "relative", overflow: "hidden",
-      opacity: fading ? 0 : 1,
+      opacity: pageFading ? 0 : 1,
       transition: "opacity 0.4s cubic-bezier(0.4,0,0.2,1)",
     }}>
 
@@ -347,20 +367,11 @@ export function RegisterStory() {
           alignItems: "center", textAlign: "center",
           position: "relative", zIndex: 2,
           maxWidth: "820px", width: "100%",
+          opacity: textFading ? 0 : 1,
+          transform: textFading ? "translateY(-15px)" : "translateY(0)",
+          transition: "opacity 0.4s ease, transform 0.4s ease",
         }}
       >
-        {/* Eyebrow */}
-        <div style={{
-          fontFamily: mono, fontSize: "12px", fontWeight: 500,
-          letterSpacing: "0.15em", textTransform: "uppercase",
-          color: INK, marginBottom: "2.5rem",
-          display: "flex", alignItems: "center", gap: "12px",
-          opacity: 0, animation: "storyFadeUp 0.55s ease forwards",
-          animationDelay: "0.05s",
-        }}>
-          [ {slide.num} ] — {slide.eyebrow}
-        </div>
-
         {/* Line 1 — slides up from mask */}
         <div style={{ overflow: "hidden", paddingBottom: "0.15em" }}>
           <h1 style={{
