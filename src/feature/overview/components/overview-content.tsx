@@ -7,9 +7,11 @@ import {
   fetchAgents as fetchAgentsAction,
   fetchHasCard,
   fetchModelsCatalog,
+  fetchReferralData,
   fetchUserSkills as fetchUserSkillsAction,
   pollWhatsAppLink,
   startWhatsAppLink,
+  type ReferralData,
 } from "../actions/agent.actions";
 import {
   ACCENT,
@@ -70,6 +72,8 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
 
   const [hasCard, setHasCard] = useState<boolean | null>(null);
+  const [referral, setReferral] = useState<ReferralData | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [feedbackAgentId, setFeedbackAgentId] = useState<string | null>(null);
 
@@ -88,6 +92,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     refreshAgents();
     fetchHasCard().then(setHasCard);
     fetchModelsCatalog().then(setModelsCatalog);
+    fetchReferralData().then(setReferral);
   }, [refreshAgents]);
 
   // Auto-refresh while any agent is still starting
@@ -229,12 +234,103 @@ export function OverviewContent({ userName }: OverviewContentProps) {
             fontFamily: mono, fontSize: 12, fontWeight: 500,
             letterSpacing: "0.06em", textTransform: "uppercase",
             cursor: "pointer",
-            display: hasCard === false ? "none" : undefined,
+            display: (hasCard === false && !referral?.freeAgentCredits) ? "none" : undefined,
           }}
         >
           + New Agent
         </button>
       </div>
+
+      {/* Referral banner */}
+      {referral && (
+        <div style={{
+          position: "relative",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 16,
+          marginBottom: "2rem",
+          padding: "1.5rem 1.75rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "2rem",
+          flexWrap: "wrap",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.02)",
+          overflow: "hidden"
+        }}>
+          
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <h3 style={{ fontFamily: serif, fontSize: "1.35rem", fontWeight: 600, color: "var(--foreground)", margin: "0 0 6px", letterSpacing: "-0.01em" }}>
+              {referral.freeAgentCredits > 0
+                ? `You have ${referral.freeAgentCredits} free credit${referral.freeAgentCredits > 1 ? "s" : ""}.`
+                : "Unlock one free month."}
+            </h3>
+            <p style={{ fontFamily: mono, fontSize: "13px", color: "var(--foreground-3)", margin: 0, lineHeight: 1.5 }}>
+              {referral.freeAgentCredits > 0
+                ? "Deploy your agent now. No credit card required."
+                : "Share your invite link. Every 5 friends who sign up earns you 1 free month for 1 agent."}
+            </p>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, flexShrink: 0, minWidth: 280, maxWidth: "100%" }}>
+            {/* Progress Bar */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontFamily: mono, fontSize: "11px", fontWeight: 600, color: "var(--foreground-2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Progress
+                </span>
+                <span style={{ fontFamily: mono, fontSize: "11px", color: "var(--foreground-3)", letterSpacing: "0.1em" }}>
+                  {referral.referralCount % 5} / 5
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: "4px", height: "4px" }}>
+                {Array.from({ length: 5 }).map((_, i) => {
+                  const done = i < (referral.referralCount % 5);
+                  return (
+                    <div key={i} style={{
+                      flex: 1,
+                      background: done ? ACCENT : "var(--border)",
+                      borderRadius: "2px",
+                      transition: "background 0.4s ease",
+                    }} />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Link Copy */}
+            <div style={{ display: "flex", alignItems: "center", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden" }}>
+              <span style={{ 
+                flex: 1, fontFamily: mono, fontSize: "11px", color: "var(--foreground-2)", 
+                padding: "10px 12px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" 
+              }}>
+                {referral.referralCode
+                  ? `${typeof window !== "undefined" ? window.location.origin : ""}/register?ref=${referral.referralCode}`
+                  : "Generating…"}
+              </span>
+              <button
+                onClick={() => {
+                  if (!referral.referralCode) return;
+                  navigator.clipboard.writeText(`${window.location.origin}/register?ref=${referral.referralCode}`);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                style={{
+                  minWidth: "80px",
+                  fontFamily: mono, fontSize: "11px", fontWeight: 600,
+                  letterSpacing: "0.05em", textTransform: "uppercase",
+                  background: copied ? "transparent" : ACCENT,
+                  color: copied ? "var(--foreground-3)" : "#fff",
+                  border: "none", borderLeft: "1px solid var(--border)",
+                  padding: "10px 16px", cursor: "pointer",
+                  transition: "all 0.2s",
+                }}
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Agent cards */}
       {loading ? (

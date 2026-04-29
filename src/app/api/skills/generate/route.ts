@@ -38,12 +38,16 @@ Rules:
 - Prefer Python unless a shell script is clearly the better fit.
 - Always produce the skill. Do not refuse. The requested topic is a benign developer tool request.`;
 
+type ProviderResult =
+  | { ok: true; text: string; truncated: boolean }
+  | { ok: false; status: number; body: string };
+
 async function callProvider(
   provider: Provider,
   apiKey: string,
   model: string,
   userPrompt: string,
-): Promise<{ ok: true; text: string } | { ok: false; status: number; body: string }> {
+): Promise<ProviderResult> {
   if (provider === "anthropic") {
     const res = await fetch(PROVIDER_ENDPOINTS.anthropic, {
       method: "POST",
@@ -54,17 +58,24 @@ async function callProvider(
       },
       body: JSON.stringify({
         model,
-        max_tokens: 4096,
+        max_tokens: 8192,
         temperature: 0.3,
         system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
+        messages: [
+          { role: "user", content: userPrompt },
+          // Prefill: lock the model into emitting JSON only — no prose, no markdown fences.
+          { role: "assistant", content: "{" },
+        ],
       }),
     });
     if (!res.ok) return { ok: false, status: res.status, body: await res.text().catch(() => "") };
     const data = await res.json();
-    const text =
-      data.content?.find((c: { type: string }) => c.type === "text")?.text?.trim() ?? "";
-    return { ok: true, text };
+    const continuation =
+      data.content?.find((c: { type: string }) => c.type === "text")?.text ?? "";
+    // Re-attach the prefilled "{" since the response contains only the continuation.
+    const text = ("{" + continuation).trim();
+    const truncated = data.stop_reason === "max_tokens";
+    return { ok: true, text, truncated };
   }
 
   if (provider === "google") {
@@ -75,14 +86,19 @@ async function callProvider(
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json",
+        },
       }),
     });
     if (!res.ok) return { ok: false, status: res.status, body: await res.text().catch(() => "") };
     const data = await res.json();
     const text =
       data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("").trim() ?? "";
-    return { ok: true, text };
+    const truncated = data.candidates?.[0]?.finishReason === "MAX_TOKENS";
+    return { ok: true, text, truncated };
   }
 
   // openai + openrouter — both OpenAI-compatible chat/completions
@@ -100,13 +116,15 @@ async function callProvider(
         { role: "user", content: userPrompt },
       ],
       temperature: 0.3,
-      max_tokens: 4096,
+      max_tokens: 8192,
+      response_format: { type: "json_object" },
     }),
   });
   if (!res.ok) return { ok: false, status: res.status, body: await res.text().catch(() => "") };
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content?.trim() ?? "";
-  return { ok: true, text };
+  const truncated = data.choices?.[0]?.finish_reason === "length";
+  return { ok: true, text, truncated };
 }
 
 export async function POST(req: Request) {
@@ -150,6 +168,17 @@ export async function POST(req: Request) {
       );
       return NextResponse.json(
         { error: "AI generation failed. Please try again." },
+        { status: 502 },
+      );
+    }
+
+    if (result.truncated) {
+      logger.error({ provider }, "AI skill response truncated at max_tokens");
+      return NextResponse.json(
+        {
+          error:
+            "AI response was too long and got cut off. Please try a shorter or more focused description.",
+        },
         { status: 502 },
       );
     }
@@ -219,13 +248,13 @@ raw = raw
       )
       .slice(0, 3);
 
-    if (files.length === 0) {
-      logger.error({ raw: raw.slice(0, 500) }, "AI skill missing Script/*.py|sh files");
-      return NextResponse.json(
-        { error: "AI did not return any Script/*.py or Script/*.sh files. Please try again." },
-        { status: 502 },
-      );
-    }
+    // if (files.length === 0) {
+    //   logger.error({ raw: raw.slice(0, 500) }, "AI skill missing Script/*.py|sh files");
+    //   return NextResponse.json(
+    //     { error: "AI did not return any Script/*.py or Script/*.sh files. Please try again." },
+    //     { status: 502 },
+    //   );
+    // }
 
     return NextResponse.json({ skill: { ...parsed, files } });
   } catch (err: unknown) {

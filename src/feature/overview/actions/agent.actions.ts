@@ -66,6 +66,22 @@ export async function pollWhatsAppLink(agentId: string): Promise<{ status?: stri
   return res.json();
 }
 
+export interface ReferralData {
+  referralCode: string | null;
+  referralCount: number;
+  freeAgentCredits: number;
+}
+
+export async function fetchReferralData(): Promise<ReferralData> {
+  try {
+    const res = await fetch("/api/referral");
+    if (!res.ok) return { referralCode: null, referralCount: 0, freeAgentCredits: 0 };
+    return res.json();
+  } catch {
+    return { referralCode: null, referralCount: 0, freeAgentCredits: 0 };
+  }
+}
+
 export async function submitAgentFeedback(payload: { rating: number; comment: string; agentId: string | null }) {
   await fetch("/api/feedback/agent-creation", {
     method: "POST",

@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ACCENT, serif } from "./constants";
 
-export function AuthLogo() {
+export function AuthLogo({ marginBottom = "2rem" }: { marginBottom?: string }) {
   return (
-    <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: "10px", textDecoration: "none", marginBottom: "2rem" }}>
+    <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: "10px", textDecoration: "none", marginBottom }}>
       <svg width="30" height="30" viewBox="0 0 56 56" fill="none">
         <rect width="56" height="56" rx="13" fill={ACCENT} />
         <line x1="15" y1="40" x2="23" y2="14" stroke="white" strokeWidth="4.5" strokeLinecap="square" />

@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { getSessionOrThrow } from "../../../shared/lib/auth/getSessionOrThrow";
 import { isValidAgentType, type AgentType } from "../../../shared/lib/agents/config";
 import { db } from "../../../shared/lib/drizzle";
-import { eq } from "drizzle-orm";
+import { eq, sql, and, inArray } from "drizzle-orm";
 import { deleteWebhook, setWebhook, validateBotToken } from "../../../shared/lib/telegram/bot";
 import { agent, agentActivity, agentChannel } from "../../../shared/db/schema/agent";
 import { skill, agentSkill } from "../../../shared/db/schema/skill";
-import { and, inArray } from "drizzle-orm";
+import { user } from "../../../shared/db/schema/auth";
+import { agentSubscription } from "../../../shared/db/schema/subscription";
 
 import { launchContainer, stopContainer, waitForTaskRunning } from "../../../shared/lib/agents/docker";
 import { startDiscordBot } from "../../../shared/lib/discord/manager";
@@ -17,6 +18,28 @@ import {
   hasUsablePaymentMethod,
   createAgentSubscription,
 } from "../../../shared/lib/stripe/stripe.service";
+
+async function handleAgentSubscription(userId: string, agentId: string, usingFreeCredit: boolean) {
+  if (usingFreeCredit) {
+    const now = new Date();
+    const oneMonthLater = new Date(now);
+    oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
+    await db.insert(agentSubscription).values({
+      userId,
+      agentId,
+      stripeSubscriptionId: `free_referral_${agentId}`,
+      status: "active",
+      currentPeriodStart: now,
+      currentPeriodEnd: oneMonthLater,
+    });
+    await db
+      .update(user)
+      .set({ freeAgentCredits: sql`${user.freeAgentCredits} - 1` })
+      .where(eq(user.id, userId));
+  } else {
+    await createAgentSubscription(userId, agentId);
+  }
+}
 
 async function linkSkillsToAgent(agentId: string, userId: string, skillIds?: string[]) {
   if (!skillIds || skillIds.length === 0) return;
@@ -69,13 +92,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid platform" }, { status: 400 });
     }
 
-    // Require a payment method on file before any container or Stripe call
-    const canBill = await hasUsablePaymentMethod(session.user.id);
-    if (!canBill) {
-      return NextResponse.json(
-        { error: "missing_payment_method", message: "Add a debit/credit card in Billing before creating an agent." },
-        { status: 402 },
-      );
+    // Check if user has free agent credits from referrals
+    const [me] = await db
+      .select({ freeAgentCredits: user.freeAgentCredits })
+      .from(user)
+      .where(eq(user.id, session.user.id))
+      .limit(1);
+
+    const usingFreeCredit = (me?.freeAgentCredits ?? 0) > 0;
+
+    // Require a payment method on file unless the user has a referral credit
+    if (!usingFreeCredit) {
+      const canBill = await hasUsablePaymentMethod(session.user.id);
+      if (!canBill) {
+        return NextResponse.json(
+          { error: "missing_payment_method", message: "Add a debit/credit card in Billing before creating an agent." },
+          { status: 402 },
+        );
+      }
     }
 
     // Encrypt any per-agent API keys from the request body
@@ -189,7 +223,7 @@ export async function POST(req: Request) {
           .returning();
 
         try {
-          await createAgentSubscription(session.user.id, newAgent.id);
+          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit);
         } catch (subErr) {
           await db.delete(agent).where(eq(agent.id, newAgent.id));
           await stopContainer(containerId).catch(() => {});
@@ -291,7 +325,7 @@ export async function POST(req: Request) {
           .returning();
 
         try {
-          await createAgentSubscription(session.user.id, newAgent.id);
+          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit);
         } catch (subErr) {
           await db.delete(agent).where(eq(agent.id, newAgent.id));
           await stopContainer(containerId).catch(() => {});
@@ -366,7 +400,7 @@ export async function POST(req: Request) {
           .returning();
 
         try {
-          await createAgentSubscription(session.user.id, newAgent.id);
+          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit);
         } catch (subErr) {
           await db.delete(agent).where(eq(agent.id, newAgent.id));
           await stopContainer(containerId).catch(() => {});
