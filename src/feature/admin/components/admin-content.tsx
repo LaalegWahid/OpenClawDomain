@@ -20,9 +20,11 @@ import {
   Globe,
   AlertCircle,
   Terminal,
+  Code2,
 } from "lucide-react";
 import {
   removeUser as removeUserAction,
+  setDeveloperAccess,
   setServiceEnabled,
   setUserRole,
   toggleUserBan,
@@ -136,6 +138,20 @@ export function AdminContent({
     }
   }
 
+  async function toggleDeveloperAccess(u: UserRow) {
+    setPendingId(u.id);
+    setRowError(null);
+    const next = !u.developerAccess;
+    try {
+      await setDeveloperAccess(u.id, next);
+      setUsers((list) => list.map((x) => (x.id === u.id ? { ...x, developerAccess: next } : x)));
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setPendingId(null);
+    }
+  }
+
   async function removeUser(u: UserRow) {
     if (!confirm(`Delete ${u.email}? This cannot be undone.`)) return;
     setPendingId(u.id);
@@ -235,6 +251,7 @@ export function AdminContent({
             pendingId={pendingId}
             onToggleRole={toggleRole}
             onToggleBan={toggleBan}
+            onToggleDeveloperAccess={toggleDeveloperAccess}
             onRemove={removeUser}
           />
         </Card>
@@ -374,12 +391,13 @@ function ServiceControl({
 }
 
 function UsersTable({
-  users, pendingId, onToggleRole, onToggleBan, onRemove,
+  users, pendingId, onToggleRole, onToggleBan, onToggleDeveloperAccess, onRemove,
 }: {
   users: UserRow[];
   pendingId: string | null;
   onToggleRole: (u: UserRow) => void;
   onToggleBan: (u: UserRow) => void;
+  onToggleDeveloperAccess: (u: UserRow) => void;
   onRemove: (u: UserRow) => void;
 }) {
   return (
@@ -446,6 +464,13 @@ function UsersTable({
                     onClick={() => onToggleRole(u)}
                   >
                     {u.role === "admin" ? <ShieldOff size={14} /> : <Shield size={14} />}
+                  </IconAction>
+                  <IconAction
+                    title={u.developerAccess ? "Revoke developer access" : "Grant developer access"}
+                    disabled={pendingId === u.id}
+                    onClick={() => onToggleDeveloperAccess(u)}
+                  >
+                    <Code2 size={14} color={u.developerAccess ? ACCENT : undefined} />
                   </IconAction>
                   <IconAction
                     title={u.banned ? "Unban" : "Ban"}

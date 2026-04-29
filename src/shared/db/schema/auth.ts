@@ -40,6 +40,7 @@ export const user = pgTable("user", {
   deletedAt: timestamp("deleted_at"),
   referralCode: text("referral_code").unique(),
   freeAgentCredits: integer("free_agent_credits").default(0).notNull(),
+  developerAccess: boolean("developer_access").default(false).notNull(),
 });
 
 export const userProfile = pgTable("user_profile", {

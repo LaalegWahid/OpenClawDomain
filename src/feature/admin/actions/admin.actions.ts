@@ -29,6 +29,18 @@ export function setUserRole(userId: string, role: "admin" | "user") {
   return authClient.admin.setRole({ userId, role });
 }
 
+export async function setDeveloperAccess(userId: string, developerAccess: boolean): Promise<void> {
+  const res = await fetch(`/api/admin/users/${userId}/developer-access`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ developerAccess }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? "Request failed");
+  }
+}
+
 export function removeUser(userId: string) {
   return authClient.admin.removeUser({ userId });
 }
