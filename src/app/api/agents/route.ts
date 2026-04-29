@@ -478,11 +478,11 @@ export async function GET(req: Request) {
     const now = Date.now();
     const safeAgents = rows.map(({ agent: a, subStripeId, subStatus, subPeriodEnd }) => {
       const { apiKey, ...rest } = a;
-      const isReferralTrial =
-        subStripeId?.startsWith("free_referral_") &&
+      const isFreeTrial =
+        (subStripeId?.startsWith("free_referral_") || subStripeId?.startsWith("developer_")) &&
         subStatus === "active" &&
         subPeriodEnd instanceof Date;
-      const trialDaysLeft = isReferralTrial
+      const trialDaysLeft = isFreeTrial
         ? Math.max(0, Math.ceil((subPeriodEnd.getTime() - now) / 86_400_000))
         : null;
       return { ...rest, trialDaysLeft };
