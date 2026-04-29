@@ -13,9 +13,10 @@ export async function GET(req: Request) {
 
   const result = await db
     .delete(incomingMessage)
-    .where(sql`${incomingMessage.createdAt} < NOW() - INTERVAL '1 day'`);
+    .where(sql`${incomingMessage.createdAt} < NOW() - INTERVAL '1 day'`)
+    .returning({ id: incomingMessage.id });
 
-  const deleted = result.rowCount ?? 0;
+  const deleted = result.length;
   logger.info({ deleted }, "incoming_message cleanup");
   return NextResponse.json({ deleted });
 }
