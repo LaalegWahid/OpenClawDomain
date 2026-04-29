@@ -88,6 +88,29 @@ export function OverviewContent({ userName }: OverviewContentProps) {
     }
   }, []);
 
+  const syncAgentStatuses = useCallback(async () => {
+    try {
+      const fresh = await fetchAgentsAction();
+      setAgents((prev) => {
+        const byId = new Map(fresh.map((a) => [a.id, a]));
+        const merged = prev.map((a) => {
+          const next = byId.get(a.id);
+          if (!next) return a;
+          if (
+            a.status === next.status &&
+            a.trialDaysLeft === next.trialDaysLeft
+          ) return a;
+          return { ...a, status: next.status, trialDaysLeft: next.trialDaysLeft };
+        });
+        const existingIds = new Set(prev.map((a) => a.id));
+        const added = fresh.filter((a) => !existingIds.has(a.id));
+        return added.length ? [...merged, ...added] : merged;
+      });
+    } catch {
+      // silent — keep current state, the next tick will retry
+    }
+  }, []);
+
   useEffect(() => {
     refreshAgents();
     fetchHasCard().then(setHasCard);
@@ -99,9 +122,9 @@ export function OverviewContent({ userName }: OverviewContentProps) {
   useEffect(() => {
     const hasStarting = agents.some((a) => a.status === "starting");
     if (!hasStarting) return;
-    const interval = setInterval(refreshAgents, 5000);
+    const interval = setInterval(syncAgentStatuses, 5000);
     return () => clearInterval(interval);
-  }, [agents, refreshAgents]);
+  }, [agents, syncAgentStatuses]);
 
   const providerNames = Object.keys(modelsCatalog);
   const availableModels = apiProvider ? (modelsCatalog[apiProvider] ?? []) : [];
