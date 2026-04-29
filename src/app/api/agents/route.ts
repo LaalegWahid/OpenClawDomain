@@ -464,15 +464,31 @@ export async function GET(req: Request) {
   try {
     const session = await getSessionOrThrow(req);
 
-    const agents = await db
-      .select()
+    const rows = await db
+      .select({
+        agent: agent,
+        subStripeId: agentSubscription.stripeSubscriptionId,
+        subStatus: agentSubscription.status,
+        subPeriodEnd: agentSubscription.currentPeriodEnd,
+      })
       .from(agent)
+      .leftJoin(agentSubscription, eq(agentSubscription.agentId, agent.id))
       .where(eq(agent.userId, session.user.id));
 
-    // Strip encrypted key column before returning to client
-    const safeAgents = agents.map(({ apiKey, ...rest }) => rest);
+    const now = Date.now();
+    const safeAgents = rows.map(({ agent: a, subStripeId, subStatus, subPeriodEnd }) => {
+      const { apiKey, ...rest } = a;
+      const isReferralTrial =
+        subStripeId?.startsWith("free_referral_") &&
+        subStatus === "active" &&
+        subPeriodEnd instanceof Date;
+      const trialDaysLeft = isReferralTrial
+        ? Math.max(0, Math.ceil((subPeriodEnd.getTime() - now) / 86_400_000))
+        : null;
+      return { ...rest, trialDaysLeft };
+    });
 
-    logger.info({ userId: session.user.id, count: agents.length }, "Agents listed");
+    logger.info({ userId: session.user.id, count: safeAgents.length }, "Agents listed");
     return NextResponse.json({ agents: safeAgents });
   } catch (err) {
     if (err instanceof Response) return err;

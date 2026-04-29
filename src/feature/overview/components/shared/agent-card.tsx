@@ -44,6 +44,20 @@ export function AgentCard({ ag }: { ag: AgentRecord }) {
             {ag.type}
           </span>
         )}
+        {typeof ag.trialDaysLeft === "number" && (
+          <div style={{ marginTop: 8 }}>
+            <span style={{
+              display: "inline-block", fontSize: 10, fontWeight: 500,
+              fontFamily: mono, letterSpacing: "0.06em", textTransform: "uppercase",
+              color: ag.trialDaysLeft <= 3 ? "#d92d20" : ACCENT,
+              background: ag.trialDaysLeft <= 3 ? "rgba(217,45,32,0.08)" : "rgba(255,77,0,0.08)",
+              border: ag.trialDaysLeft <= 3 ? "1px solid rgba(217,45,32,0.25)" : "1px solid rgba(255,77,0,0.2)",
+              borderRadius: 4, padding: "2px 8px",
+            }}>
+              Trial · {ag.trialDaysLeft} {ag.trialDaysLeft === 1 ? "day" : "days"} left
+            </span>
+          </div>
+        )}
       </div>
 
       <div style={{ height: 1, background: "var(--border)" }} />

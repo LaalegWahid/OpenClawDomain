@@ -11,4 +11,5 @@ export interface AgentRecord {
   status: string;
   type?: string;
   profileImage?: string | null;
+  trialDaysLeft?: number | null;
 }
