@@ -46,6 +46,7 @@ export default async function AdminPage() {
           role: user.role,
           banned: user.banned,
           createdAt: user.createdAt,
+          developerAccess: user.developerAccess,
           agentCount: sql<number>`(select count(*)::int from ${agent} where ${agent.userId} = ${user.id})`,
         })
         .from(user)

@@ -19,7 +19,26 @@ import {
   createAgentSubscription,
 } from "../../../shared/lib/stripe/stripe.service";
 
-async function handleAgentSubscription(userId: string, agentId: string, usingFreeCredit: boolean) {
+async function handleAgentSubscription(
+  userId: string,
+  agentId: string,
+  usingFreeCredit: boolean,
+  hasDeveloperAccess: boolean,
+) {
+  if (hasDeveloperAccess) {
+    const now = new Date();
+    const oneMonthLater = new Date(now);
+    oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
+    await db.insert(agentSubscription).values({
+      userId,
+      agentId,
+      stripeSubscriptionId: `developer_${agentId}`,
+      status: "active",
+      currentPeriodStart: now,
+      currentPeriodEnd: oneMonthLater,
+    });
+    return;
+  }
   if (usingFreeCredit) {
     const now = new Date();
     const oneMonthLater = new Date(now);
@@ -92,17 +111,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid platform" }, { status: 400 });
     }
 
-    // Check if user has free agent credits from referrals
+    // Check developer access and free credits
     const [me] = await db
-      .select({ freeAgentCredits: user.freeAgentCredits })
+      .select({
+        freeAgentCredits: user.freeAgentCredits,
+        developerAccess: user.developerAccess,
+      })
       .from(user)
       .where(eq(user.id, session.user.id))
       .limit(1);
 
-    const usingFreeCredit = (me?.freeAgentCredits ?? 0) > 0;
+    const hasDeveloperAccess = me?.developerAccess ?? false;
+    const usingFreeCredit = !hasDeveloperAccess && (me?.freeAgentCredits ?? 0) > 0;
 
-    // Require a payment method on file unless the user has a referral credit
-    if (!usingFreeCredit) {
+    // Require a payment method on file unless the user has dev access or a referral credit
+    if (!hasDeveloperAccess && !usingFreeCredit) {
       const canBill = await hasUsablePaymentMethod(session.user.id);
       if (!canBill) {
         return NextResponse.json(
@@ -223,7 +246,7 @@ export async function POST(req: Request) {
           .returning();
 
         try {
-          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit);
+          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit, hasDeveloperAccess);
         } catch (subErr) {
           await db.delete(agent).where(eq(agent.id, newAgent.id));
           await stopContainer(containerId).catch(() => {});
@@ -325,7 +348,7 @@ export async function POST(req: Request) {
           .returning();
 
         try {
-          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit);
+          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit, hasDeveloperAccess);
         } catch (subErr) {
           await db.delete(agent).where(eq(agent.id, newAgent.id));
           await stopContainer(containerId).catch(() => {});
@@ -400,7 +423,7 @@ export async function POST(req: Request) {
           .returning();
 
         try {
-          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit);
+          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit, hasDeveloperAccess);
         } catch (subErr) {
           await db.delete(agent).where(eq(agent.id, newAgent.id));
           await stopContainer(containerId).catch(() => {});

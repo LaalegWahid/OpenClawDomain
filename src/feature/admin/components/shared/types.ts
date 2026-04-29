@@ -6,6 +6,7 @@ export interface UserRow {
   banned: boolean | null;
   createdAt: string;
   agentCount: number;
+  developerAccess: boolean;
 }
 
 export interface AgentRow {

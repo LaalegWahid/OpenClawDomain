@@ -1,0 +1,1 @@
+ALTER TABLE "user" ADD COLUMN "developer_access" boolean DEFAULT false NOT NULL;
