@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, like } from "drizzle-orm";
 import { stripe } from "./index";
 import { db } from "../drizzle";
 import {
@@ -424,9 +424,104 @@ export async function hasUsablePaymentMethod(userId: string): Promise<boolean> {
   return !!pm;
 }
 
+/**
+ * Volume-based tier pricing for agent subscriptions:
+ *  • 1–5 active agents  → STRIPE_PRICE_ID            ($30/agent/mo)
+ *  • 6–10 active agents → STRIPE_PRICE_ID_TIER_10    ($29/agent/mo)
+ *  • 11+ active agents  → STRIPE_PRICE_ID_TIER_20    ($28/agent/mo)
+ *
+ * Falls back to the next-lower tier when an env var is unset so non-prod
+ * environments (which only configure STRIPE_PRICE_ID) keep working.
+ */
+export function pickAgentPriceId(activeAgentCount: number): string {
+  if (activeAgentCount >= 11) {
+    return env.STRIPE_PRICE_ID_TIER_20 ?? env.STRIPE_PRICE_ID_TIER_10 ?? env.STRIPE_PRICE_ID;
+  }
+  if (activeAgentCount >= 6) {
+    return env.STRIPE_PRICE_ID_TIER_10 ?? env.STRIPE_PRICE_ID;
+  }
+  return env.STRIPE_PRICE_ID;
+}
+
+export async function countActivePaidAgentSubscriptions(userId: string): Promise<number> {
+  // Exclude developer/free trial/free referral pseudo-subscriptions — only real Stripe subs are billed.
+  const rows = await db
+    .select({ stripeSubscriptionId: agentSubscription.stripeSubscriptionId })
+    .from(agentSubscription)
+    .where(
+      and(
+        eq(agentSubscription.userId, userId),
+        inArray(agentSubscription.status, ["active", "past_due", "incomplete"] as const),
+      ),
+    );
+  return rows.filter(
+    (r) =>
+      r.stripeSubscriptionId &&
+      !r.stripeSubscriptionId.startsWith("developer_") &&
+      !r.stripeSubscriptionId.startsWith("free_trial_") &&
+      !r.stripeSubscriptionId.startsWith("free_referral_"),
+  ).length;
+}
+
+/**
+ * Repoints every active paid agent subscription for a user to a new tier price.
+ * Called after the user crosses a volume threshold so existing agents inherit
+ * the new lower price.
+ */
+export async function repriceUserAgentSubscriptions(
+  userId: string,
+  newPriceId: string,
+  excludeAgentId?: string,
+) {
+  const rows = await db
+    .select({
+      agentId: agentSubscription.agentId,
+      stripeSubscriptionId: agentSubscription.stripeSubscriptionId,
+      stripePriceId: agentSubscription.stripePriceId,
+    })
+    .from(agentSubscription)
+    .where(
+      and(
+        eq(agentSubscription.userId, userId),
+        inArray(agentSubscription.status, ["active", "past_due"] as const),
+      ),
+    );
+
+  for (const row of rows) {
+    if (!row.stripeSubscriptionId) continue;
+    if (
+      row.stripeSubscriptionId.startsWith("developer_") ||
+      row.stripeSubscriptionId.startsWith("free_trial_") ||
+      row.stripeSubscriptionId.startsWith("free_referral_")
+    ) continue;
+    if (row.stripePriceId === newPriceId) continue;
+    if (excludeAgentId && row.agentId === excludeAgentId) continue;
+
+    try {
+      const remote = await stripe.subscriptions.retrieve(row.stripeSubscriptionId);
+      const itemId = remote.items.data[0]?.id;
+      if (!itemId) continue;
+      await stripe.subscriptions.update(row.stripeSubscriptionId, {
+        items: [{ id: itemId, price: newPriceId }],
+        proration_behavior: "create_prorations",
+      });
+      await db
+        .update(agentSubscription)
+        .set({ stripePriceId: newPriceId })
+        .where(eq(agentSubscription.stripeSubscriptionId, row.stripeSubscriptionId));
+    } catch (err) {
+      logger.warn(
+        { err, userId, stripeSubscriptionId: row.stripeSubscriptionId },
+        "Failed to reprice existing agent subscription",
+      );
+    }
+  }
+}
+
 export async function createAgentSubscription(
   userId: string,
   agentId: string,
+  priceId?: string,
 ): Promise<{ status: string; subscriptionId: string; clientSecret?: string }> {
   const customerId = await ensureStripeCustomer(userId);
   const pm = await getDefaultPaymentMethod(userId);
@@ -434,9 +529,11 @@ export async function createAgentSubscription(
     throw new Error("NoPaymentMethod");
   }
 
+  const resolvedPriceId = priceId ?? env.STRIPE_PRICE_ID;
+
   const sub = await stripe.subscriptions.create({
     customer: customerId,
-    items: [{ price: env.STRIPE_PRICE_ID }],
+    items: [{ price: resolvedPriceId }],
     default_payment_method: pm.stripePaymentMethodId,
     metadata: { userId, agentId },
     expand: ["latest_invoice.payment_intent"],
@@ -524,4 +621,94 @@ export async function getAgentSubscriptionsForUser(userId: string) {
     .select()
     .from(agentSubscription)
     .where(eq(agentSubscription.userId, userId));
+}
+
+/**
+ * Convert every still-active free-trial agent for this user into a real
+ * Stripe-billed subscription using the volume tier appropriate for their new
+ * paid count. Called right after a payment method is attached so the trial
+ * agents transition to paid without being deactivated.
+ *
+ * Best-effort per agent — failures are logged so a single bad agent doesn't
+ * block the rest from converting.
+ */
+export async function convertActiveFreeTrialsToPaid(userId: string): Promise<number> {
+  const trials = await db
+    .select({
+      id: agentSubscription.id,
+      agentId: agentSubscription.agentId,
+      stripeSubscriptionId: agentSubscription.stripeSubscriptionId,
+    })
+    .from(agentSubscription)
+    .where(
+      and(
+        eq(agentSubscription.userId, userId),
+        eq(agentSubscription.status, "active"),
+        like(agentSubscription.stripeSubscriptionId, "free_trial_%"),
+      ),
+    );
+
+  if (trials.length === 0) return 0;
+
+  const customerId = await ensureStripeCustomer(userId);
+  const pm = await getDefaultPaymentMethod(userId);
+  if (!pm) return 0;
+
+  // The new paid count = existing paid + every trial we are about to convert.
+  const existingPaid = await countActivePaidAgentSubscriptions(userId);
+  const totalAfter = existingPaid + trials.length;
+  const priceId = pickAgentPriceId(totalAfter);
+
+  let converted = 0;
+
+  for (const row of trials) {
+    if (!row.agentId) continue;
+    try {
+      const sub = await stripe.subscriptions.create({
+        customer: customerId,
+        items: [{ price: priceId }],
+        default_payment_method: pm.stripePaymentMethodId,
+        metadata: { userId, agentId: row.agentId, convertedFrom: "free_trial" },
+        expand: ["latest_invoice.payment_intent"],
+      });
+
+      await db
+        .update(agentSubscription)
+        .set({
+          stripeSubscriptionId: sub.id,
+          stripePriceId: sub.items.data[0]?.price.id ?? priceId,
+          status: sub.status as "incomplete" | "active" | "past_due" | "canceled" | "unpaid",
+          currentPeriodStart: sub.items.data[0]?.current_period_start
+            ? new Date(sub.items.data[0].current_period_start * 1000)
+            : new Date(),
+          currentPeriodEnd: sub.items.data[0]?.current_period_end
+            ? new Date(sub.items.data[0].current_period_end * 1000)
+            : null,
+          cancelAtPeriodEnd: sub.cancel_at_period_end,
+          canceledAt: null,
+        })
+        .where(eq(agentSubscription.id, row.id));
+
+      converted++;
+      logger.info(
+        { userId, agentId: row.agentId, stripeSubscriptionId: sub.id },
+        "Free-trial agent converted to paid subscription",
+      );
+    } catch (err) {
+      logger.error(
+        { err, userId, agentId: row.agentId },
+        "Failed to convert free-trial agent to paid",
+      );
+    }
+  }
+
+  // Make sure pre-existing paid subs match the new tier (e.g. converting the
+  // 6th agent should drop everyone to the $29 tier).
+  if (converted > 0) {
+    await repriceUserAgentSubscriptions(userId, priceId).catch((err) => {
+      logger.warn({ err, userId }, "Reprice after trial conversion failed");
+    });
+  }
+
+  return converted;
 }
