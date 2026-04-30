@@ -16,6 +16,8 @@ export const env = createEnv({
     STRIPE_SECRET_KEY: z.string().min(1),
     STRIPE_WEBHOOK_SECRET: z.string().min(1),
     STRIPE_PRICE_ID: z.string().min(1),
+    STRIPE_PRICE_ID_TIER_10: z.string().min(1).optional(),
+    STRIPE_PRICE_ID_TIER_20: z.string().min(1).optional(),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1),
   },
   client: {
@@ -36,6 +38,8 @@ export const env = createEnv({
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     STRIPE_PRICE_ID: process.env.STRIPE_PRICE_ID,
+    STRIPE_PRICE_ID_TIER_10: process.env.STRIPE_PRICE_ID_TIER_10,
+    STRIPE_PRICE_ID_TIER_20: process.env.STRIPE_PRICE_ID_TIER_20,
     TELEGRAM_WEBHOOK_SECRET: process.env.TELEGRAM_WEBHOOK_SECRET,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,

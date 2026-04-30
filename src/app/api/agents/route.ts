@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionOrThrow } from "../../../shared/lib/auth/getSessionOrThrow";
 import { isValidAgentType, type AgentType } from "../../../shared/lib/agents/config";
 import { db } from "../../../shared/lib/drizzle";
-import { eq, sql, and, inArray } from "drizzle-orm";
+import { eq, sql, and, inArray, count } from "drizzle-orm";
 import { deleteWebhook, setWebhook, validateBotToken } from "../../../shared/lib/telegram/bot";
 import { agent, agentActivity, agentChannel } from "../../../shared/db/schema/agent";
 import { skill, agentSkill } from "../../../shared/db/schema/skill";
@@ -17,15 +17,27 @@ import { encryptIfPresent, decryptIfPresent } from "../../../shared/lib/crypto";
 import {
   hasUsablePaymentMethod,
   createAgentSubscription,
+  pickAgentPriceId,
+  countActivePaidAgentSubscriptions,
+  repriceUserAgentSubscriptions,
 } from "../../../shared/lib/stripe/stripe.service";
+import { enforceUserTrialKills } from "../../../shared/lib/agents/trial-enforcer";
+
+const FREE_TRIAL_DAYS = 15;
+
+interface SubscriptionDecision {
+  hasDeveloperAccess: boolean;
+  usingFreeTrial: boolean;
+  usingFreeCredit: boolean;
+  agentPriceId?: string;
+}
 
 async function handleAgentSubscription(
   userId: string,
   agentId: string,
-  usingFreeCredit: boolean,
-  hasDeveloperAccess: boolean,
+  decision: SubscriptionDecision,
 ) {
-  if (hasDeveloperAccess) {
+  if (decision.hasDeveloperAccess) {
     const now = new Date();
     const oneMonthLater = new Date(now);
     oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
@@ -39,7 +51,21 @@ async function handleAgentSubscription(
     });
     return;
   }
-  if (usingFreeCredit) {
+  if (decision.usingFreeTrial) {
+    const now = new Date();
+    const trialEnd = new Date(now);
+    trialEnd.setDate(trialEnd.getDate() + FREE_TRIAL_DAYS);
+    await db.insert(agentSubscription).values({
+      userId,
+      agentId,
+      stripeSubscriptionId: `free_trial_${agentId}`,
+      status: "active",
+      currentPeriodStart: now,
+      currentPeriodEnd: trialEnd,
+    });
+    return;
+  }
+  if (decision.usingFreeCredit) {
     const now = new Date();
     const oneMonthLater = new Date(now);
     oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
@@ -55,9 +81,23 @@ async function handleAgentSubscription(
       .update(user)
       .set({ freeAgentCredits: sql`${user.freeAgentCredits} - 1` })
       .where(eq(user.id, userId));
-  } else {
-    await createAgentSubscription(userId, agentId);
+    return;
   }
+  await createAgentSubscription(userId, agentId, decision.agentPriceId);
+}
+
+/**
+ * After a paid agent is added, reprice the user's existing paid agent
+ * subscriptions to match the new volume tier (e.g. crossing from 5→6 active
+ * agents drops every agent from $30 to $29). The new agent's subscription is
+ * already on the right price, so we exclude it. Stripe calls happen in the
+ * background — failures are logged, not surfaced.
+ */
+function applyTierReprice(userId: string, newAgentId: string, agentPriceId: string | undefined) {
+  if (!agentPriceId) return;
+  repriceUserAgentSubscriptions(userId, agentPriceId, newAgentId).catch((err) => {
+    logger.warn({ err, userId, newAgentId }, "Failed to reprice existing agent subscriptions");
+  });
 }
 
 async function linkSkillsToAgent(agentId: string, userId: string, skillIds?: string[]) {
@@ -122,10 +162,21 @@ export async function POST(req: Request) {
       .limit(1);
 
     const hasDeveloperAccess = me?.developerAccess ?? false;
-    const usingFreeCredit = !hasDeveloperAccess && (me?.freeAgentCredits ?? 0) > 0;
 
-    // Require a payment method on file unless the user has dev access or a referral credit
-    if (!hasDeveloperAccess && !usingFreeCredit) {
+    // First-agent-ever 15-day free trial: applies the very first time a user creates
+    // an agent. Counted via agent_subscription history so deleting and re-creating
+    // doesn't grant a second trial. Dev-access users skip this — they already get
+    // monthly developer subscriptions.
+    const [{ priorAgentSubs }] = await db
+      .select({ priorAgentSubs: count() })
+      .from(agentSubscription)
+      .where(eq(agentSubscription.userId, session.user.id));
+    const usingFreeTrial = !hasDeveloperAccess && Number(priorAgentSubs) === 0;
+
+    const usingFreeCredit = !hasDeveloperAccess && !usingFreeTrial && (me?.freeAgentCredits ?? 0) > 0;
+
+    // Require a payment method on file unless the user has dev access, a free trial, or a referral credit
+    if (!hasDeveloperAccess && !usingFreeTrial && !usingFreeCredit) {
       const canBill = await hasUsablePaymentMethod(session.user.id);
       if (!canBill) {
         return NextResponse.json(
@@ -134,6 +185,21 @@ export async function POST(req: Request) {
         );
       }
     }
+
+    // Pick the volume-tier price for paid agents based on how many active paid
+    // subscriptions the user already has (the new agent makes count + 1).
+    let agentPriceId: string | undefined;
+    if (!hasDeveloperAccess && !usingFreeTrial && !usingFreeCredit) {
+      const activePaid = await countActivePaidAgentSubscriptions(session.user.id);
+      agentPriceId = pickAgentPriceId(activePaid + 1);
+    }
+
+    const subscriptionDecision: SubscriptionDecision = {
+      hasDeveloperAccess,
+      usingFreeTrial,
+      usingFreeCredit,
+      agentPriceId,
+    };
 
     // Encrypt any per-agent API keys from the request body
     const encryptedKeys = extractEncryptedKeys(body);
@@ -246,7 +312,7 @@ export async function POST(req: Request) {
           .returning();
 
         try {
-          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit, hasDeveloperAccess);
+          await handleAgentSubscription(session.user.id, newAgent.id, subscriptionDecision);
         } catch (subErr) {
           await db.delete(agent).where(eq(agent.id, newAgent.id));
           await stopContainer(containerId).catch(() => {});
@@ -260,6 +326,7 @@ export async function POST(req: Request) {
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Telegram` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
+        applyTierReprice(session.user.id, newAgent.id, agentPriceId);
 
         waitForTaskRunning(containerId)
           .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
@@ -348,7 +415,7 @@ export async function POST(req: Request) {
           .returning();
 
         try {
-          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit, hasDeveloperAccess);
+          await handleAgentSubscription(session.user.id, newAgent.id, subscriptionDecision);
         } catch (subErr) {
           await db.delete(agent).where(eq(agent.id, newAgent.id));
           await stopContainer(containerId).catch(() => {});
@@ -362,6 +429,7 @@ export async function POST(req: Request) {
         await db.insert(agentChannel).values({ agentId: newAgent.id, platform: "discord", credentials: { botToken: discordToken } });
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Discord` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
+        applyTierReprice(session.user.id, newAgent.id, agentPriceId);
 
         startDiscordBot(newAgent.id, discordToken, type as AgentType)
           .catch((err) => logger.error({ err, agentId: newAgent.id }, "Failed to start Discord bot"));
@@ -423,7 +491,7 @@ export async function POST(req: Request) {
           .returning();
 
         try {
-          await handleAgentSubscription(session.user.id, newAgent.id, usingFreeCredit, hasDeveloperAccess);
+          await handleAgentSubscription(session.user.id, newAgent.id, subscriptionDecision);
         } catch (subErr) {
           await db.delete(agent).where(eq(agent.id, newAgent.id));
           await stopContainer(containerId).catch(() => {});
@@ -436,6 +504,7 @@ export async function POST(req: Request) {
 
         await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched — link WhatsApp to activate` });
         await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
+        applyTierReprice(session.user.id, newAgent.id, agentPriceId);
 
         waitForTaskRunning(containerId)
           .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
@@ -464,6 +533,12 @@ export async function GET(req: Request) {
   try {
     const session = await getSessionOrThrow(req);
 
+    // Lazy trial enforcement: stop any of this user's free-trial agents whose
+    // 15-day window has elapsed. Best-effort — if it fails, listing still works.
+    await enforceUserTrialKills(session.user.id).catch((err) => {
+      logger.warn({ err, userId: session.user.id }, "Trial kill sweep failed");
+    });
+
     const rows = await db
       .select({
         agent: agent,
@@ -479,7 +554,9 @@ export async function GET(req: Request) {
     const safeAgents = rows.map(({ agent: a, subStripeId, subStatus, subPeriodEnd }) => {
       const { apiKey, ...rest } = a;
       const isFreeTrial =
-        (subStripeId?.startsWith("free_referral_") || subStripeId?.startsWith("developer_")) &&
+        (subStripeId?.startsWith("free_referral_") ||
+          subStripeId?.startsWith("developer_") ||
+          subStripeId?.startsWith("free_trial_")) &&
         subStatus === "active" &&
         subPeriodEnd instanceof Date;
       const trialDaysLeft = isFreeTrial
