@@ -480,12 +480,29 @@ python3 /home/node/agent-config.py "${CONFIG_FILE}" "${AUTH_DIR}/auth-profiles.j
 
 # ── Scheduled tasks ──────────────────────────────────────────────────────────
 # Domain DB is the source of truth for task INTENT; OpenClaw's native cron
-# (`openclaw cron add`) is the runtime. We re-register the full set on every
-# launch so jobs.json reflects the DB. CONFIG_JSON_FILE was populated above
-# from /api/internal/agents/<id>/config which now includes a `tasks` array.
+# is the runtime. `openclaw cron add` talks to the RUNNING gateway over
+# WebSocket — so we must defer registration until the gateway is up. We do
+# this in a background subshell that waits for /healthz, then registers each
+# task. The gateway itself stays as the main entrypoint process.
 if [ -s "${CONFIG_JSON_FILE:-}" ]; then
-  python3 - << 'PYEOF' "${CONFIG_JSON_FILE}" || echo "WARNING: task registration script failed" >&2
-import json, os, shlex, subprocess, sys
+  (
+    set +e  # background work must never trip the parent ERR trap
+    # Wait up to 120s for gateway to become healthy
+    _gateway_ready=false
+    for _i in $(seq 1 120); do
+      if curl -fsS http://127.0.0.1:18789/healthz >/dev/null 2>&1; then
+        _gateway_ready=true
+        break
+      fi
+      sleep 1
+    done
+    if [ "${_gateway_ready}" != "true" ]; then
+      echo "WARNING: gateway never became healthy — skipping task registration" >&2
+      exit 0
+    fi
+    echo "DEBUG [tasks] gateway healthy — registering tasks"
+    python3 - << 'PYEOF' "${CONFIG_JSON_FILE}" || echo "WARNING: task registration script failed" >&2
+import json, subprocess, sys
 cfg = json.load(open(sys.argv[1]))
 tasks = cfg.get("tasks") or []
 if not tasks:
@@ -523,7 +540,7 @@ for t in tasks:
         print(f"DEBUG [tasks] {name}: registering without delivery (channel={channel}, to={to})")
 
     try:
-        subprocess.run(args, check=True, capture_output=True, text=True, timeout=15)
+        subprocess.run(args, check=True, capture_output=True, text=True, timeout=30)
         registered += 1
         print(f"DEBUG [tasks] registered: {name} ({cron} {tz})")
     except subprocess.CalledProcessError as e:
@@ -535,6 +552,7 @@ for t in tasks:
 
 print(f"DEBUG [tasks] registered={registered} skipped={skipped} total={len(tasks)}")
 PYEOF
+  ) &
 fi
 
 # Stream OpenClaw's internal log file to stdout so all channel logs (including
