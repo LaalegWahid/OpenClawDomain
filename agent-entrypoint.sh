@@ -243,13 +243,59 @@ EOF
 fi
 
 # TOOLS.md: rewrite every launch (static content, must stay in sync with runtime)
-cat > "${WORKSPACE}/TOOLS.md" << 'EOF'
+cat > "${WORKSPACE}/TOOLS.md" << EOF
 # Available Tools
 - web_search: search the internet for current information
 - file_reader: read files from the workspace
 - bash: run shell commands in the workspace and return their stdout/stderr. Available to ALL agents regardless of domain — domain boundaries apply to topics, not tools. Use it whenever it helps (inspect files, run scripts, check dates, etc.) and include the command output in your response when the user asked to see it.
+
+# Scheduling Recurring Tasks
+When the user asks you to schedule, automate, or run something on a recurring basis (e.g. "every morning send me…", "remind me each Monday…", "run this report daily"), you MUST do BOTH steps below in order. The first step persists the task in the user's dashboard so it survives container restarts. The second step makes the task fire immediately without waiting for a relaunch.
+
+## Step 1 — Persist via the domain API (REQUIRED)
+Call the domain endpoint via \`bash\`:
+
+\`\`\`bash
+curl -fsS -X POST "\${WEBHOOK_BASE_URL}/api/internal/agents/\${AGENT_ID}/tasks" \\
+  -H "Authorization: Bearer \${GATEWAY_TOKEN}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name":"<short name>","prompt":"<exact prompt to run>","cronExpr":"<5-field cron>","timezone":"<IANA tz, e.g. UTC>","sessionMode":"isolated"}'
+\`\`\`
+
+Field rules:
+- \`name\`: 1–80 chars, unique per agent (duplicates return the existing task — that's fine).
+- \`prompt\`: the exact instruction to execute on each fire.
+- \`cronExpr\`: standard 5-field cron. Examples: \`0 9 * * *\` (daily 9am), \`0 9 * * 1-5\` (weekdays 9am), \`*/30 * * * *\` (every 30 min). Do NOT schedule more often than every 5 minutes.
+- \`timezone\`: IANA name. Default UTC. Use the user's timezone if you know it.
+- \`sessionMode\`: \`isolated\` for reports/digests (clean session, recommended). \`main\` if the result should appear inside the current chat as a system event.
+
+If the API returns 4xx, tell the user the validation error and stop. Do NOT proceed to Step 2.
+
+## Step 2 — Register with OpenClaw cron (REQUIRED, after Step 1 succeeds)
+Run the native CLI so the job is live immediately:
+
+\`\`\`bash
+openclaw cron add \\
+  --name "<same name>" \\
+  --cron "<same cron>" \\
+  --tz "<same tz>" \\
+  --session isolated \\
+  --message "<same prompt>" \\
+  --announce --channel <telegram|discord|whatsapp> --to "<current chat id>"
+\`\`\`
+
+For \`--channel\` and \`--to\`, use the channel and chat ID of the conversation you are currently in. If you are unsure of the chat ID, omit \`--announce --channel --to\` and the job will still run but won't push a message back automatically.
+
+## When NOT to schedule
+- One-off requests ("send me X now") — just answer directly.
+- Vague timing ("sometime next week") — ask for a specific schedule first.
+- Anything outside your domain boundary — refuse per your role rules.
+
+## Confirmation
+After both steps succeed, confirm to the user with the schedule in plain English (e.g. "Scheduled — I'll send the morning brief every weekday at 9am Europe/Paris time.").
+
 # Convention
-Only use tools relevant to your role, EXCEPT when the user explicitly requests an MCP tool call. `bash` is always allowed.
+Only use tools relevant to your role, EXCEPT when the user explicitly requests an MCP tool call. \`bash\` is always allowed.
 EOF
 
 # MEMORY.md: only create if absent — EFS preserves it across restarts
@@ -431,6 +477,65 @@ export OPENCLAW_HOME="${OPENCLAW_HOME}"
 # agent-config.py handles: Discord/WhatsApp/MCP patches to openclaw.json,
 # and validated auth-profiles.json writing.
 python3 /home/node/agent-config.py "${CONFIG_FILE}" "${AUTH_DIR}/auth-profiles.json"
+
+# ── Scheduled tasks ──────────────────────────────────────────────────────────
+# Domain DB is the source of truth for task INTENT; OpenClaw's native cron
+# (`openclaw cron add`) is the runtime. We re-register the full set on every
+# launch so jobs.json reflects the DB. CONFIG_JSON_FILE was populated above
+# from /api/internal/agents/<id>/config which now includes a `tasks` array.
+if [ -s "${CONFIG_JSON_FILE:-}" ]; then
+  python3 - << 'PYEOF' "${CONFIG_JSON_FILE}" || echo "WARNING: task registration script failed" >&2
+import json, os, shlex, subprocess, sys
+cfg = json.load(open(sys.argv[1]))
+tasks = cfg.get("tasks") or []
+if not tasks:
+    print("DEBUG [tasks] no scheduled tasks to register")
+    sys.exit(0)
+
+registered = 0
+skipped = 0
+for t in tasks:
+    name = (t.get("name") or "").strip()
+    prompt = (t.get("prompt") or "").strip()
+    cron = (t.get("cron") or "").strip()
+    tz = (t.get("tz") or "UTC").strip()
+    session = (t.get("session") or "isolated").strip()
+    channel = t.get("channel")
+    to = t.get("to")
+
+    if not name or not prompt or not cron:
+        print(f"WARNING: task missing required fields, skipping: {t.get('id')}", file=sys.stderr)
+        skipped += 1
+        continue
+
+    args = ["openclaw", "cron", "add",
+            "--name", name,
+            "--cron", cron,
+            "--tz", tz,
+            "--session", session,
+            "--message", prompt]
+    if channel and to:
+        args += ["--announce", "--channel", channel, "--to", str(to)]
+    else:
+        # No delivery target yet (user hasn't messaged the bot, or platform
+        # not supported for delivery). Job still runs — output stays in the
+        # session transcript and can be fetched later.
+        print(f"DEBUG [tasks] {name}: registering without delivery (channel={channel}, to={to})")
+
+    try:
+        subprocess.run(args, check=True, capture_output=True, text=True, timeout=15)
+        registered += 1
+        print(f"DEBUG [tasks] registered: {name} ({cron} {tz})")
+    except subprocess.CalledProcessError as e:
+        print(f"WARNING: openclaw cron add failed for '{name}': {e.stderr.strip()}", file=sys.stderr)
+        skipped += 1
+    except Exception as e:
+        print(f"WARNING: failed to register task '{name}': {e}", file=sys.stderr)
+        skipped += 1
+
+print(f"DEBUG [tasks] registered={registered} skipped={skipped} total={len(tasks)}")
+PYEOF
+fi
 
 # Stream OpenClaw's internal log file to stdout so all channel logs (including
 # WhatsApp) are visible in CloudWatch — the log file is not stdout by default.

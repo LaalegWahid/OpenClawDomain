@@ -17,6 +17,7 @@ import {
   Star,
   MessageSquare,
   Sliders,
+  Calendar,
 } from "lucide-react";
 import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
@@ -136,7 +137,26 @@ const MCP_TEMPLATES = [
   { name: "GitHub", transport: "stdio" as const, configPlaceholder: { command: "npx", args: ["@modelcontextprotocol/server-github"] } },
 ];
 
-type Tab = "info" | "playground" | "aiSettings" | "platforms" | "skills" | "mcp" | "activity";
+type Tab = "info" | "playground" | "aiSettings" | "platforms" | "skills" | "mcp" | "tasks" | "activity";
+
+interface AgentTask {
+  id: string;
+  name: string;
+  prompt: string;
+  cronExpr: string;
+  timezone: string;
+  sessionMode: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+const CRON_PRESETS: { label: string; value: string }[] = [
+  { label: "Every hour", value: "0 * * * *" },
+  { label: "Daily 9am", value: "0 9 * * *" },
+  { label: "Weekdays 9am", value: "0 9 * * 1-5" },
+  { label: "Mondays 9am", value: "0 9 * * 1" },
+  { label: "Every 30 min", value: "*/30 * * * *" },
+];
 
 export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const router = useRouter();
@@ -203,6 +223,14 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
 
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [showAddMcp, setShowAddMcp] = useState(false);
+  const [tasks, setTasks] = useState<AgentTask[]>([]);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [taskName, setTaskName] = useState("");
+  const [taskPrompt, setTaskPrompt] = useState("");
+  const [taskCron, setTaskCron] = useState("0 9 * * *");
+  const [taskTz, setTaskTz] = useState("UTC");
+  const [taskSession, setTaskSession] = useState<"isolated" | "main">("isolated");
+  const [addingTask, setAddingTask] = useState(false);
   const [mcpName, setMcpName] = useState("");
   const [mcpTransport] = useState<"stdio">("stdio");
   const [mcpCommand, setMcpCommand] = useState("npx");
@@ -318,6 +346,16 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     } catch { /* non-critical */ }
   }, [agentId]);
 
+  const fetchTasks = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/tasks`);
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data.tasks ?? []);
+      }
+    } catch { /* non-critical */ }
+  }, [agentId]);
+
   const fetchAgentSkills = useCallback(async () => {
     try {
       const res = await fetch(`/api/agents/${agentId}/skills`);
@@ -343,9 +381,10 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     fetchMemory();
     fetchChannels();
     fetchMcp();
+    fetchTasks();
     fetchAgentSkills();
     fetchAvailableSkills();
-  }, [fetchAgent, fetchMemory, fetchChannels, fetchMcp, fetchAgentSkills, fetchAvailableSkills]);
+  }, [fetchAgent, fetchMemory, fetchChannels, fetchMcp, fetchTasks, fetchAgentSkills, fetchAvailableSkills]);
 
   const handleStop = async () => {
     setStopping(true);
@@ -525,6 +564,58 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     }
   };
 
+  const handleAddTask = async () => {
+    setAddingTask(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: taskName,
+          prompt: taskPrompt,
+          cronExpr: taskCron,
+          timezone: taskTz,
+          sessionMode: taskSession,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Failed to add task");
+        return;
+      }
+      setTaskName(""); setTaskPrompt(""); setTaskCron("0 9 * * *"); setTaskTz("UTC"); setTaskSession("isolated");
+      setShowAddTask(false);
+      await fetchTasks();
+    } catch {
+      setError("Failed to add task");
+    } finally {
+      setAddingTask(false);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await fetch(`/api/agents/${agentId}/tasks/${taskId}`, { method: "DELETE" });
+      await fetchTasks();
+    } catch {
+      setError("Failed to delete task");
+    }
+  };
+
+  const handleToggleTask = async (taskId: string, enabled: boolean) => {
+    try {
+      await fetch(`/api/agents/${agentId}/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      await fetchTasks();
+    } catch {
+      setError("Failed to update task");
+    }
+  };
+
   const handleAddSkill = async (skillId: string) => {
     setAddingSkill(true);
     setError(null);
@@ -616,6 +707,7 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
     { key: "platforms", label: "Platforms", icon: <Plug size={14} /> },
     { key: "skills", label: "Skills", icon: <Brain size={14} /> },
     { key: "mcp", label: "MCP", icon: <Server size={14} /> },
+    { key: "tasks", label: "Tasks", icon: <Calendar size={14} /> },
     { key: "activity", label: "Activity", icon: <ActivityIcon size={14} /> },
   ];
 
@@ -1595,6 +1687,163 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                             <X size={16} />
                           </button>
                         </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeTab === "tasks" && (
+                <div className="oc-page-section" style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <h2 style={{ fontFamily: "var(--serif)", fontSize: 20, margin: 0 }}>
+                      <em>Scheduled Tasks</em>
+                    </h2>
+                    <AccentButton onClick={() => setShowAddTask(!showAddTask)}>
+                      <Plus size={14} /> Add Task
+                    </AccentButton>
+                  </div>
+
+                  <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>
+                    Tasks run on a schedule via OpenClaw&apos;s native cron and deliver results back to your most-recent Telegram chat with this agent.
+                  </p>
+
+                  {showAddTask && (
+                    <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 14, display: "grid", gap: 12 }}>
+                      <Input
+                        placeholder="Task name (e.g. Morning brief)"
+                        value={taskName}
+                        onChange={(e) => setTaskName(e.target.value)}
+                      />
+                      <textarea
+                        placeholder="Prompt — what should the agent do?"
+                        value={taskPrompt}
+                        onChange={(e) => setTaskPrompt(e.target.value)}
+                        rows={3}
+                        style={{
+                          width: "100%", padding: "10px 12px", borderRadius: 8,
+                          border: `1px solid ${BORDER}`, background: "#fff", color: INK,
+                          fontSize: 13, fontFamily: "inherit", resize: "vertical",
+                        }}
+                      />
+                      <div>
+                        <p style={{ fontSize: 12, color: MUTED, margin: "0 0 6px" }}>Schedule presets</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {CRON_PRESETS.map((p) => {
+                            const active = taskCron === p.value;
+                            return (
+                              <button
+                                key={p.value}
+                                onClick={() => setTaskCron(p.value)}
+                                style={{
+                                  padding: "4px 10px",
+                                  fontSize: 11,
+                                  borderRadius: 999,
+                                  background: active ? ACCENT_SOFT : "rgba(42,31,25,0.05)",
+                                  color: active ? ACCENT : INK,
+                                  border: `1px solid ${active ? ACCENT : BORDER}`,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {p.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <Input
+                        placeholder="Cron expression (5 fields)"
+                        value={taskCron}
+                        onChange={(e) => setTaskCron(e.target.value)}
+                      />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <Input
+                          placeholder="Timezone (e.g. Europe/Paris)"
+                          value={taskTz}
+                          onChange={(e) => setTaskTz(e.target.value)}
+                        />
+                        <select
+                          value={taskSession}
+                          onChange={(e) => setTaskSession(e.target.value as "isolated" | "main")}
+                          style={{
+                            padding: "8px 12px", borderRadius: 8,
+                            border: `1px solid ${BORDER}`, background: "#fff", color: INK,
+                            fontSize: 13, cursor: "pointer",
+                          }}
+                        >
+                          <option value="isolated">Isolated session (clean)</option>
+                          <option value="main">Main session (in chat)</option>
+                        </select>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Button
+                          size="sm"
+                          onClick={handleAddTask}
+                          disabled={addingTask || !taskName || !taskPrompt || !taskCron}
+                          style={{ background: ACCENT, color: "#fff" }}
+                        >
+                          {addingTask ? "Adding..." : "Add Task"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowAddTask(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {tasks.length === 0 ? (
+                    <p style={{ fontSize: 13, color: MUTED }}>No scheduled tasks yet.</p>
+                  ) : (
+                    tasks.map((t) => (
+                      <div
+                        key={t.id}
+                        className="oc-card oc-card-hover"
+                        style={{
+                          padding: "12px 16px",
+                          background: CARD,
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 12,
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                            <Calendar size={16} color={MUTED} />
+                            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {t.name}
+                            </p>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                            <button
+                              onClick={() => handleToggleTask(t.id, !t.enabled)}
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 600,
+                                padding: "2px 10px",
+                                borderRadius: 999,
+                                border: "none",
+                                cursor: "pointer",
+                                background: t.enabled ? "rgba(47,158,94,0.12)" : "rgba(42,31,25,0.06)",
+                                color: t.enabled ? "#2f9e5e" : MUTED,
+                              }}
+                            >
+                              {t.enabled ? "Enabled" : "Disabled"}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTask(t.id)}
+                              style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer" }}
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 12, color: MUTED, fontFamily: "var(--mono), monospace" }}>
+                          {t.cronExpr} · {t.timezone} · {t.sessionMode}
+                        </p>
+                        <p style={{ margin: 0, fontSize: 12, color: INK, opacity: 0.8, lineHeight: 1.4 }}>
+                          {t.prompt.length > 140 ? `${t.prompt.slice(0, 140)}…` : t.prompt}
+                        </p>
                       </div>
                     ))
                   )}
