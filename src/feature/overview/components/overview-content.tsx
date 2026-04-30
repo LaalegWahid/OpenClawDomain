@@ -257,7 +257,7 @@ export function OverviewContent({ userName }: OverviewContentProps) {
             fontFamily: mono, fontSize: 12, fontWeight: 500,
             letterSpacing: "0.06em", textTransform: "uppercase",
             cursor: "pointer",
-            display: (hasCard === false && !referral?.freeAgentCredits) ? "none" : undefined,
+            // display: (hasCard === false && !referral?.freeAgentCredits) ? "none" : undefined,
           }}
         >
           + New Agent

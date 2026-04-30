@@ -20,6 +20,7 @@ import { env } from "../../../../../shared/config/env";
 import { getServiceEnabled } from "../../../../../shared/lib/service/status";
 import { getAgentErrorMessage } from "../../../../../shared/lib/agents/errors";
 import { withChatQueue, claimIncomingMessage } from "../../../../../shared/lib/agents/chat-queue";
+import { enforceAgentTrialKill } from "../../../../../shared/lib/agents/trial-enforcer";
 
 const MAX_HISTORY = 20;
 
@@ -64,6 +65,13 @@ export async function POST(
       return NextResponse.json({ ok: true });
     }
   }
+
+  // Lazy trial enforcement: if this agent's 15-day kill time has passed, stop
+  // it now. The status check below will then send the standard "agent has been
+  // stopped" reply.
+  await enforceAgentTrialKill(agentId).catch((err) => {
+    logger.warn({ err, agentId }, "Trial kill check failed");
+  });
 
   const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
   if (!found) return NextResponse.json({ ok: true });
