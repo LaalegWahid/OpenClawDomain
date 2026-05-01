@@ -553,16 +553,20 @@ export async function GET(req: Request) {
     const now = Date.now();
     const safeAgents = rows.map(({ agent: a, subStripeId, subStatus, subPeriodEnd }) => {
       const { apiKey, ...rest } = a;
-      const isFreeTrial =
-        (subStripeId?.startsWith("free_referral_") ||
-          subStripeId?.startsWith("developer_") ||
-          subStripeId?.startsWith("free_trial_")) &&
-        subStatus === "active" &&
-        subPeriodEnd instanceof Date;
-      const trialDaysLeft = isFreeTrial
+      const trialKind: "free_trial" | "developer" | "free_referral" | null =
+        subStatus === "active" && subPeriodEnd instanceof Date
+          ? subStripeId?.startsWith("free_trial_")
+            ? "free_trial"
+            : subStripeId?.startsWith("developer_")
+              ? "developer"
+              : subStripeId?.startsWith("free_referral_")
+                ? "free_referral"
+                : null
+          : null;
+      const trialDaysLeft = trialKind && subPeriodEnd instanceof Date
         ? Math.max(0, Math.ceil((subPeriodEnd.getTime() - now) / 86_400_000))
         : null;
-      return { ...rest, trialDaysLeft };
+      return { ...rest, trialDaysLeft, trialKind };
     });
 
     logger.info({ userId: session.user.id, count: safeAgents.length }, "Agents listed");
