@@ -624,6 +624,31 @@ export async function getAgentSubscriptionsForUser(userId: string) {
 }
 
 /**
+ * Wipe everything Stripe knows about this user. Deleting the customer in
+ * Stripe automatically cancels all of their subscriptions and detaches
+ * payment methods, so a single delete is enough on the Stripe side. Local
+ * subscription/payment_method rows cascade away when the user row is deleted.
+ *
+ * Best-effort — if Stripe is unreachable or the customer is already gone,
+ * we log and continue so account deletion isn't blocked by an external API.
+ */
+export async function deleteStripeCustomerForUser(userId: string): Promise<void> {
+  const [profile] = await db
+    .select({ stripeCustomerId: userProfile.stripeCustomerId })
+    .from(userProfile)
+    .where(eq(userProfile.userId, userId));
+
+  if (!profile?.stripeCustomerId) return;
+
+  try {
+    await stripe.customers.del(profile.stripeCustomerId);
+    logger.info({ userId, stripeCustomerId: profile.stripeCustomerId }, "Stripe customer deleted");
+  } catch (err) {
+    logger.warn({ err, userId, stripeCustomerId: profile.stripeCustomerId }, "Stripe customer deletion failed");
+  }
+}
+
+/**
  * Convert every still-active free-trial agent for this user into a real
  * Stripe-billed subscription using the volume tier appropriate for their new
  * paid count. Called right after a payment method is attached so the trial

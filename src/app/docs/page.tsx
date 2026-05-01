@@ -722,6 +722,10 @@ Paste this token into OpenClaw when creating your agent.`}</CodeBlock>
                       ['Any message', 'Free-form conversation in the agent\'s domain.'],
                     ]}
                   />
+                  <video controls style={{ width: '100%', borderRadius: '8px', marginTop: '1rem' }}>
+                    <source src="/videos/telegram bot.mp4" type="video/mp4" />
+                    Your browser does not support the video tag.
+                  </video>
                   <H3>PDF delivery</H3>
                   <P>Add "as PDF", "create document", or "export report" to any message and the agent will generate a formatted PDF and deliver it directly in the chat.</P>
                 </div>
@@ -769,6 +773,10 @@ Paste this token into OpenClaw when creating your agent.`}</CodeBlock>
                   <P>
                     WhatsApp uses a QR-based linking flow. From the <strong style={{ color: C.text }}>Channels</strong> tab, click <strong style={{ color: C.text }}>Link WhatsApp</strong>. A QR code appears in the dashboard. Open WhatsApp on your phone → <strong style={{ color: C.text }}>Linked Devices</strong> → <strong style={{ color: C.text }}>Link a Device</strong> → scan.
                   </P>
+                  <video controls style={{ width: '100%', borderRadius: '8px', marginTop: '1rem' }}>
+                    <source src="/videos/whatsappvid.mp4" type="video/mp4" />
+                    Your browser does not support the video tag.
+                  </video>
                   <Callout type="warning">
                     WhatsApp linking uses a dedicated temporary ECS task to generate the QR. The QR expires after a few minutes. If it expires, refresh and re-scan. Keep your linked phone connected to the internet for the session to remain active.
                   </Callout>
@@ -939,15 +947,15 @@ Paste this token into OpenClaw when creating your agent.`}</CodeBlock>
               }}>
                 {[
                   {
-                    name: 'Tier A', price: '$20', unit: '/ agent / mo', agents: 'Up to 5 agents', highlight: false,
+                    name: 'Tier A', price: '$30', unit: '/ agent / mo', agents: 'Up to 5 agents', highlight: false,
                     features: ['BYOK support', 'Telegram, Discord & WhatsApp', 'Unlimited commands', 'PDF delivery', 'Activity log (30 days)'],
                   },
                   {
-                    name: 'Tier B', price: '$18', unit: '/ agent / mo', agents: 'Up to 10 agents', highlight: true,
+                    name: 'Tier B', price: '$29', unit: '/ agent / mo', agents: 'Up to 10 agents', highlight: true,
                     features: ['Everything in Tier A', 'Better rate per agent', 'Activity log (90 days)', 'Priority support'],
                   },
                   {
-                    name: 'Tier C', price: '$15', unit: '/ agent / mo', agents: 'Up to 15 agents', highlight: false,
+                    name: 'Tier C', price: '$28', unit: '/ agent / mo', agents: 'Up to 15 agents', highlight: false,
                     features: ['Everything in Tier B', 'Best rate per agent', 'Unlimited activity log', 'Dedicated support', '99.9% uptime SLA'],
                   },
                 ].map(t => (

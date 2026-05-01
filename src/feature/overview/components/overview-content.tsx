@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Bot, Loader2, X, Sparkles } from "lucide-react";
+import { Bot, Loader2, X, Sparkles, CreditCard } from "lucide-react";
 import {
   createAgent,
   fetchAgents as fetchAgentsAction,
@@ -77,6 +77,17 @@ export function OverviewContent({ userName }: OverviewContentProps) {
 
   const [feedbackAgentId, setFeedbackAgentId] = useState<string | null>(null);
 
+  // Trial info popup: shown on every overview mount as long as any agent is
+  // still on the 15-day free trial. Dismissible for the session. Filtered by
+  // trialKind so developer/referral subs (which also report trialDaysLeft)
+  // don't trigger it.
+  const [trialPopupDismissed, setTrialPopupDismissed] = useState(false);
+  const trialAgent = agents.find(
+    (a) => a.trialKind === "free_trial" && typeof a.trialDaysLeft === "number",
+  );
+  const minTrialDaysLeft = trialAgent?.trialDaysLeft ?? null;
+  const showTrialPopup = !!trialAgent && !trialPopupDismissed;
+
   const refreshAgents = useCallback(async () => {
     setLoading(true);
     try {
@@ -98,9 +109,15 @@ export function OverviewContent({ userName }: OverviewContentProps) {
           if (!next) return a;
           if (
             a.status === next.status &&
-            a.trialDaysLeft === next.trialDaysLeft
+            a.trialDaysLeft === next.trialDaysLeft &&
+            a.trialKind === next.trialKind
           ) return a;
-          return { ...a, status: next.status, trialDaysLeft: next.trialDaysLeft };
+          return {
+            ...a,
+            status: next.status,
+            trialDaysLeft: next.trialDaysLeft,
+            trialKind: next.trialKind,
+          };
         });
         const existingIds = new Set(prev.map((a) => a.id));
         const added = fresh.filter((a) => !existingIds.has(a.id));
@@ -622,6 +639,14 @@ export function OverviewContent({ userName }: OverviewContentProps) {
         <FeedbackModal agentId={feedbackAgentId} onClose={() => setFeedbackAgentId(null)} />
       )}
 
+      {showTrialPopup && (
+        <TrialInfoToast
+          daysLeft={minTrialDaysLeft}
+          hasCard={hasCard === true}
+          onDismiss={() => setTrialPopupDismissed(true)}
+        />
+      )}
+
       <OverviewStyles />
     </div>
   );
@@ -764,6 +789,135 @@ function SkillsPicker({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function TrialInfoToast({
+  daysLeft,
+  hasCard,
+  onDismiss,
+}: {
+  daysLeft: number | null;
+  hasCard: boolean;
+  onDismiss: () => void;
+}) {
+  const headline =
+    typeof daysLeft === "number"
+      ? daysLeft <= 0
+        ? "Free trial ended"
+        : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left in trial`
+      : "You're on a free trial";
+
+  const body = hasCard
+    ? "Your card takes over after day 15 — no action needed."
+    : "Add a payment method to keep your agent running past day 15.";
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: "fixed",
+        bottom: 24,
+        right: 24,
+        zIndex: 1100,
+        width: "min(360px, calc(100vw - 32px))",
+        background: "#fff",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        boxShadow: "0 8px 28px rgba(28,22,18,0.14)",
+        padding: "14px 16px",
+        display: "flex",
+        gap: 12,
+        alignItems: "flex-start",
+        animation: "trialToastIn 0.25s ease-out",
+      }}
+    >
+      <div
+        style={{
+          flexShrink: 0,
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          background: "rgba(255,77,0,0.08)",
+          border: "1px solid rgba(255,77,0,0.2)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginTop: 1,
+        }}
+      >
+        <Sparkles size={15} color={ACCENT} />
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p
+          style={{
+            fontFamily: mono,
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--foreground)",
+            margin: "0 0 3px",
+            letterSpacing: "0.01em",
+          }}
+        >
+          {headline}
+        </p>
+        <p
+          style={{
+            fontFamily: mono,
+            fontSize: 11,
+            color: "var(--foreground-3)",
+            margin: "0 0 10px",
+            lineHeight: 1.5,
+          }}
+        >
+          {body}
+        </p>
+        {!hasCard && (
+          <a
+            href="/billing"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontFamily: mono,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: ACCENT,
+              textDecoration: "none",
+            }}
+          >
+            <CreditCard size={12} /> Add payment method →
+          </a>
+        )}
+      </div>
+
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        style={{
+          flexShrink: 0,
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          color: "var(--foreground-3)",
+          padding: 2,
+          marginTop: -2,
+        }}
+      >
+        <X size={14} />
+      </button>
+
+      <style>{`
+        @keyframes trialToastIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

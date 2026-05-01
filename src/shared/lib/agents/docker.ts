@@ -545,7 +545,7 @@ export async function sendCommand(
     input = command;
   }
 
-  return runAgentLoop(baseUrl, input, 60_000, signal);
+  return runAgentLoop(baseUrl, input, 180_000, signal);
 }
 
 export async function sendDocumentCommand(

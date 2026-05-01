@@ -12,4 +12,5 @@ export interface AgentRecord {
   type?: string;
   profileImage?: string | null;
   trialDaysLeft?: number | null;
+  trialKind?: "free_trial" | "developer" | "free_referral" | null;
 }
