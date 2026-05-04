@@ -272,19 +272,27 @@ Field rules:
 If the API returns 4xx, tell the user the validation error and stop. Do NOT proceed to Step 2.
 
 ## Step 2 — Register with OpenClaw cron (REQUIRED, after Step 1 succeeds)
-Run the native CLI so the job is live immediately. Telegram delivery in this stack goes through a domain webhook (not OpenClaw's \`--channel telegram\`, which is not installed):
+Run the native CLI so the job is live immediately. Telegram in this stack has no native OpenClaw channel — delivery happens by appending a curl instruction to the cron prompt itself, and using \`--no-deliver\` to disable OpenClaw's own delivery:
 
 \`\`\`bash
+DELIVERY_URL="\${WEBHOOK_BASE_URL}/api/internal/agents/\${AGENT_ID}/cron-deliver?token=\${GATEWAY_TOKEN}"
+FULL_PROMPT='<same prompt>
+
+---
+DELIVERY (REQUIRED): After producing your response, send it via bash:
+RESPONSE="<your full response text here>"
+curl -fsS -X POST "'"\$DELIVERY_URL"'" -H "Content-Type: text/plain" --data-binary "\$RESPONSE"'
+
 openclaw cron add \\
   --name "<same name>" \\
   --cron "<same cron>" \\
   --tz "<same tz>" \\
   --session isolated \\
-  --message "<same prompt>" \\
-  --webhook "\${WEBHOOK_BASE_URL}/api/internal/agents/\${AGENT_ID}/cron-deliver?token=\${GATEWAY_TOKEN}"
+  --message "\$FULL_PROMPT" \\
+  --no-deliver
 \`\`\`
 
-The webhook resolves the user's chat automatically and forwards the result to Telegram. Do NOT use \`--announce --channel telegram\` — that flag path is not supported in this deployment.
+Do NOT use \`--announce --channel telegram\` (no plugin) and do NOT use \`--webhook\` (not a real flag in this CLI version).
 
 ## When NOT to schedule
 - One-off requests ("send me X now") — just answer directly.
@@ -528,22 +536,41 @@ for t in tasks:
         skipped += 1
         continue
 
+    # Telegram delivery: OpenClaw's `--announce --channel telegram` is not
+    # available in this stack (no @openclaw/telegram plugin — Telegram is
+    # handled by Next.js). Instead, we append a delivery instruction to the
+    # prompt so the agent itself POSTs the result back to our domain via its
+    # bash tool, and we use --no-deliver to disable OpenClaw's own delivery.
+    full_prompt = prompt
+    extra_args = []
+    if channel == "telegram" and webhook_base and gateway_token and agent_id:
+        webhook_url = f"{webhook_base}/api/internal/agents/{agent_id}/cron-deliver?token={gateway_token}"
+        delivery_instruction = (
+            "\n\n---\n"
+            "DELIVERY (REQUIRED): After you produce your response, you MUST send it to the user via the bash tool. "
+            "Use a single curl call with the response as the request body. Do NOT paraphrase the response — send it verbatim:\n\n"
+            "```bash\n"
+            "RESPONSE=\"<your full response text here>\"\n"
+            f"curl -fsS -X POST '{webhook_url}' \\\n"
+            "  -H 'Content-Type: text/plain' \\\n"
+            "  --data-binary \"$RESPONSE\"\n"
+            "```\n\n"
+            "The user receives the POST body, not anything you say outside it. If the curl fails, retry once."
+        )
+        full_prompt = prompt + delivery_instruction
+        extra_args = ["--no-deliver"]
+    else:
+        # Discord/WhatsApp not yet wired for cron delivery; job still runs
+        # — output stays in OpenClaw's session transcript.
+        print(f"DEBUG [tasks] {name}: registering without delivery (channel={channel})")
+        extra_args = ["--no-deliver"]
+
     args = ["openclaw", "cron", "add",
             "--name", name,
             "--cron", cron,
             "--tz", tz,
             "--session", session,
-            "--message", prompt]
-    # Telegram is delivered via our domain webhook (not OpenClaw's --announce
-    # --channel telegram, which fails because @openclaw/telegram is not
-    # installed in this stack — Telegram inbound is handled by Next.js).
-    if channel == "telegram" and webhook_base and gateway_token and agent_id:
-        webhook_url = f"{webhook_base}/api/internal/agents/{agent_id}/cron-deliver?token={gateway_token}"
-        args += ["--webhook", webhook_url]
-    else:
-        # Discord/WhatsApp not yet wired for cron delivery; job still runs
-        # — output stays in OpenClaw's session transcript.
-        print(f"DEBUG [tasks] {name}: registering without delivery (channel={channel})")
+            "--message", full_prompt] + extra_args
 
     try:
         subprocess.run(args, check=True, capture_output=True, text=True, timeout=30)
