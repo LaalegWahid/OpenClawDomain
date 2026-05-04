@@ -272,7 +272,7 @@ Field rules:
 If the API returns 4xx, tell the user the validation error and stop. Do NOT proceed to Step 2.
 
 ## Step 2 — Register with OpenClaw cron (REQUIRED, after Step 1 succeeds)
-Run the native CLI so the job is live immediately:
+Run the native CLI so the job is live immediately. Telegram delivery in this stack goes through a domain webhook (not OpenClaw's \`--channel telegram\`, which is not installed):
 
 \`\`\`bash
 openclaw cron add \\
@@ -281,10 +281,10 @@ openclaw cron add \\
   --tz "<same tz>" \\
   --session isolated \\
   --message "<same prompt>" \\
-  --announce --channel <telegram|discord|whatsapp> --to "<current chat id>"
+  --webhook "\${WEBHOOK_BASE_URL}/api/internal/agents/\${AGENT_ID}/cron-deliver?token=\${GATEWAY_TOKEN}"
 \`\`\`
 
-For \`--channel\` and \`--to\`, use the channel and chat ID of the conversation you are currently in. If you are unsure of the chat ID, omit \`--announce --channel --to\` and the job will still run but won't push a message back automatically.
+The webhook resolves the user's chat automatically and forwards the result to Telegram. Do NOT use \`--announce --channel telegram\` — that flag path is not supported in this deployment.
 
 ## When NOT to schedule
 - One-off requests ("send me X now") — just answer directly.
@@ -502,12 +502,16 @@ if [ -s "${CONFIG_JSON_FILE:-}" ]; then
     fi
     echo "DEBUG [tasks] gateway healthy — registering tasks"
     python3 - << 'PYEOF' "${CONFIG_JSON_FILE}" || echo "WARNING: task registration script failed" >&2
-import json, subprocess, sys
+import json, os, subprocess, sys
 cfg = json.load(open(sys.argv[1]))
 tasks = cfg.get("tasks") or []
 if not tasks:
     print("DEBUG [tasks] no scheduled tasks to register")
     sys.exit(0)
+
+webhook_base = (os.environ.get("WEBHOOK_BASE_URL", "") or "").rstrip("/")
+gateway_token = os.environ.get("GATEWAY_TOKEN", "")
+agent_id = os.environ.get("AGENT_ID", "")
 
 registered = 0
 skipped = 0
@@ -518,7 +522,6 @@ for t in tasks:
     tz = (t.get("tz") or "UTC").strip()
     session = (t.get("session") or "isolated").strip()
     channel = t.get("channel")
-    to = t.get("to")
 
     if not name or not prompt or not cron:
         print(f"WARNING: task missing required fields, skipping: {t.get('id')}", file=sys.stderr)
@@ -531,13 +534,16 @@ for t in tasks:
             "--tz", tz,
             "--session", session,
             "--message", prompt]
-    if channel and to:
-        args += ["--announce", "--channel", channel, "--to", str(to)]
+    # Telegram is delivered via our domain webhook (not OpenClaw's --announce
+    # --channel telegram, which fails because @openclaw/telegram is not
+    # installed in this stack — Telegram inbound is handled by Next.js).
+    if channel == "telegram" and webhook_base and gateway_token and agent_id:
+        webhook_url = f"{webhook_base}/api/internal/agents/{agent_id}/cron-deliver?token={gateway_token}"
+        args += ["--webhook", webhook_url]
     else:
-        # No delivery target yet (user hasn't messaged the bot, or platform
-        # not supported for delivery). Job still runs — output stays in the
-        # session transcript and can be fetched later.
-        print(f"DEBUG [tasks] {name}: registering without delivery (channel={channel}, to={to})")
+        # Discord/WhatsApp not yet wired for cron delivery; job still runs
+        # — output stays in OpenClaw's session transcript.
+        print(f"DEBUG [tasks] {name}: registering without delivery (channel={channel})")
 
     try:
         subprocess.run(args, check=True, capture_output=True, text=True, timeout=30)
