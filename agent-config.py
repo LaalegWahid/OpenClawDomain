@@ -31,6 +31,31 @@ def _is_truthy(val: str) -> bool:
     return val.strip().lower() in ("1", "true", "yes")
 
 
+def patch_telegram(cfg):
+    """Configure the OpenClaw Telegram channel for outbound delivery (cron, etc.).
+
+    We pin webhookUrl to the SAME URL Next.js registered with Telegram, so the
+    plugin's setWebhook call on startup is idempotent and Next.js keeps owning
+    inbound. The plugin still loads with the bot token, which makes
+    `--announce --channel telegram --to <chatId>` work natively.
+    """
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    webhook_url = os.environ.get("TELEGRAM_WEBHOOK_URL", "")
+    webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+    if not token or not webhook_url:
+        return
+    print("Adding Telegram channel config (outbound-only via shared webhook URL)...")
+    channel_cfg = {
+        "enabled": True,
+        "botToken": token,
+        "webhookUrl": webhook_url,
+    }
+    if webhook_secret:
+        channel_cfg["webhookSecret"] = webhook_secret
+    cfg.setdefault("channels", {})["telegram"] = channel_cfg
+    print("Telegram channel configured.")
+
+
 def patch_discord(cfg):
     token = os.environ.get("DISCORD_BOT_TOKEN", "")
     if not token:
@@ -157,6 +182,7 @@ def main():
     with open(config_path) as f:
         cfg = json.load(f)
 
+    patch_telegram(cfg)
     patch_discord(cfg)
     patch_whatsapp(cfg)
     patch_mcp(cfg)

@@ -266,7 +266,7 @@ export async function POST(req: Request) {
           session.user.id,
           tempAgentId,
           type as AgentType,
-          undefined,
+          { telegram: { botToken, webhookSecret: env.TELEGRAM_WEBHOOK_SECRET } },
           undefined,
           apiKeys,
         );

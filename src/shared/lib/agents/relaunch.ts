@@ -6,6 +6,7 @@ import type { ChannelConfig, McpServerConfig } from "./docker";
 import { logger } from "../logger";
 import type { AgentType } from "./config";
 import { decryptIfPresent } from "../crypto";
+import { env } from "../../config/env";
 
 /**
  * Stops the agent's current ECS task and relaunches it with the full set of
@@ -45,6 +46,17 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
   // The Discord agentChannel record stays in DB for initAllDiscordBots() on startup.
   if (username.startsWith("whatsapp_")) {
     channelConfig.whatsapp = { enabled: true };
+  } else if (!username.startsWith("discord_")) {
+    // Telegram agent: load the @openclaw/telegram plugin so cron jobs can
+    // deliver via `--announce --channel telegram --to <chatId>` natively.
+    // Inbound stays with Next.js — the plugin's setWebhook is idempotent for
+    // the same URL Next.js already registered.
+    if (agentRecord.botToken) {
+      channelConfig.telegram = {
+        botToken: agentRecord.botToken,
+        webhookSecret: env.TELEGRAM_WEBHOOK_SECRET,
+      };
+    }
   }
 
   // Additional channels added later (Discord excluded — managed by Next.js)
