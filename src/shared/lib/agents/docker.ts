@@ -409,10 +409,10 @@ export interface GatewayResult {
 }
 
 async function callGateway(baseUrl: string, input: unknown, timeoutMs: number, signal?: AbortSignal): Promise<GatewayResult> {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const combinedSignal = signal
+  const timeoutSignal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+  const combinedSignal = signal && timeoutSignal
     ? AbortSignal.any([signal, timeoutSignal])
-    : timeoutSignal;
+    : (signal ?? timeoutSignal);
 
   const res = await fetch(`${baseUrl}/v1/responses`, {
     method: "POST",
@@ -545,7 +545,7 @@ export async function sendCommand(
     input = command;
   }
 
-  return runAgentLoop(baseUrl, input, 60_000, signal);
+  return runAgentLoop(baseUrl, input, 0, signal);
 }
 
 export async function sendDocumentCommand(
@@ -571,5 +571,5 @@ export async function sendDocumentCommand(
 
   items.push({ type: "message", role: "user", content: contentPrompt });
 
-  return runAgentLoop(baseUrl, items, 90_000, signal);
+  return runAgentLoop(baseUrl, items, 0, signal);
 }
