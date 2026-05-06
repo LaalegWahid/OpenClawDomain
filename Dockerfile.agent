@@ -25,6 +25,13 @@ WORKDIR /home/node
 # install and never calls process.exit() — the plugin IS installed, the process just won't quit.
 RUN timeout -k 5 60 openclaw plugins install @openclaw/whatsapp || true
 
+# Pre-install Telegram channel plugin. Configured by agent-config.py with the
+# per-agent bot token and the SAME webhookUrl Next.js already registered with
+# Telegram — the plugin's setWebhook on startup is idempotent for the same URL,
+# so inbound stays with Next.js and the plugin is effectively outbound-only
+# (used by `cron --announce --channel telegram --to <chatId>`).
+RUN timeout -k 5 60 openclaw plugins install @openclaw/telegram || true
+
 # Install Baileys for the direct WhatsApp linker script.
 # We use Baileys directly (bypassing `openclaw channels login`) because the OpenClaw
 # CLI renders the QR as Unicode art and never emits the raw QR string to stdout.

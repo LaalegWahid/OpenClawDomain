@@ -182,6 +182,43 @@ export const agentLog = pgTable(
   ],
 );
 
+/**
+ * User-declared scheduled prompts. Stored here as INTENT only; OpenClaw's
+ * native cron (`openclaw cron add`) is the runtime. The agent container
+ * registers these on startup and OpenClaw owns scheduling, execution, and
+ * channel delivery. Any change to a row triggers an agent relaunch so the
+ * container re-registers the full task set.
+ */
+export const agentTask = pgTable(
+  "agent_task",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    prompt: text("prompt").notNull(),
+    cronExpr: text("cron_expr").notNull(),
+    timezone: text("timezone").default("UTC").notNull(),
+    sessionMode: text("session_mode").default("isolated").notNull(), // "isolated" | "main"
+    enabled: boolean("enabled").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("agent_task_agentId_idx").on(table.agentId),
+    index("agent_task_userId_idx").on(table.userId),
+  ],
+);
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const agentRelations = relations(agent, ({ one, many }) => ({
@@ -195,6 +232,12 @@ export const agentRelations = relations(agent, ({ one, many }) => ({
   mcpServers: many(agentMcp),
   skills: many(agentSkill),
   logs: many(agentLog),
+  tasks: many(agentTask),
+}));
+
+export const agentTaskRelations = relations(agentTask, ({ one }) => ({
+  agent: one(agent, { fields: [agentTask.agentId], references: [agent.id] }),
+  user: one(user, { fields: [agentTask.userId], references: [user.id] }),
 }));
 
 export const agentActivityRelations = relations(agentActivity, ({ one }) => ({

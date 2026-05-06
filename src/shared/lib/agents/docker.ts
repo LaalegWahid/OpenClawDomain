@@ -81,6 +81,14 @@ export interface ChannelConfig {
   discord?: { botToken: string };
   /** Baileys/QR-based WhatsApp — credentials live on EFS, we just enable the channel */
   whatsapp?: { enabled: true; allowFrom?: string[] };
+  /**
+   * Telegram outbound: loads the @openclaw/telegram plugin with the per-agent
+   * bot token so `cron --announce --channel telegram --to <chatId>` works.
+   * webhookSecret is the shared secret Next.js validates inbound webhooks
+   * against — pass it so the plugin's idempotent setWebhook on startup keeps
+   * the same URL+secret Next.js already registered.
+   */
+  telegram?: { botToken: string; webhookSecret?: string };
 }
 
 /**
@@ -158,6 +166,17 @@ export async function launchContainer(
 
   if (channels?.discord?.botToken) {
     extraEnv.push({ name: "DISCORD_BOT_TOKEN", value: channels.discord.botToken });
+  }
+
+  if (channels?.telegram?.botToken) {
+    extraEnv.push({ name: "TELEGRAM_BOT_TOKEN", value: channels.telegram.botToken });
+    extraEnv.push({
+      name: "TELEGRAM_WEBHOOK_URL",
+      value: `${webhookBaseUrl}/api/telegram/webhook/${agentId}`,
+    });
+    if (channels.telegram.webhookSecret) {
+      extraEnv.push({ name: "TELEGRAM_WEBHOOK_SECRET", value: channels.telegram.webhookSecret });
+    }
   }
 
   if (mcpServers && Object.keys(mcpServers).length > 0) {
