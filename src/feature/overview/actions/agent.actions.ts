@@ -31,7 +31,8 @@ export async function fetchUserSkills(): Promise<UserSkill[]> {
 
 export async function fetchModelsCatalog(): Promise<Record<string, string[]>> {
   try {
-    const res = await fetch("/models.json");
+    const res = await fetch("/api/models");
+    if (!res.ok) return {};
     return await res.json();
   } catch {
     return {};
