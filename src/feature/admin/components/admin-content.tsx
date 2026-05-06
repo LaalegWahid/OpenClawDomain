@@ -21,7 +21,9 @@ import {
   AlertCircle,
   Terminal,
   Code2,
+  Brain,
 } from "lucide-react";
+import { ModelsManager } from "./models-manager";
 import {
   removeUser as removeUserAction,
   setDeveloperAccess,
@@ -237,6 +239,11 @@ export function AdminContent({
             error={serviceError}
             onToggle={toggleService}
           />
+        </Card>
+
+        {/* AI Models catalog */}
+        <Card title="AI Models" icon={<Brain size={16} />}>
+          <ModelsManager />
         </Card>
 
         {/* Users table */}

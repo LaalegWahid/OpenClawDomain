@@ -253,7 +253,10 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   const [aiMessage, setAiMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   useEffect(() => {
-    fetch("/models.json").then((r) => r.json()).then(setModelsCatalog).catch(() => {});
+    fetch("/api/models")
+      .then((r) => (r.ok ? r.json() : {}))
+      .then(setModelsCatalog)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

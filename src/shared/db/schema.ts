@@ -5,3 +5,4 @@ export * from './schema/config';
 export * from './schema/domain-config';
 export * from './schema/skill';
 export * from './schema/feedback';
+export * from './schema/ai-model';
