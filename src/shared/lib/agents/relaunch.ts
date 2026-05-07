@@ -38,28 +38,12 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
     .where(eq(agentMcp.agentId, agentId));
 
   // ── 4. Build channel config ───────────────────────────────────────────────
+  // Channels are sourced purely from the agentChannel table. Discord is
+  // intentionally excluded — Next.js manages Discord via manager.ts. The
+  // Discord agentChannel record stays in DB for initAllDiscordBots() on
+  // startup.
   const channelConfig: ChannelConfig = {};
 
-  // Primary platform — the agent was originally created with this platform
-  const username = agentRecord.botUsername ?? "";
-  // Note: Discord is intentionally excluded — Next.js manages Discord via manager.ts.
-  // The Discord agentChannel record stays in DB for initAllDiscordBots() on startup.
-  if (username.startsWith("whatsapp_")) {
-    channelConfig.whatsapp = { enabled: true };
-  } else if (!username.startsWith("discord_")) {
-    // Telegram agent: load the @openclaw/telegram plugin so cron jobs can
-    // deliver via `--announce --channel telegram --to <chatId>` natively.
-    // Inbound stays with Next.js — the plugin's setWebhook is idempotent for
-    // the same URL Next.js already registered.
-    if (agentRecord.botToken) {
-      channelConfig.telegram = {
-        botToken: agentRecord.botToken,
-        webhookSecret: env.TELEGRAM_WEBHOOK_SECRET,
-      };
-    }
-  }
-
-  // Additional channels added later (Discord excluded — managed by Next.js)
   for (const ch of channels) {
     if (ch.platform === "whatsapp") {
       type WaCreds = { allowedNumbers?: string[] };
@@ -68,6 +52,34 @@ export async function relaunchAgentWithChannels(agentId: string): Promise<void> 
         ? creds.allowedNumbers
         : undefined;
       channelConfig.whatsapp = allowFrom ? { enabled: true, allowFrom } : { enabled: true };
+    } else if (ch.platform === "telegram") {
+      // Load the @openclaw/telegram plugin so cron jobs can deliver via
+      // `--announce --channel telegram --to <chatId>` natively. Inbound stays
+      // with Next.js — the plugin's setWebhook is idempotent for the same URL
+      // Next.js already registered.
+      const creds = (ch.credentials ?? {}) as { botToken?: string };
+      if (creds.botToken) {
+        channelConfig.telegram = {
+          botToken: creds.botToken,
+          webhookSecret: env.TELEGRAM_WEBHOOK_SECRET,
+        };
+      }
+    }
+  }
+
+  // Legacy fallback: agents created before the channel-driven model stored
+  // their Telegram bot token on the agent row directly. If there's no
+  // Telegram channel record yet, use the legacy column so cron delivery still
+  // works for those rows.
+  if (!channelConfig.telegram && !channelConfig.whatsapp && agentRecord.botToken) {
+    const username = agentRecord.botUsername ?? "";
+    if (username.startsWith("whatsapp_")) {
+      channelConfig.whatsapp = { enabled: true };
+    } else if (!username.startsWith("discord_")) {
+      channelConfig.telegram = {
+        botToken: agentRecord.botToken,
+        webhookSecret: env.TELEGRAM_WEBHOOK_SECRET,
+      };
     }
   }
 

@@ -63,7 +63,7 @@ const pageStyles = `
 interface AgentRecord {
   id: string;
   name: string;
-  botUsername: string;
+  botUsername: string | null;
   status: string;
   type?: string;
   containerId: string | null;
@@ -686,12 +686,19 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
+  // Channels are the single source of truth. Legacy rows (created before the
+  // channel-driven model) may still have a botUsername that implies a primary
+  // platform without a matching channel record — count that too so the UI
+  // doesn't show "0 connected" for those.
   const connectedPlatformCount = (() => {
+    const platforms = new Set<string>(channels.map((c) => c.platform));
     const username = agent?.botUsername ?? "";
-    const primary = username.startsWith("discord_") ? "discord" : username.startsWith("whatsapp_") ? "whatsapp" : username ? "telegram" : null;
-    const extras = channels.map((c) => c.platform);
-    const all = new Set<string>([...(primary ? [primary] : []), ...extras]);
-    return all.size;
+    if (username && !channels.some((c) => c.platform === "telegram")) {
+      if (username.startsWith("discord_")) platforms.add("discord");
+      else if (username.startsWith("whatsapp_")) platforms.add("whatsapp");
+      else platforms.add("telegram");
+    }
+    return platforms.size;
   })();
 
   const stats = [
@@ -836,7 +843,9 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
                 <span className="oc-shimmer-text">{agent?.name ?? " "}</span>
               </h1>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap", color: MUTED, fontSize: 14 }}>
-                <span style={{ fontFamily: "var(--mono), monospace" }}>@{agent?.botUsername}</span>
+                {agent?.botUsername && (
+                  <span style={{ fontFamily: "var(--mono), monospace" }}>@{agent.botUsername}</span>
+                )}
                 {agent?.type && (
                   <span
                     style={{
@@ -1233,23 +1242,28 @@ export function AgentDetailContent({ agentId }: AgentDetailContentProps) {
               {activeTab === "platforms" && (
                 <div className="oc-page-section" style={{ display: "grid", gap: 12 }}>
                   {(["telegram", "discord", "whatsapp"] as const).map((platform) => {
-                    const username = agent.botUsername ?? "";
-                    const primaryPlatform = username.startsWith("discord_")
-                      ? "discord"
-                      : username.startsWith("whatsapp_")
-                        ? "whatsapp"
-                        : "telegram";
-                    const isPrimary = primaryPlatform === platform;
+                    // Connection is purely driven by agentChannel rows. Legacy
+                    // rows that stored their primary platform on agent.botUsername
+                    // (created before the channel-driven model) are surfaced as
+                    // a read-only "connected" state — they have no channel id so
+                    // the user can't disconnect them from this UI.
                     const channelRecord = channels.find((c) => c.platform === platform);
-                    const isConnected = isPrimary || !!channelRecord;
+                    const username = agent.botUsername ?? "";
+                    const legacyPrimary =
+                      !channelRecord && username
+                        ? (username.startsWith("discord_") ? "discord"
+                          : username.startsWith("whatsapp_") ? "whatsapp"
+                          : "telegram") === platform
+                        : false;
+                    const isConnected = !!channelRecord || legacyPrimary;
                     const isExpanded = expandedPlatform === platform;
                     const isWhatsApp = platform === "whatsapp";
-                    const handle = isPrimary
-                      ? platform === "telegram"
-                        ? `@${username}`
-                        : username.replace(/^(discord_|whatsapp_)/, "")
-                      : channelRecord
-                        ? `Added ${new Date(channelRecord.createdAt).toLocaleDateString()}`
+                    const handle = channelRecord
+                      ? `Added ${new Date(channelRecord.createdAt).toLocaleDateString()}`
+                      : legacyPrimary
+                        ? platform === "telegram"
+                          ? `@${username}`
+                          : username.replace(/^(discord_|whatsapp_)/, "")
                         : null;
 
                     return (

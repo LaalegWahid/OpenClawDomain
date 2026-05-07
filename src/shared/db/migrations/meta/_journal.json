@@ -127,6 +127,13 @@
       "when": 1778066487917,
       "tag": "0017_familiar_scrambler",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1778688000000,
+      "tag": "0018_optional_platform_creds",
+      "breakpoints": true
     }
   ]
 }

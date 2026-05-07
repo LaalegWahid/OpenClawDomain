@@ -12,7 +12,7 @@ export interface UserRow {
 export interface AgentRow {
   id: string;
   name: string;
-  botUsername: string;
+  botUsername: string | null;
   status: string;
   type: string;
   isPrimary: boolean;
@@ -67,7 +67,7 @@ export interface VisitStats {
 export interface AgentInfo {
   id: string;
   name: string;
-  botUsername: string;
+  botUsername: string | null;
   type: string;
   status: string;
   containerId: string | null;

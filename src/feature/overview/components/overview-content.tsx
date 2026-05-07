@@ -53,7 +53,9 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
   const [waQrData, setWaQrData] = useState<string | null>(null);
   const [waQrError, setWaQrError] = useState<string | null>(null);
 
-  const [platform, setPlatform] = useState<Platform>("telegram");
+  // "none" lets the user create the agent without connecting any platform —
+  // they can attach Telegram/Discord/WhatsApp later from the agent detail page.
+  const [platform, setPlatform] = useState<Platform | "none">("none");
 
   const [botToken, setBotToken] = useState("");
   const [botUsername, setBotUsername] = useState("");
@@ -150,7 +152,7 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
   const availableModels = apiProvider ? (modelsCatalog[apiProvider] ?? []) : [];
 
   const resetForm = () => {
-    setPlatform("telegram");
+    setPlatform("none");
     setBotToken(""); setBotUsername("");
     setDiscordToken("");
     setBotName(""); setSystemPrompt("You are a helpful specialist agent."); setCustomType("");
@@ -165,9 +167,10 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
   const step1Valid = botName.trim().length > 0 && customType.trim().length > 0 && systemPrompt.trim().length > 0;
   const step2Valid = apiProvider.trim().length > 0 && agentModel.trim().length > 0;
   const step3Valid =
-    platform === "telegram" ? botToken.trim().length > 0 && botUsername.trim().length > 0 :
-      platform === "discord" ? discordToken.trim().length > 0 :
-        true;
+    platform === "none" ? true :
+      platform === "telegram" ? botToken.trim().length > 0 && botUsername.trim().length > 0 :
+        platform === "discord" ? discordToken.trim().length > 0 :
+          true;
 
   const handleAddBot = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,7 +194,9 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
           ? { platform, botToken, botUsername, ...base }
           : platform === "discord"
             ? { platform, credentials: { botToken: discordToken }, ...base }
-            : { platform, ...base };
+            : platform === "whatsapp"
+              ? { platform, ...base }
+              : base; // "none" — no platform attached at creation
 
       const { ok, data } = await createAgent(body);
 
@@ -522,7 +527,30 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
               {currentStep === 3 && (
                 <>
                   <div>
-                    <p style={{ ...labelStyle, marginBottom: 10, display: "block" }}>Choose Platform</p>
+                    <p style={{ ...labelStyle, marginBottom: 10, display: "block" }}>Choose Platform <span style={{ fontWeight: 400, color: "var(--foreground-3)", textTransform: "none", letterSpacing: 0 }}>(optional)</span></p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setPlatform("none")}
+                        style={{
+                          gridColumn: "1 / -1",
+                          background: platform === "none" ? "rgba(255,77,0,0.06)" : "var(--surface-2)",
+                          border: platform === "none" ? `1px solid ${ACCENT}` : "1px solid var(--border)",
+                          borderRadius: 10, padding: "12px 14px",
+                          cursor: "pointer",
+                          display: "flex", alignItems: "center", gap: 10,
+                          transition: "all 0.15s",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: platform === "none" ? ACCENT : "var(--foreground-2)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                          Skip — connect later
+                        </span>
+                        <span style={{ fontFamily: mono, fontSize: 10, color: "var(--foreground-3)", letterSpacing: "0.02em" }}>
+                          Create the agent now and attach platforms from its detail page.
+                        </span>
+                      </button>
+                    </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                       {PLATFORM_OPTIONS.map((p) => {
                         const active = platform === p.value;
@@ -549,9 +577,11 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
                         );
                       })}
                     </div>
-                    <p style={{ fontFamily: mono, fontSize: 11, color: "var(--foreground-3)", marginTop: 8, letterSpacing: "0.02em" }}>
-                      {PLATFORM_OPTIONS.find(p => p.value === platform)?.description}
-                    </p>
+                    {platform !== "none" && (
+                      <p style={{ fontFamily: mono, fontSize: 11, color: "var(--foreground-3)", marginTop: 8, letterSpacing: "0.02em" }}>
+                        {PLATFORM_OPTIONS.find(p => p.value === platform)?.description}
+                      </p>
+                    )}
                   </div>
 
                   {platform === "telegram" && (
@@ -632,6 +662,8 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
                   >
                     {submitting ? (
                       <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Creating…</>
+                    ) : platform === "none" ? (
+                      `Create Agent`
                     ) : (
                       `Create ${PLATFORM_OPTIONS.find(p => p.value === platform)?.label} Agent`
                     )}

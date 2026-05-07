@@ -126,12 +126,46 @@ function extractEncryptedKeys(body: Record<string, unknown>) {
   };
 }
 
+type ChannelKind = "telegram" | "discord" | "whatsapp";
+
+/** Reject the token if it's already attached to a different agent — checks
+ * both legacy `agent.botToken` and `agentChannel.credentials.botToken`. */
+async function tokenAlreadyOwnedByAnotherAgent(
+  token: string,
+  selfAgentId: string,
+  platformFilter?: ChannelKind,
+): Promise<boolean> {
+  const [legacy] = await db
+    .select({ id: agent.id })
+    .from(agent)
+    .where(eq(agent.botToken, token))
+    .limit(1);
+  if (legacy && legacy.id !== selfAgentId) return true;
+
+  const channelRows = await db
+    .select({ agentId: agentChannel.agentId, platform: agentChannel.platform, credentials: agentChannel.credentials })
+    .from(agentChannel);
+  return channelRows.some(
+    (ch) =>
+      ch.agentId !== selfAgentId &&
+      (!platformFilter || ch.platform === platformFilter) &&
+      (ch.credentials as Record<string, string>)?.botToken === token,
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getSessionOrThrow(req);
 
     const body = await req.json();
-    const { platform = "telegram", name, systemPrompt, type, skillIds, profileImage } = body;
+    const { platform, name, systemPrompt, type, skillIds, profileImage } = body as {
+      platform?: ChannelKind | null;
+      name?: string;
+      systemPrompt?: string;
+      type?: string;
+      skillIds?: string[];
+      profileImage?: string | null;
+    };
 
     if (!name || !systemPrompt || !type) {
       return NextResponse.json(
@@ -147,7 +181,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!["telegram", "discord", "whatsapp"].includes(platform)) {
+    if (platform != null && !["telegram", "discord", "whatsapp"].includes(platform)) {
       return NextResponse.json({ error: "Invalid platform" }, { status: 400 });
     }
 
@@ -222,10 +256,15 @@ export async function POST(req: Request) {
 
     const tempAgentId = crypto.randomUUID();
 
-    // ── TELEGRAM ─────────────────────────────────────────────────────────────
-    if (platform === "telegram") {
-      const { botToken, botUsername } = body;
+    // ── Validate platform creds (only when a platform was selected) ─────────
+    // The modal's Step 3 is optional — when no platform is given, the agent
+    // launches with no channels. Channels can be attached later via
+    // POST /api/agents/[id]/channels.
+    let telegramCreds: { botToken: string; botUsername: string } | null = null;
+    let discordCreds: { botToken: string } | null = null;
 
+    if (platform === "telegram") {
+      const { botToken, botUsername } = body as { botToken?: string; botUsername?: string };
       if (!botToken || !botUsername) {
         return NextResponse.json(
           { error: "botToken and botUsername are required for Telegram" },
@@ -250,279 +289,152 @@ export async function POST(req: Request) {
         );
       }
 
-      const [existingBot] = await db
-        .select()
-        .from(agent)
-        .where(eq(agent.botToken, botToken))
-        .limit(1);
-
-      if (existingBot) {
+      if (await tokenAlreadyOwnedByAnotherAgent(botToken, tempAgentId)) {
         return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
       }
 
-      let containerId: string;
-      try {
-        const result = await launchContainer(
-          session.user.id,
-          tempAgentId,
-          type as AgentType,
-          { telegram: { botToken, webhookSecret: env.TELEGRAM_WEBHOOK_SECRET } },
-          undefined,
-          apiKeys,
-        );
-        containerId = result.containerId;
-      } catch (err) {
-        logger.error({ err }, "Failed to launch agent container");
-        return NextResponse.json(
-          { error: "ECS task failed to start for this agent. Check cluster logs and task definition." },
-          { status: 500 },
-        );
-      }
+      telegramCreds = { botToken, botUsername: botInfo.username };
+    }
 
+    if (platform === "discord") {
+      const credentials = body.credentials as { botToken?: string } | undefined;
+      if (!credentials?.botToken) {
+        return NextResponse.json({ error: "credentials.botToken is required for Discord" }, { status: 400 });
+      }
+      if (await tokenAlreadyOwnedByAnotherAgent(credentials.botToken, tempAgentId)) {
+        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
+      }
+      discordCreds = { botToken: credentials.botToken };
+    }
+
+    // ── Launch container with whichever channels were provided ──────────────
+    const channelConfig: import("../../../shared/lib/agents/docker").ChannelConfig | undefined =
+      telegramCreds
+        ? { telegram: { botToken: telegramCreds.botToken, webhookSecret: env.TELEGRAM_WEBHOOK_SECRET } }
+        : discordCreds
+          ? { discord: { botToken: discordCreds.botToken } }
+          : undefined;
+
+    let containerId: string;
+    try {
+      const result = await launchContainer(
+        session.user.id,
+        tempAgentId,
+        type as AgentType,
+        channelConfig,
+        undefined,
+        apiKeys,
+      );
+      containerId = result.containerId;
+    } catch (err) {
+      logger.error({ err }, "Failed to launch agent container");
+      return NextResponse.json(
+        { error: "ECS task failed to start for this agent. Check cluster logs and task definition." },
+        { status: 500 },
+      );
+    }
+
+    // ── Telegram-only: register the inbound webhook with the agent's UUID ───
+    if (telegramCreds) {
       try {
         const webhookUrl = `${env.WEBHOOK_BASE_URL}/api/telegram/webhook/${tempAgentId}`;
-        await setWebhook(botToken, webhookUrl, env.TELEGRAM_WEBHOOK_SECRET);
+        await setWebhook(telegramCreds.botToken, webhookUrl, env.TELEGRAM_WEBHOOK_SECRET);
       } catch (err) {
         await stopContainer(containerId).catch(() => {});
-        await deleteWebhook(botToken).catch(() => {});
+        await deleteWebhook(telegramCreds.botToken).catch(() => {});
         logger.error({ err }, "Failed to set webhook");
         return NextResponse.json(
           { error: "Telegram API rejected the webhook setup. Verify bot token and webhook URL." },
           { status: 500 },
         );
       }
-
-      try {
-        const [newAgent] = await db
-          .insert(agent)
-          .values({
-            id: tempAgentId,
-            userId: session.user.id,
-            name,
-            botToken,
-            botUsername: botInfo.username,
-            systemPrompt,
-            type: type as AgentType,
-            status: "starting",
-            isPrimary: isFirstBot,
-            containerId,
-            ...encryptedKeys,
-            profileImage: profileImage || null,
-          })
-          .returning();
-
-        try {
-          await handleAgentSubscription(session.user.id, newAgent.id, subscriptionDecision);
-        } catch (subErr) {
-          await db.delete(agent).where(eq(agent.id, newAgent.id));
-          await stopContainer(containerId).catch(() => {});
-          await deleteWebhook(botToken).catch(() => {});
-          logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
-          return NextResponse.json(
-            { error: "Failed to create subscription for this agent. Please verify your card and try again." },
-            { status: 500 },
-          );
-        }
-
-        await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Telegram` });
-        await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
-        applyTierReprice(session.user.id, newAgent.id, agentPriceId);
-
-        waitForTaskRunning(containerId)
-          .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
-          .catch(async (err) => {
-            logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
-            await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));
-          });
-
-        logger.info({ agentId: newAgent.id, userId: session.user.id, platform: "telegram" }, "Agent launched");
-        return NextResponse.json({ agent: newAgent }, { status: 201 });
-      } catch (err) {
-        await stopContainer(containerId).catch(() => {});
-        await deleteWebhook(botToken).catch(() => {});
-        logger.error({ err }, "Failed to save agent to database");
-        return NextResponse.json(
-          { error: "Database insert failed after container and webhook succeeded. Rolled back." },
-          { status: 500 },
-        );
-      }
     }
 
-    // ── DISCORD ───────────────────────────────────────────────────────────────
-    if (platform === "discord") {
-      const credentials = body.credentials as { botToken?: string } | undefined;
-      if (!credentials?.botToken) {
-        return NextResponse.json({ error: "credentials.botToken is required for Discord" }, { status: 400 });
-      }
+    // ── DB insert + subscription + side effects (shared across all paths) ──
+    try {
+      const [newAgent] = await db
+        .insert(agent)
+        .values({
+          id: tempAgentId,
+          userId: session.user.id,
+          name,
+          // botToken stays null — tokens live in agentChannel from now on.
+          // botUsername is set for display when a Telegram platform was picked.
+          botToken: null,
+          botUsername: telegramCreds?.botUsername ?? null,
+          systemPrompt,
+          type: type as AgentType,
+          status: "starting",
+          isPrimary: isFirstBot,
+          containerId,
+          ...encryptedKeys,
+          profileImage: profileImage || null,
+        })
+        .returning();
 
-      const discordToken = credentials.botToken;
-      const placeholderUsername = `discord_${tempAgentId.split("-")[0]}`;
-
-      const [existingDiscordBot] = await db
-        .select()
-        .from(agent)
-        .where(eq(agent.botToken, discordToken))
-        .limit(1);
-
-      if (existingDiscordBot) {
-        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
-      }
-
-      const existingChannels = await db.select().from(agentChannel).where(eq(agentChannel.platform, "discord"));
-      const tokenConflict = existingChannels.some(
-        (ch) => (ch.credentials as Record<string, string>)?.botToken === discordToken,
-      );
-      if (tokenConflict) {
-        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
-      }
-
-      let containerId: string;
       try {
-        const result = await launchContainer(
-          session.user.id,
-          tempAgentId,
-          type as AgentType,
-          { discord: { botToken: discordToken } },
-          undefined,
-          apiKeys,
-        );
-        containerId = result.containerId;
-      } catch (err) {
-        logger.error({ err }, "Failed to launch agent container");
+        await handleAgentSubscription(session.user.id, newAgent.id, subscriptionDecision);
+      } catch (subErr) {
+        await db.delete(agent).where(eq(agent.id, newAgent.id));
+        await stopContainer(containerId).catch(() => {});
+        if (telegramCreds) await deleteWebhook(telegramCreds.botToken).catch(() => {});
+        logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
         return NextResponse.json(
-          { error: "ECS task failed to start for this agent." },
+          { error: "Failed to create subscription for this agent. Please verify your card and try again." },
           { status: 500 },
         );
       }
 
-      try {
-        const [newAgent] = await db
-          .insert(agent)
-          .values({
-            id: tempAgentId,
-            userId: session.user.id,
-            name,
-            botToken: discordToken,
-            botUsername: placeholderUsername,
-            systemPrompt,
-            type: type as AgentType,
-            status: "starting",
-            isPrimary: isFirstBot,
-            containerId,
-            ...encryptedKeys,
-            profileImage: profileImage || null,
-          })
-          .returning();
+      // Insert channel records for any platform creds provided at creation.
+      if (telegramCreds) {
+        await db.insert(agentChannel).values({
+          agentId: newAgent.id,
+          platform: "telegram",
+          credentials: { botToken: telegramCreds.botToken, botUsername: telegramCreds.botUsername },
+        });
+      }
+      if (discordCreds) {
+        await db.insert(agentChannel).values({
+          agentId: newAgent.id,
+          platform: "discord",
+          credentials: { botToken: discordCreds.botToken },
+        });
+      }
 
-        try {
-          await handleAgentSubscription(session.user.id, newAgent.id, subscriptionDecision);
-        } catch (subErr) {
-          await db.delete(agent).where(eq(agent.id, newAgent.id));
-          await stopContainer(containerId).catch(() => {});
-          logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
-          return NextResponse.json(
-            { error: "Failed to create subscription for this agent. Please verify your card and try again." },
-            { status: 500 },
-          );
-        }
+      const launchMessage =
+        platform === "whatsapp"
+          ? `${name} launched — link WhatsApp to activate`
+          : platform
+            ? `${name} launched on ${platform.charAt(0).toUpperCase()}${platform.slice(1)}`
+            : `${name} launched`;
+      await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: launchMessage });
 
-        await db.insert(agentChannel).values({ agentId: newAgent.id, platform: "discord", credentials: { botToken: discordToken } });
-        await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched on Discord` });
-        await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
-        applyTierReprice(session.user.id, newAgent.id, agentPriceId);
+      await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
+      applyTierReprice(session.user.id, newAgent.id, agentPriceId);
 
-        startDiscordBot(newAgent.id, discordToken, type as AgentType)
+      if (discordCreds) {
+        startDiscordBot(newAgent.id, discordCreds.botToken, type as AgentType)
           .catch((err) => logger.error({ err, agentId: newAgent.id }, "Failed to start Discord bot"));
-
-        waitForTaskRunning(containerId)
-          .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
-          .catch(async (err) => {
-            logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
-            await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));
-          });
-
-        logger.info({ agentId: newAgent.id, userId: session.user.id, platform: "discord" }, "Agent launched");
-        return NextResponse.json({ agent: newAgent }, { status: 201 });
-      } catch (err) {
-        await stopContainer(containerId).catch(() => {});
-        logger.error({ err }, "Failed to save Discord agent");
-        return NextResponse.json({ error: "Database insert failed. Rolled back." }, { status: 500 });
       }
+
+      waitForTaskRunning(containerId)
+        .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
+        .catch(async (err) => {
+          logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
+          await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));
+        });
+
+      logger.info({ agentId: newAgent.id, userId: session.user.id, platform: platform ?? "none" }, "Agent launched");
+      return NextResponse.json({ agent: newAgent }, { status: 201 });
+    } catch (err) {
+      await stopContainer(containerId).catch(() => {});
+      if (telegramCreds) await deleteWebhook(telegramCreds.botToken).catch(() => {});
+      logger.error({ err }, "Failed to save agent to database");
+      return NextResponse.json(
+        { error: "Database insert failed after container start. Rolled back." },
+        { status: 500 },
+      );
     }
-
-    // ── WHATSAPP ──────────────────────────────────────────────────────────────
-    if (platform === "whatsapp") {
-      const placeholderToken = `whatsapp_${tempAgentId.split("-")[0]}`;
-      const placeholderUsername = `whatsapp_${tempAgentId.replace(/-/g, "").slice(0, 12)}`;
-
-      let containerId: string;
-      try {
-        const result = await launchContainer(
-          session.user.id,
-          tempAgentId,
-          type as AgentType,
-          undefined,
-          undefined,
-          apiKeys,
-        );
-        containerId = result.containerId;
-      } catch (err) {
-        logger.error({ err }, "Failed to launch agent container");
-        return NextResponse.json({ error: "ECS task failed to start for this agent." }, { status: 500 });
-      }
-
-      try {
-        const [newAgent] = await db
-          .insert(agent)
-          .values({
-            id: tempAgentId,
-            userId: session.user.id,
-            name,
-            botToken: placeholderToken,
-            botUsername: placeholderUsername,
-            systemPrompt,
-            type: type as AgentType,
-            status: "starting",
-            isPrimary: isFirstBot,
-            containerId,
-            ...encryptedKeys,
-            profileImage: profileImage || null,
-          })
-          .returning();
-
-        try {
-          await handleAgentSubscription(session.user.id, newAgent.id, subscriptionDecision);
-        } catch (subErr) {
-          await db.delete(agent).where(eq(agent.id, newAgent.id));
-          await stopContainer(containerId).catch(() => {});
-          logger.error({ subErr, agentId: newAgent.id }, "Stripe subscription creation failed");
-          return NextResponse.json(
-            { error: "Failed to create subscription for this agent. Please verify your card and try again." },
-            { status: 500 },
-          );
-        }
-
-        await db.insert(agentActivity).values({ agentId: newAgent.id, type: "launch", message: `${name} launched — link WhatsApp to activate` });
-        await linkSkillsToAgent(newAgent.id, session.user.id, skillIds);
-        applyTierReprice(session.user.id, newAgent.id, agentPriceId);
-
-        waitForTaskRunning(containerId)
-          .then(() => db.update(agent).set({ status: "active" }).where(eq(agent.id, tempAgentId)))
-          .catch(async (err) => {
-            logger.error({ err, agentId: tempAgentId }, "Task never reached RUNNING");
-            await db.update(agent).set({ status: "error" }).where(eq(agent.id, tempAgentId));
-          });
-
-        logger.info({ agentId: newAgent.id, userId: session.user.id, platform: "whatsapp" }, "WhatsApp agent launched (pending QR link)");
-        return NextResponse.json({ agent: newAgent }, { status: 201 });
-      } catch (err) {
-        await stopContainer(containerId).catch(() => {});
-        logger.error({ err }, "Failed to save WhatsApp agent");
-        return NextResponse.json({ error: "Database insert failed. Rolled back." }, { status: 500 });
-      }
-    }
-
-    return NextResponse.json({ error: "Unsupported platform" }, { status: 400 });
   } catch (err) {
     if (err instanceof Response) return err;
     return NextResponse.json({ error: "Unhandled error in POST /api/agents. Check server logs." }, { status: 500 });
