@@ -120,6 +120,13 @@
       "when": 1777939200000,
       "tag": "0016_agent_task",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1778066487917,
+      "tag": "0017_familiar_scrambler",
+      "breakpoints": true
     }
   ]
 }

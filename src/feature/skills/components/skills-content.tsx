@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Sparkles, Loader2, Upload, Archive, Folder, File as FileIcon, KeyRound } from "lucide-react";
 import { EditSkillModal } from "./edit-skill-modal";
+import { RegisterModal } from "../../auth/components/register-modal";
 import {
   ACCENT,
   ErrorBanner,
@@ -36,13 +37,18 @@ import {
 
 type Tab = "ai" | "import";
 
-export function SkillsContent() {
+interface SkillsContentProps {
+  isAuthenticated?: boolean;
+}
+
+export function SkillsContent({ isAuthenticated = false }: SkillsContentProps = {}) {
   const [skills, setSkills] = useState<SkillRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingSkill, setEditingSkill] = useState<SkillRecord | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const [showModal, setShowModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
 
   const [tab, setTab] = useState<Tab>("ai");
   const [submitting, setSubmitting] = useState(false);
@@ -246,7 +252,10 @@ export function SkillsContent() {
           </p>
         </div>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            if (!isAuthenticated) { setShowRegisterModal(true); return; }
+            setShowModal(true);
+          }}
           style={{ background: ACCENT, color: "#fff", border: "none", padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "background 0.2s" }}
         >
           <Sparkles size={14} /> New Skill
@@ -390,6 +399,10 @@ export function SkillsContent() {
           onClose={() => setEditingSkill(null)}
           onUpdated={() => { setEditingSkill(null); refreshSkills(); }}
         />
+      )}
+
+      {showRegisterModal && (
+        <RegisterModal onClose={() => setShowRegisterModal(false)} />
       )}
 
       <SkillsStyles />
