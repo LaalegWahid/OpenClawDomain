@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionOrThrow } from "../../../../shared/lib/auth/getSessionOrThrow";
 import { db } from "../../../../shared/lib/drizzle";
-import { agent, agentActivity } from "../../../../shared/db/schema/agent";
+import { agent, agentActivity, agentChannel } from "../../../../shared/db/schema/agent";
 import { eq, and, desc } from "drizzle-orm";
 import { stopContainer } from "../../../../shared/lib/agents/docker";
 import { deleteWebhook } from "../../../../shared/lib/telegram/bot";
@@ -146,11 +146,25 @@ export async function DELETE(
       await stopContainer(found.containerId);
     }
 
-    // Remove webhook from Telegram
-    try {
-      await deleteWebhook(found.botToken);
-    } catch (err) {
-      logger.warn({ agentId: id, err }, "Failed to delete webhook");
+    // Remove the Telegram webhook for every Telegram bot attached to this
+    // agent. Tokens may live on the legacy agent.botToken column (older rows)
+    // and/or on agentChannel rows (newer rows + post-creation channel adds).
+    const tokens = new Set<string>();
+    if (found.botToken) tokens.add(found.botToken);
+    const tgChannels = await db
+      .select({ credentials: agentChannel.credentials })
+      .from(agentChannel)
+      .where(and(eq(agentChannel.agentId, id), eq(agentChannel.platform, "telegram")));
+    for (const ch of tgChannels) {
+      const t = (ch.credentials as { botToken?: string } | undefined)?.botToken;
+      if (t) tokens.add(t);
+    }
+    for (const t of tokens) {
+      try {
+        await deleteWebhook(t);
+      } catch (err) {
+        logger.warn({ agentId: id, err }, "Failed to delete webhook");
+      }
     }
 
     // Cancel the agent's Stripe subscription (DB row stays, status flips to canceled)

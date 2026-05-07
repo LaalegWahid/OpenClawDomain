@@ -7,7 +7,7 @@ export interface UserSkill {
 export interface AgentRecord {
   id: string;
   name: string;
-  botUsername: string;
+  botUsername: string | null;
   status: string;
   type?: string;
   profileImage?: string | null;

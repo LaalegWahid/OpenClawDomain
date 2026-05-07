@@ -42,7 +42,10 @@ export async function fetchModelsCatalog(): Promise<Record<string, string[]>> {
 export type CreateAgentBody =
   | { platform: "telegram"; botToken: string; botUsername: string; [k: string]: unknown }
   | { platform: "discord"; credentials: { botToken: string }; [k: string]: unknown }
-  | { platform: "whatsapp"; [k: string]: unknown };
+  | { platform: "whatsapp"; [k: string]: unknown }
+  // No platform — the agent is launched with no channels and the user attaches
+  // them later from the agent detail page.
+  | { platform?: undefined; [k: string]: unknown };
 
 export async function createAgent(body: CreateAgentBody) {
   const res = await fetch("/api/agents", {

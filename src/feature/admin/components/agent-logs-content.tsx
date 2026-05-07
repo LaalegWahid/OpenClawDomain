@@ -130,7 +130,7 @@ export function AgentLogsContent({
 
           <div style={{ marginTop: 6, color: MUTED, fontSize: 13 }}>
             <Bot size={13} style={{ verticalAlign: "-2px", marginRight: 4 }} />
-            @{agent.botUsername} · {agent.type} ·{" "}
+            {agent.botUsername ? `@${agent.botUsername} · ` : ""}{agent.type} ·{" "}
             {agent.ownerEmail ?? agent.ownerName ?? "no owner"}
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { NextResponse, after } from "next/server";
 import { db } from "../../../../../shared/lib/drizzle";
-import { agent, agentActivity, agentLog, chatSession } from "../../../../../shared/db/schema";
+import { agent, agentActivity, agentChannel, agentLog, chatSession } from "../../../../../shared/db/schema";
 import { logger } from "../../../../../shared/lib/logger";
 import { sendChatAction, sendDocument, sendMessage } from "../../../../../shared/lib/telegram/bot";
 import { eq, and } from "drizzle-orm";
@@ -76,6 +76,21 @@ export async function POST(
   const [found] = await db.select().from(agent).where(eq(agent.id, agentId));
   if (!found) return NextResponse.json({ ok: true });
 
+  // Resolve the bot token from agentChannel (post-creation channel adds
+  // and the new channel-driven creation path both store it there). Fall back
+  // to the legacy agent.botToken column for rows created under the old model.
+  const [tgChannel] = await db
+    .select({ credentials: agentChannel.credentials })
+    .from(agentChannel)
+    .where(and(eq(agentChannel.agentId, agentId), eq(agentChannel.platform, "telegram")))
+    .limit(1);
+  const channelToken = (tgChannel?.credentials as { botToken?: string } | undefined)?.botToken;
+  const botToken = channelToken ?? found.botToken;
+  if (!botToken) {
+    logger.warn({ agentId }, "Telegram webhook fired for agent with no Telegram token");
+    return NextResponse.json({ ok: true });
+  }
+
   logger.info({ agentId, chatId, text }, "Webhook message received");
 
   // Intercept /cancel or /stop — handle synchronously so the user gets
@@ -83,7 +98,7 @@ export async function POST(
   if (isCancelCommand(text)) {
     const cancelled = await cancelChatRequest(agentId, chatId);
     await sendMessage(
-      found.botToken,
+      botToken,
       chatId,
       cancelled ? "✋ Cancelled." : "Nothing to cancel.",
     ).catch(() => {});
@@ -91,15 +106,15 @@ export async function POST(
   }
 
   if (found.status === "stopped") {
-    await sendMessage(found.botToken, chatId, "This agent has been stopped. Please restart it from the dashboard.").catch(() => {});
+    await sendMessage(botToken, chatId, "This agent has been stopped. Please restart it from the dashboard.").catch(() => {});
     return NextResponse.json({ ok: true });
   }
   if (found.status === "starting" || !found.containerId) {
-    await sendMessage(found.botToken, chatId, "Agent is starting up, please try again in a moment.").catch(() => {});
+    await sendMessage(botToken, chatId, "Agent is starting up, please try again in a moment.").catch(() => {});
     return NextResponse.json({ ok: true });
   }
   if (found.status === "error") {
-    await sendMessage(found.botToken, chatId, "This agent encountered an error. Please check the dashboard.").catch(() => {});
+    await sendMessage(botToken, chatId, "This agent encountered an error. Please check the dashboard.").catch(() => {});
     return NextResponse.json({ ok: true });
   }
 
@@ -107,7 +122,6 @@ export async function POST(
   // then process the message in the background. Per-chat queue serializes
   // multiple messages from the same user.
   const containerId = found.containerId;
-  const botToken = found.botToken;
   const agentType = (found.type as AgentType) || "operations";
 
   after(async () => {

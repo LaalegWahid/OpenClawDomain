@@ -24,8 +24,11 @@ export const agent = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     status: text("status").notNull().default("starting"), // "active" | "starting" | "stopped" | "error"
-    botToken: text("bot_token").notNull(),
-    botUsername: text("bot_username").notNull(),
+    // Nullable: an agent can be created with no platform attached. Channels are
+    // attached post-creation via agentChannel; these columns are kept for
+    // legacy rows and for the optional "create with platform" path in the modal.
+    botToken: text("bot_token"),
+    botUsername: text("bot_username"),
     systemPrompt: text("system_prompt").notNull(),
     type: text("type").notNull().default("finance"), // "finance" | "marketing" | "operations"
     isPrimary: boolean("is_primary").default(false).notNull(),
@@ -43,8 +46,12 @@ export const agent = pgTable(
   },
   (table) => [
     index("agent_userId_idx").on(table.userId),
-    uniqueIndex("agent_botToken_idx").on(table.botToken),
-    uniqueIndex("agent_botUsername_idx").on(table.botUsername),
+    uniqueIndex("agent_botToken_idx")
+      .on(table.botToken)
+      .where(sql`${table.botToken} IS NOT NULL`),
+    uniqueIndex("agent_botUsername_idx")
+      .on(table.botUsername)
+      .where(sql`${table.botUsername} IS NOT NULL`),
   ],
 );
 

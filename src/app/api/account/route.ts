@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 import { getSessionOrThrow } from "../../../shared/lib/auth/getSessionOrThrow";
 import { db } from "../../../shared/lib/drizzle";
-import { agent } from "../../../shared/db/schema/agent";
+import { agent, agentChannel } from "../../../shared/db/schema/agent";
 import { user } from "../../../shared/db/schema/auth";
 import { stopContainer } from "../../../shared/lib/agents/docker";
 import { deleteWebhook } from "../../../shared/lib/telegram/bot";
@@ -32,14 +32,33 @@ export async function DELETE(req: Request) {
       .from(agent)
       .where(eq(agent.userId, userId));
 
+    // Collect Telegram tokens from agentChannel for any of this user's agents.
+    const agentIds = userAgents.map((a) => a.id);
+    const tgChannels = agentIds.length
+      ? await db
+          .select({ agentId: agentChannel.agentId, credentials: agentChannel.credentials })
+          .from(agentChannel)
+          .where(and(inArray(agentChannel.agentId, agentIds), eq(agentChannel.platform, "telegram")))
+      : [];
+    const tokensByAgent = new Map<string, Set<string>>();
+    for (const ag of userAgents) {
+      const set = new Set<string>();
+      if (ag.botToken) set.add(ag.botToken);
+      tokensByAgent.set(ag.id, set);
+    }
+    for (const ch of tgChannels) {
+      const t = (ch.credentials as { botToken?: string } | undefined)?.botToken;
+      if (t) tokensByAgent.get(ch.agentId)?.add(t);
+    }
+
     for (const ag of userAgents) {
       if (ag.containerId) {
         await stopContainer(ag.containerId).catch((err) => {
           logger.warn({ err, agentId: ag.id }, "Account delete: stopContainer failed");
         });
       }
-      if (ag.botToken) {
-        await deleteWebhook(ag.botToken).catch((err) => {
+      for (const token of tokensByAgent.get(ag.id) ?? []) {
+        await deleteWebhook(token).catch((err) => {
           logger.warn({ err, agentId: ag.id }, "Account delete: deleteWebhook failed");
         });
       }

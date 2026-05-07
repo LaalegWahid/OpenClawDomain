@@ -182,7 +182,7 @@ export function AdminContent({
     return agents.filter(
       (a) =>
         a.name.toLowerCase().includes(q) ||
-        a.botUsername.toLowerCase().includes(q) ||
+        (a.botUsername ?? "").toLowerCase().includes(q) ||
         (a.ownerEmail ?? "").toLowerCase().includes(q) ||
         (a.agentModel ?? "").toLowerCase().includes(q),
     );
@@ -551,7 +551,7 @@ function AgentsTable({ agents }: { agents: AgentRow[] }) {
                     </span>
                   )}
                 </Link>
-                <div style={{ fontSize: 12, color: MUTED }}>@{a.botUsername}</div>
+                <div style={{ fontSize: 12, color: MUTED }}>{a.botUsername ? `@${a.botUsername}` : "—"}</div>
               </td>
               <td style={{ padding: 12 }}>
                 <div style={{ fontSize: 13 }}>{a.ownerName ?? "—"}</div>

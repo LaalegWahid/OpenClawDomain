@@ -31,7 +31,11 @@ export function AgentCard({ ag }: { ag: AgentRecord }) {
 
       <div>
         <div style={{ fontFamily: serif, fontSize: 17, fontWeight: 600, color: "var(--foreground)", marginBottom: 4 }}>{ag.name}</div>
-        <div style={{ fontFamily: mono, fontSize: 11, color: ACCENT, letterSpacing: "0.04em" }}>@{ag.botUsername}</div>
+        {ag.botUsername ? (
+          <div style={{ fontFamily: mono, fontSize: 11, color: ACCENT, letterSpacing: "0.04em" }}>@{ag.botUsername}</div>
+        ) : (
+          <div style={{ fontFamily: mono, fontSize: 11, color: "var(--foreground-3)", letterSpacing: "0.04em" }}>No platform connected</div>
+        )}
         {ag.type && (
           <span style={{
             display: "inline-block", marginTop: 8, fontSize: 10, fontWeight: 500,

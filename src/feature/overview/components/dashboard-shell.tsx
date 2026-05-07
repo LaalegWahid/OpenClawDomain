@@ -4,13 +4,14 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { authClient } from "../../../shared/lib/auth/client";
+import { RegisterModal } from "../../auth/components/register-modal";
 
-const NAV = [
+const BASE_NAV = [
   { label: "Agents",  href: "/overview" },
   { label: "Monitor", href: "/monitor"  },
   { label: "Skills",  href: "/skills"   },
-  { label: "Profile", href: "/settings" },
 ];
+const PROFILE_LINK = { label: "Profile", href: "/settings" };
 
 interface DashboardShellProps {
   children: React.ReactNode;
@@ -20,11 +21,15 @@ interface DashboardShellProps {
   isAdmin?: boolean;
 }
 
-export function DashboardShell({ children }: DashboardShellProps) {
+export function DashboardShell({ children, userEmail }: DashboardShellProps) {
   const pathname = usePathname();
   const router   = useRouter();
   const [navOpen, setNavOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
+
+  const isAuthenticated = Boolean(userEmail);
+  const NAV = isAuthenticated ? [...BASE_NAV, PROFILE_LINK] : BASE_NAV;
 
   useEffect(() => {
     function check() { setIsMobile(window.innerWidth < 768); }
@@ -117,7 +122,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
 
           {/* Right side */}
           <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
-            {!isMobile && (
+            {!isMobile && isAuthenticated && (
               <button
                 onClick={handleSignOut}
                 style={{
@@ -129,6 +134,21 @@ export function DashboardShell({ children }: DashboardShellProps) {
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#8a7060"; }}
               >
                 Sign out
+              </button>
+            )}
+            {!isMobile && !isAuthenticated && (
+              <button
+                onClick={() => setRegisterOpen(true)}
+                style={{
+                  fontSize: "13px", color: "#fff", background: "#FF4D00",
+                  border: "none", cursor: "pointer",
+                  padding: "8px 14px", borderRadius: "8px",
+                  fontWeight: 500, transition: "background 0.2s",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#e64500"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#FF4D00"; }}
+              >
+                Register
               </button>
             )}
             {isMobile && (
@@ -190,16 +210,29 @@ export function DashboardShell({ children }: DashboardShellProps) {
               </Link>
             );
           })}
-          <button
-            onClick={() => { setNavOpen(false); handleSignOut(); }}
-            style={{
-              marginTop: "1rem", background: "none", color: "#8a7060",
-              border: "0.5px solid rgba(42,31,25,0.15)", padding: "14px 32px", borderRadius: "10px",
-              fontSize: "15px", fontWeight: 400, cursor: "pointer",
-            }}
-          >
-            Sign out
-          </button>
+          {isAuthenticated ? (
+            <button
+              onClick={() => { setNavOpen(false); handleSignOut(); }}
+              style={{
+                marginTop: "1rem", background: "none", color: "#8a7060",
+                border: "0.5px solid rgba(42,31,25,0.15)", padding: "14px 32px", borderRadius: "10px",
+                fontSize: "15px", fontWeight: 400, cursor: "pointer",
+              }}
+            >
+              Sign out
+            </button>
+          ) : (
+            <button
+              onClick={() => { setNavOpen(false); setRegisterOpen(true); }}
+              style={{
+                marginTop: "1rem", background: "#FF4D00", color: "#fff",
+                border: "none", padding: "14px 32px", borderRadius: "10px",
+                fontSize: "15px", fontWeight: 500, cursor: "pointer",
+              }}
+            >
+              Register
+            </button>
+          )}
         </div>
       )}
 
@@ -214,6 +247,8 @@ export function DashboardShell({ children }: DashboardShellProps) {
       }}>
         {children}
       </main>
+
+      {registerOpen && <RegisterModal onClose={() => setRegisterOpen(false)} />}
     </div>
   );
 }

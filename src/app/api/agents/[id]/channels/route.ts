@@ -84,6 +84,27 @@ export async function POST(
         return NextResponse.json({ error: `Bot username mismatch. Token belongs to @${botInfo.username}` }, { status: 400 });
       }
 
+      // Cross-agent dedup: refuse if this token is already attached to another
+      // agent (either as a legacy primary or as another channel record).
+      const [legacyOwner] = await db
+        .select({ id: agent.id })
+        .from(agent)
+        .where(eq(agent.botToken, credentials.botToken))
+        .limit(1);
+      if (legacyOwner && legacyOwner.id !== id) {
+        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
+      }
+      const existingChannels = await db
+        .select({ agentId: agentChannel.agentId, credentials: agentChannel.credentials })
+        .from(agentChannel)
+        .where(eq(agentChannel.platform, "telegram"));
+      const tokenConflict = existingChannels.some(
+        (ch) => ch.agentId !== id && (ch.credentials as Record<string, string>)?.botToken === credentials.botToken,
+      );
+      if (tokenConflict) {
+        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
+      }
+
       const webhookUrl = `${env.WEBHOOK_BASE_URL}/api/telegram/webhook/${id}`;
       try {
         await setWebhook(credentials.botToken, webhookUrl, env.TELEGRAM_WEBHOOK_SECRET);
@@ -98,13 +119,39 @@ export async function POST(
 
       logger.info({ agentId: id, platform: "telegram", username: botInfo.username }, "Telegram channel added");
 
-      // Telegram messages are routed via our webhook — no container relaunch needed
+      // Relaunch so the container loads the @openclaw/telegram plugin for cron
+      // delivery. Inbound webhooks are already served by Next.js.
+      relaunchAgentWithChannels(id).catch((err) =>
+        logger.error({ err, agentId: id, platform: "telegram" }, "Relaunch after Telegram channel add failed"),
+      );
+
       return NextResponse.json({ channel: created }, { status: 201 });
     }
 
     // ── Discord ─────────────────────────────────────────────────────────────
-    if (platform === "discord" && !credentials.botToken) {
-      return NextResponse.json({ error: "discord requires credentials.botToken" }, { status: 400 });
+    if (platform === "discord") {
+      if (!credentials.botToken) {
+        return NextResponse.json({ error: "discord requires credentials.botToken" }, { status: 400 });
+      }
+      // Cross-agent dedup against legacy agent.botToken and other channel rows.
+      const [legacyOwner] = await db
+        .select({ id: agent.id })
+        .from(agent)
+        .where(eq(agent.botToken, credentials.botToken))
+        .limit(1);
+      if (legacyOwner && legacyOwner.id !== id) {
+        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
+      }
+      const existingDiscordChannels = await db
+        .select({ agentId: agentChannel.agentId, credentials: agentChannel.credentials })
+        .from(agentChannel)
+        .where(eq(agentChannel.platform, "discord"));
+      const dcConflict = existingDiscordChannels.some(
+        (ch) => ch.agentId !== id && (ch.credentials as Record<string, string>)?.botToken === credentials.botToken,
+      );
+      if (dcConflict) {
+        return NextResponse.json({ error: "Bot already registered" }, { status: 409 });
+      }
     }
 
     // ── WhatsApp (legacy Twilio path — prefer QR link flow) ─────────────────

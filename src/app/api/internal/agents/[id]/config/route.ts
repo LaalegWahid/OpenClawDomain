@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "../../../../../../shared/lib/drizzle";
-import { agent, agentTask, incomingMessage } from "../../../../../../shared/db/schema/agent";
+import { agent, agentTask, agentChannel, incomingMessage } from "../../../../../../shared/db/schema/agent";
 import { skill, agentSkill } from "../../../../../../shared/db/schema/skill";
 import { and, desc, eq } from "drizzle-orm";
 import { getDomainConfig, type AgentType } from "../../../../../../shared/lib/agents/config";
@@ -77,17 +77,26 @@ export async function GET(
   // We resolve the delivery target server-side so the entrypoint can pass
   // --channel/--to to `openclaw cron add` directly. v1: Telegram only.
   // The chat is the most-recent inbound for this agent on the implied platform.
-  const username = agentRecord.botUsername ?? "";
+  // Delivery channel is derived from agentChannel rows; if no Telegram channel
+  // exists, we fall back to the legacy agent.botUsername prefix for older rows.
+  const channelRows = await db
+    .select({ platform: agentChannel.platform })
+    .from(agentChannel)
+    .where(eq(agentChannel.agentId, agentId));
+  const hasTelegramChannel = channelRows.some((c) => c.platform === "telegram");
+
   let deliveryChannel: string | null = null;
   let deliverySource: "telegram" | "whatsapp" | null = null;
-  if (username.startsWith("whatsapp_")) {
-    // WhatsApp goes through the Baileys relay, not OpenClaw — skip delivery.
-    deliveryChannel = null;
-  } else if (username.startsWith("discord_")) {
-    deliveryChannel = null; // Discord delivery not yet wired
-  } else {
+  if (hasTelegramChannel) {
     deliveryChannel = "telegram";
     deliverySource = "telegram";
+  } else {
+    const username = agentRecord.botUsername ?? "";
+    if (username && !username.startsWith("whatsapp_") && !username.startsWith("discord_")) {
+      // Legacy Telegram-at-creation row.
+      deliveryChannel = "telegram";
+      deliverySource = "telegram";
+    }
   }
 
   let deliveryTo: string | null = null;
