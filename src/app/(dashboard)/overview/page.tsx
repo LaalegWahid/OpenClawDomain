@@ -5,6 +5,6 @@ export default async function OverviewPage() {
   const user = await getCurrentUser();
 
   return (
-    <OverviewContent userName={user?.name} />
+    <OverviewContent userName={user?.name} isAuthenticated={!!user} />
   );
 }

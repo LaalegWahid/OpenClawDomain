@@ -723,7 +723,7 @@ Paste this token into OpenClaw when creating your agent.`}</CodeBlock>
                     ]}
                   />
                   <video controls style={{ width: '100%', borderRadius: '8px', marginTop: '1rem' }}>
-                    <source src="/videos/telegram bot.mp4" type="video/mp4" />
+                    <source src="https://openclawmanagervideo.s3.us-west-1.amazonaws.com/telegram+bot.mp4" type="video/mp4" />
                     Your browser does not support the video tag.
                   </video>
                   <H3>PDF delivery</H3>
@@ -774,7 +774,7 @@ Paste this token into OpenClaw when creating your agent.`}</CodeBlock>
                     WhatsApp uses a QR-based linking flow. From the <strong style={{ color: C.text }}>Channels</strong> tab, click <strong style={{ color: C.text }}>Link WhatsApp</strong>. A QR code appears in the dashboard. Open WhatsApp on your phone → <strong style={{ color: C.text }}>Linked Devices</strong> → <strong style={{ color: C.text }}>Link a Device</strong> → scan.
                   </P>
                   <video controls style={{ width: '100%', borderRadius: '8px', marginTop: '1rem' }}>
-                    <source src="/videos/whatsappvid.mp4" type="video/mp4" />
+                    <source src="https://openclawmanagervideo.s3.us-west-1.amazonaws.com/telegram+bot.mp4" type="video/mp4" />
                     Your browser does not support the video tag.
                   </video>
                   <Callout type="warning">

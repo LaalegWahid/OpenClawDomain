@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { RegisterForm } from "./register-form";
 import { serif, mono } from "./shared/constants";
 
-const SLIDE_DURATION = 4600;
+const SLIDE_DURATION = 2000;
 const ACCENT = "#FF4D00";
 const BG      = "#f8f2ed";
 const INK     = "#2a1f19";
@@ -248,13 +248,13 @@ export function RegisterStory() {
       setTimeout(() => {
         setShowForm(true);
         setPageFading(false);
-      }, 400);
+      }, 200);
     } else {
       setTextFading(true);
       setTimeout(() => {
         setIndex(next);
         setTextFading(false);
-      }, 400);
+      }, 200);
     }
   }
 

@@ -47,9 +47,11 @@ export default async function AdminPage() {
           banned: user.banned,
           createdAt: user.createdAt,
           developerAccess: user.developerAccess,
-          agentCount: sql<number>`(select count(*)::int from ${agent} where ${agent.userId} = ${user.id})`,
+          agentCount: sql<number>`coalesce(count(${agent.id}), 0)::int`,
         })
         .from(user)
+        .leftJoin(agent, eq(agent.userId, user.id))
+        .groupBy(user.id)
         .orderBy(desc(user.createdAt)),
       db
         .select({

@@ -209,7 +209,7 @@ export default function HeroSection() {
             padding: '16px 32px', borderRadius: '10px', fontSize: '15px',
             fontWeight: 500, cursor: 'pointer', letterSpacing: '-0.01em',
           }}
-          onClick={() => window.location.href = '/register'}
+          onClick={() => window.location.href = '/overview'}
         >
           Deploy Your First Agent
         </button>

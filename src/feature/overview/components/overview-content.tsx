@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Bot, Loader2, X, Sparkles, CreditCard } from "lucide-react";
+import { RegisterModal } from "../../auth/components/register-modal";
 import {
   createAgent,
   fetchAgents as fetchAgentsAction,
@@ -35,11 +36,13 @@ import {
 
 interface OverviewContentProps {
   userName?: string | null;
+  isAuthenticated?: boolean;
 }
 
-export function OverviewContent({ userName }: OverviewContentProps) {
+export function OverviewContent({ userName, isAuthenticated = false }: OverviewContentProps) {
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -267,7 +270,12 @@ export function OverviewContent({ userName }: OverviewContentProps) {
         </div>
 
         <button
-          onClick={async () => { resetForm(); setUserSkills(await fetchUserSkillsAction()); setShowModal(true); }}
+          onClick={async () => {
+            if (!isAuthenticated) { setShowRegisterModal(true); return; }
+            resetForm();
+            setUserSkills(await fetchUserSkillsAction());
+            setShowModal(true);
+          }}
           style={{
             background: ACCENT, color: "#fff",
             border: "none", borderRadius: 8, padding: "10px 20px",
@@ -645,6 +653,10 @@ export function OverviewContent({ userName }: OverviewContentProps) {
           hasCard={hasCard === true}
           onDismiss={() => setTrialPopupDismissed(true)}
         />
+      )}
+
+      {showRegisterModal && (
+        <RegisterModal onClose={() => setShowRegisterModal(false)} />
       )}
 
       <OverviewStyles />

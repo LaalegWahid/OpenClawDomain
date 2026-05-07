@@ -5,6 +5,6 @@ export default async function SkillsPage() {
   const user = await getCurrentUser();
 
   return (
-    <SkillsContent />
+    <SkillsContent isAuthenticated={!!user} />
   );
 }
