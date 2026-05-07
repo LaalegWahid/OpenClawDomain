@@ -129,7 +129,7 @@ export default function Navbar({ links = [] }: NavbarProps) {
             {!isMobile && !isAuthed && (
               <button
                 style={ctaButtonStyle}
-                onClick={() => window.location.href = '/register'}
+                onClick={() => window.location.href = '/overview'}
               >
                 Get Started
               </button>
