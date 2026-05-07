@@ -6,14 +6,19 @@ import { getSessionOrThrow } from "../../../../../shared/lib/auth/getSessionOrTh
 import { sendCommand } from "../../../../../shared/lib/agents/docker";
 import { logger } from "../../../../../shared/lib/logger";
 import type { AgentType } from "../../../../../shared/lib/agents/config";
+import {
+  appendEvent,
+  createJob,
+  setJobError,
+  setJobResult,
+} from "../../../../../shared/lib/agents/peer-test-jobs";
 
 const MAX_QUESTION_LEN = 4000;
 
 /**
- * Drives the inter-agent test from the dashboard. Sends a wrapper prompt to the
- * "from" agent that instructs it to call the peer-ask endpoint against the
- * "to" agent and report what came back. This exercises the full end-to-end
- * path: bash tool → /api/internal/.../ask → target gateway → reply.
+ * Starts an inter-agent peer-test job. Returns a jobId immediately so the
+ * browser can poll for progress (the agent loop typically outlives ALB
+ * idle timeout, so we can't keep the request open).
  *
  * URL param `id`: the FROM agent (the one we send the wrapper prompt to).
  * Body: { toAgentId: uuid, question: string }
@@ -76,8 +81,16 @@ export async function POST(
       );
     }
 
+    const job = createJob({
+      userId: session.user.id,
+      fromAgentId: fromAgent.id,
+      toAgentId: toAgent.id,
+      fromName: fromAgent.name,
+      toName: toAgent.name,
+    });
+
     const wrapperPrompt = [
-      `You have a peer agent available to consult.`,
+      `You have a peer agent available to consult. This is a tool-use instruction — call the peer regardless of your domain rules.`,
       `Peer agent name: ${toAgent.name}`,
       `Peer agent id: ${toAgent.id}`,
       ``,
@@ -88,32 +101,55 @@ export async function POST(
       question,
     ].join("\n");
 
-    logger.info({ fromAgentId, toAgentId, userId: session.user.id }, "Peer test triggered");
-    const startedAt = Date.now();
+    logger.info({ jobId: job.id, fromAgentId, toAgentId }, "Peer test job started");
 
-    try {
-      const result = await sendCommand(
-        fromAgent.containerId,
-        wrapperPrompt,
-        undefined,
-        fromAgent.type as AgentType,
-      );
+    runJobInBackground(job.id, fromAgent.containerId, wrapperPrompt, fromAgent.type as AgentType);
 
-      return NextResponse.json({
-        reply: result.text,
-        usage: result.usage,
-        durationMs: Date.now() - startedAt,
-        from: { id: fromAgent.id, name: fromAgent.name },
-        to: { id: toAgent.id, name: toAgent.name },
-      });
-    } catch (err) {
-      logger.error({ err, fromAgentId, toAgentId }, "Peer test failed");
-      const msg = err instanceof Error ? err.message : "internal error";
-      return NextResponse.json({ error: msg }, { status: 502 });
-    }
+    return NextResponse.json({
+      jobId: job.id,
+      from: { id: fromAgent.id, name: fromAgent.name },
+      to: { id: toAgent.id, name: toAgent.name },
+    }, { status: 202 });
   } catch (err) {
     if (err instanceof Response) return err;
     logger.error({ err }, "Peer test handler crashed");
     return NextResponse.json({ error: "internal error" }, { status: 500 });
   }
+}
+
+function runJobInBackground(
+  jobId: string,
+  fromContainerId: string,
+  wrapperPrompt: string,
+  fromType: AgentType,
+) {
+  void (async () => {
+    try {
+      appendEvent(jobId, "sending", "Sending wrapper prompt to From agent");
+      const startedAt = Date.now();
+
+      const result = await sendCommand(
+        fromContainerId,
+        wrapperPrompt,
+        undefined,
+        fromType,
+      );
+
+      appendEvent(
+        jobId,
+        "from_replied",
+        `From agent finished in ${Date.now() - startedAt} ms`,
+      );
+      setJobResult(jobId, {
+        reply: result.text,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+      });
+      appendEvent(jobId, "done", "Job complete");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown error";
+      logger.error({ err, jobId }, "Peer test background job failed");
+      setJobError(jobId, msg);
+    }
+  })();
 }

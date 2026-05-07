@@ -5,6 +5,11 @@ import { agent, agentLog } from "../../../../../../shared/db/schema/agent";
 import { sendCommand } from "../../../../../../shared/lib/agents/docker";
 import { logger } from "../../../../../../shared/lib/logger";
 import type { AgentType } from "../../../../../../shared/lib/agents/config";
+import {
+  appendEvent,
+  findActivePairJob,
+  setPeerReply,
+} from "../../../../../../shared/lib/agents/peer-test-jobs";
 
 const MAX_QUESTION_LEN = 4000;
 
@@ -94,6 +99,17 @@ export async function POST(
 
     logger.info({ fromAgentId, toAgentId }, "Peer ask");
 
+    // Surface progress to any active peer-test job watching this pair.
+    const trackedJob = findActivePairJob(fromAgentId, toAgentId);
+    if (trackedJob) {
+      appendEvent(
+        trackedJob.id,
+        "peer_received",
+        `Peer ${toAgent.name} received the question`,
+        question.length > 200 ? `${question.slice(0, 200)}…` : question,
+      );
+    }
+
     const [logEntry] = await db
       .insert(agentLog)
       .values({
@@ -124,6 +140,16 @@ export async function POST(
           completedAt: new Date(),
         })
         .where(eq(agentLog.id, logEntry.id));
+
+      if (trackedJob) {
+        setPeerReply(trackedJob.id, result.text);
+        appendEvent(
+          trackedJob.id,
+          "peer_replied",
+          `Peer ${toAgent.name} replied (${Date.now() - startedAt} ms, in ${result.usage.inputTokens} / out ${result.usage.outputTokens})`,
+          result.text.length > 400 ? `${result.text.slice(0, 400)}…` : result.text,
+        );
+      }
 
       return NextResponse.json({
         reply: result.text,

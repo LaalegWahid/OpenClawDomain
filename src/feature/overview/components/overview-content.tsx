@@ -362,6 +362,7 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
               </span>
               <button
                 onClick={() => {
+                  if (!isAuthenticated) { setShowRegisterModal(true); return; }
                   if (!referral.referralCode) return;
                   navigator.clipboard.writeText(`${window.location.origin}/register?ref=${referral.referralCode}`);
                   setCopied(true);

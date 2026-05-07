@@ -1,18 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bot, Send, Square } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowRight,
+  Bot,
+  Check,
+  CircleAlert,
+  CircleDot,
+  Inbox,
+  MessageSquare,
+  Send,
+  Square,
+} from "lucide-react";
 import {
   fetchAgents,
-  runPeerTest,
+  pollPeerTest,
+  startPeerTest,
   type PeerAgent,
-  type PeerTestResult,
+  type PeerTestEvent,
+  type PeerTestJobView,
 } from "../actions/peer-test.actions";
 
 const ACCENT = "#6366f1";
 const mono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
-const TEST_TIMEOUT_MS = 180_000;
+const POLL_INTERVAL_MS = 1500;
+const POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
 export function PeerTestContent() {
   const [agents, setAgents] = useState<PeerAgent[]>([]);
@@ -23,11 +36,15 @@ export function PeerTestContent() {
   const [toId, setToId] = useState("");
   const [question, setQuestion] = useState("");
 
+  const [job, setJob] = useState<PeerTestJobView | null>(null);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<PeerTestResult | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const pollAbortRef = useRef<AbortController | null>(null);
 
-  const activeAgents = useMemo(() => agents.filter((a) => a.status === "active"), [agents]);
+  const activeAgents = useMemo(
+    () => agents.filter((a) => a.status === "active"),
+    [agents],
+  );
 
   useEffect(() => {
     fetchAgents()
@@ -39,6 +56,10 @@ export function PeerTestContent() {
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    return () => pollAbortRef.current?.abort();
   }, []);
 
   const canRun =
@@ -53,45 +74,63 @@ export function PeerTestContent() {
   async function handleRun() {
     if (!canRun) return;
     setRunning(true);
-    setResult(null);
-    setRunError(null);
+    setJob(null);
+    setStartError(null);
+
+    const startRes = await startPeerTest(fromId, toId, question.trim());
+    if ("error" in startRes) {
+      setStartError(`${startRes.error} (HTTP ${startRes.status})`);
+      setRunning(false);
+      return;
+    }
+
+    setJob({
+      id: startRes.jobId,
+      status: "pending",
+      events: [],
+      from: startRes.from,
+      to: startRes.to,
+    });
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
+    pollAbortRef.current?.abort();
+    pollAbortRef.current = controller;
 
-    try {
-      const res = await runPeerTest(fromId, toId, question.trim(), controller.signal);
-      if ("error" in res) {
-        setRunError(`${res.error} (HTTP ${res.status})`);
-      } else {
-        setResult(res);
+    const startedAt = Date.now();
+    while (!controller.signal.aborted) {
+      if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+        setStartError("Polling timed out after 10 min — check CloudWatch logs");
+        break;
       }
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        setRunError("Request timed out");
-      } else {
-        setRunError(err instanceof Error ? err.message : "Unknown error");
+
+      try {
+        const res = await pollPeerTest(fromId, startRes.jobId, controller.signal);
+        if (controller.signal.aborted) break;
+        if ("error" in res) {
+          setStartError(`${res.error} (HTTP ${res.status})`);
+          break;
+        }
+        setJob(res);
+        if (res.status === "done" || res.status === "error") break;
+      } catch (err) {
+        if (controller.signal.aborted) break;
+        setStartError(err instanceof Error ? err.message : "Polling failed");
+        break;
       }
-    } finally {
-      clearTimeout(timeoutId);
-      setRunning(false);
+      await sleep(POLL_INTERVAL_MS, controller.signal);
     }
+    setRunning(false);
+  }
+
+  function handleStop() {
+    pollAbortRef.current?.abort();
+    setRunning(false);
   }
 
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "5rem 0" }}>
-        <div
-          style={{
-            width: 24,
-            height: 24,
-            border: "2px solid var(--border)",
-            borderTopColor: ACCENT,
-            borderRadius: "50%",
-            animation: "spin 1s linear infinite",
-          }}
-        />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <Spinner />
       </div>
     );
   }
@@ -121,7 +160,7 @@ export function PeerTestContent() {
         <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>Peer Agent Test</h1>
         <p style={{ fontFamily: mono, fontSize: 12, color: "var(--foreground-3)" }}>
           Sends a question to <strong>From</strong>, asks it to consult <strong>To</strong> via the
-          peer-ask endpoint, and returns the chained reply. Both agents must be active and belong to you.
+          peer-ask endpoint, and streams each step as it happens. Both agents must be active.
         </p>
       </div>
 
@@ -179,36 +218,48 @@ export function PeerTestContent() {
       </div>
 
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <button
-          onClick={handleRun}
-          disabled={!canRun}
-          style={{
-            background: canRun ? ACCENT : "var(--surface-2)",
-            color: canRun ? "#fff" : "var(--foreground-3)",
-            border: "none",
-            borderRadius: 8,
-            padding: "10px 16px",
-            cursor: canRun ? "pointer" : "not-allowed",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontFamily: mono,
-            fontSize: 13,
-            fontWeight: 500,
-          }}
-        >
-          {running ? (
-            <>
-              <Square size={12} fill="#fff" />
-              Running…
-            </>
-          ) : (
-            <>
-              <Send size={14} />
-              Run test
-            </>
-          )}
-        </button>
+        {running ? (
+          <button
+            onClick={handleStop}
+            style={{
+              background: "var(--surface-2)",
+              color: "var(--foreground)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "10px 16px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontFamily: mono,
+              fontSize: 13,
+            }}
+          >
+            <Square size={12} /> Stop polling
+          </button>
+        ) : (
+          <button
+            onClick={handleRun}
+            disabled={!canRun}
+            style={{
+              background: canRun ? ACCENT : "var(--surface-2)",
+              color: canRun ? "#fff" : "var(--foreground-3)",
+              border: "none",
+              borderRadius: 8,
+              padding: "10px 16px",
+              cursor: canRun ? "pointer" : "not-allowed",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontFamily: mono,
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            <Send size={14} />
+            Run test
+          </button>
+        )}
         {fromId === toId && fromId && (
           <span style={{ fontFamily: mono, fontSize: 12, color: "var(--error)" }}>
             From and To must differ.
@@ -216,7 +267,7 @@ export function PeerTestContent() {
         )}
       </div>
 
-      {runError && (
+      {startError && (
         <div
           style={{
             padding: "10px 14px",
@@ -228,52 +279,261 @@ export function PeerTestContent() {
             borderRadius: 8,
           }}
         >
-          {runError}
+          {startError}
         </div>
       )}
 
-      {result && (
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-            background: "var(--surface)",
-            padding: 16,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: mono, fontSize: 11, color: "var(--foreground-3)" }}>
-            <span>{result.from.name}</span>
-            <ArrowRight size={12} />
-            <span>{result.to.name}</span>
-            <span style={{ marginLeft: "auto" }}>
-              {result.durationMs} ms · in {result.usage.inputTokens} · out {result.usage.outputTokens}
-            </span>
-          </div>
-          <pre
-            style={{
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              fontFamily: mono,
-              fontSize: 13,
-              lineHeight: "20px",
-              color: "var(--foreground)",
-              margin: 0,
-            }}
-          >
-            {result.reply}
-          </pre>
-        </div>
+      {job && (
+        <Timeline
+          job={job}
+          fromName={job.from.name}
+          toName={job.to.name}
+          isPolling={running}
+        />
       )}
 
-      {fromAgent && toAgent && !result && !runError && !running && (
+      {job?.peerReply && (
+        <ResultPanel title={`Peer reply (${job.to.name})`} body={job.peerReply} />
+      )}
+
+      {job?.result && (
+        <ResultPanel
+          title={`Final reply (${job.from.name})`}
+          body={job.result.reply}
+          meta={`in ${job.result.inputTokens} · out ${job.result.outputTokens}`}
+          accent
+        />
+      )}
+
+      {job?.error && (
+        <ResultPanel title="Error" body={job.error} error />
+      )}
+
+      {fromAgent && toAgent && !job && !startError && !running && (
         <p style={{ fontFamily: mono, fontSize: 11, color: "var(--foreground-3)" }}>
           Will send the wrapper prompt to <strong>{fromAgent.name}</strong> instructing it to call{" "}
           <strong>{toAgent.name}</strong> via the peer-ask tool.
         </p>
       )}
+    </div>
+  );
+}
+
+function Timeline({
+  job,
+  fromName,
+  toName,
+  isPolling,
+}: {
+  job: PeerTestJobView;
+  fromName: string;
+  toName: string;
+  isPolling: boolean;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        background: "var(--surface)",
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 12,
+          fontFamily: mono,
+          fontSize: 11,
+          color: "var(--foreground-3)",
+        }}
+      >
+        <span>{fromName}</span>
+        <ArrowRight size={12} />
+        <span>{toName}</span>
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+          <StatusDot status={job.status} polling={isPolling} />
+          <span>{job.status}</span>
+        </span>
+      </div>
+      <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+        {job.events.map((ev, i) => (
+          <EventRow key={i} ev={ev} prevTs={i > 0 ? job.events[i - 1].ts : undefined} />
+        ))}
+        {isPolling && (job.status === "pending" || job.status === "running") && (
+          <li style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: mono, fontSize: 12, color: "var(--foreground-3)" }}>
+            <Spinner size={12} />
+            <span>Waiting for next event…</span>
+          </li>
+        )}
+      </ol>
+    </div>
+  );
+}
+
+function EventRow({ ev, prevTs }: { ev: PeerTestEvent; prevTs?: number }) {
+  const dt = prevTs ? ev.ts - prevTs : 0;
+  return (
+    <li style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+      <div style={{ paddingTop: 2 }}>
+        <EventIcon kind={ev.kind} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "baseline", fontFamily: mono, fontSize: 12 }}>
+          <span style={{ color: "var(--foreground)" }}>{ev.message}</span>
+          {prevTs && (
+            <span style={{ marginLeft: "auto", color: "var(--foreground-3)", fontSize: 10 }}>+{dt} ms</span>
+          )}
+        </div>
+        {ev.detail && (
+          <pre
+            style={{
+              marginTop: 6,
+              padding: "6px 10px",
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              fontFamily: mono,
+              fontSize: 11,
+              color: "var(--foreground-3)",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              maxHeight: 200,
+              overflow: "auto",
+              margin: 0,
+            }}
+          >
+            {ev.detail}
+          </pre>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function EventIcon({ kind }: { kind: PeerTestEvent["kind"] }) {
+  switch (kind) {
+    case "queued":
+      return <Inbox size={14} color="var(--foreground-3)" />;
+    case "sending":
+      return <Send size={14} color={ACCENT} />;
+    case "peer_received":
+      return <Inbox size={14} color={ACCENT} />;
+    case "peer_replied":
+      return <MessageSquare size={14} color={ACCENT} />;
+    case "from_replied":
+      return <MessageSquare size={14} color={ACCENT} />;
+    case "done":
+      return <Check size={14} color="#22c55e" />;
+    case "error":
+      return <CircleAlert size={14} color="var(--error)" />;
+    default:
+      return <CircleDot size={14} />;
+  }
+}
+
+function StatusDot({
+  status,
+  polling,
+}: {
+  status: PeerTestJobView["status"];
+  polling: boolean;
+}) {
+  const color =
+    status === "done" ? "#22c55e" : status === "error" ? "#e23d2d" : ACCENT;
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: color,
+        boxShadow: polling && (status === "pending" || status === "running") ? `0 0 0 4px ${color}33` : "none",
+        animation:
+          polling && (status === "pending" || status === "running")
+            ? "pulse 1.4s ease-in-out infinite"
+            : "none",
+      }}
+    >
+      <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .5 } }`}</style>
+    </span>
+  );
+}
+
+function ResultPanel({
+  title,
+  body,
+  meta,
+  accent,
+  error,
+}: {
+  title: string;
+  body: string;
+  meta?: string;
+  accent?: boolean;
+  error?: boolean;
+}) {
+  const borderColor = error ? "rgba(226,61,45,0.3)" : accent ? ACCENT : "var(--border)";
+  return (
+    <div
+      style={{
+        border: `1px solid ${borderColor}`,
+        borderRadius: 12,
+        background: error ? "rgba(226,61,45,0.04)" : "var(--surface)",
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontFamily: mono,
+          fontSize: 11,
+          color: error ? "var(--error)" : "var(--foreground-3)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}
+      >
+        <span>{title}</span>
+        {meta && <span style={{ marginLeft: "auto" }}>{meta}</span>}
+      </div>
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          fontFamily: mono,
+          fontSize: 13,
+          lineHeight: "20px",
+          color: error ? "var(--error)" : "var(--foreground)",
+          margin: 0,
+        }}
+      >
+        {body}
+      </pre>
+    </div>
+  );
+}
+
+function Spinner({ size = 24 }: { size?: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        border: `2px solid var(--border)`,
+        borderTopColor: ACCENT,
+        borderRadius: "50%",
+        animation: "spin 1s linear infinite",
+      }}
+    >
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
@@ -338,4 +598,14 @@ function AgentSelect({
       </select>
     </div>
   );
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(t);
+      resolve();
+    });
+  });
 }
