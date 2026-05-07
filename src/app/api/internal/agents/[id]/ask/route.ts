@@ -166,6 +166,15 @@ export async function POST(
           completedAt: new Date(),
         })
         .where(eq(agentLog.id, logEntry.id));
+      if (trackedJob) {
+        const msg = err instanceof Error ? err.message : "unknown error";
+        appendEvent(
+          trackedJob.id,
+          "error",
+          `Peer ${toAgent.name} gateway failed`,
+          msg.length > 600 ? `${msg.slice(0, 600)}…` : msg,
+        );
+      }
       throw err;
     }
   } catch (err) {

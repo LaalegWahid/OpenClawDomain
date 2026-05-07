@@ -9,6 +9,7 @@ import type { AgentType } from "../../../../../shared/lib/agents/config";
 import {
   appendEvent,
   createJob,
+  getJob,
   setJobError,
   setJobResult,
 } from "../../../../../shared/lib/agents/peer-test-jobs";
@@ -149,6 +150,22 @@ function runJobInBackground(
     } catch (err) {
       const msg = err instanceof Error ? err.message : "unknown error";
       logger.error({ err, jobId }, "Peer test background job failed");
+
+      // Infer where the failure happened by inspecting events already on the job:
+      //  - no peer_received     → From agent failed before reaching the peer
+      //  - peer_received only   → Peer's gateway failed (already attributed by /ask)
+      //  - peer_replied set     → From agent failed AFTER the peer responded
+      const j = getJob(jobId);
+      const haveReceived = j?.events.some((e) => e.kind === "peer_received");
+      const haveReplied = j?.events.some((e) => e.kind === "peer_replied");
+      let where: string;
+      if (!haveReceived) where = "From agent gateway failed before reaching the peer";
+      else if (!haveReplied) where = "From agent failed while waiting for the peer";
+      else where = "From agent failed after receiving the peer reply";
+
+      const detail = msg.length > 600 ? `${msg.slice(0, 600)}…` : msg;
+      // setJobError appends a generic "error" event; add the attribution above it.
+      appendEvent(jobId, "error", where, detail);
       setJobError(jobId, msg);
     }
   })();
