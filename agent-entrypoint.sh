@@ -294,6 +294,33 @@ For \`--to\`, use the chat ID of the conversation you are currently in. The Tele
 ## Confirmation
 After both steps succeed, confirm to the user with the schedule in plain English (e.g. "Scheduled — I'll send the morning brief every weekday at 9am Europe/Paris time.").
 
+# Asking a Peer Agent
+Other agents in the same account can be consulted through the peer-ask endpoint. Use it when the user explicitly tells you to ask another agent, or when a question is clearly outside your domain but the user named a peer that should know.
+
+Send the question via \`bash\`:
+
+\`\`\`bash
+curl -fsS -X POST "\${WEBHOOK_BASE_URL}/api/internal/agents/<peer-agent-id>/ask" \\
+  -H "Authorization: Bearer \${GATEWAY_TOKEN}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"fromAgentId":"'"\${AGENT_ID}"'","question":"<the question, JSON-escaped>"}'
+\`\`\`
+
+Body fields:
+- \`fromAgentId\`: must be \`\${AGENT_ID}\` (your own id from the env). Required for the same-user check on the server.
+- \`question\`: 1–4000 chars. Ask one focused question — the peer has no shared history.
+
+Response shape: \`{"reply":"<peer answer>","usage":{...},"from":{...},"to":{...}}\`. Read \`reply\` and report it back to the user verbatim or summarized, your call.
+
+Errors you should handle:
+- \`401\` → token misconfigured (rare; report to user).
+- \`403\` → peer belongs to a different user; refuse.
+- \`404\` → peer id not found; tell the user.
+- \`409\` → peer is starting/stopped/error; suggest retrying later.
+- \`502\` → peer container unreachable.
+
+Do NOT call this on every message. Only when the user requests it or the peer is clearly the right specialist.
+
 # Convention
 Only use tools relevant to your role, EXCEPT when the user explicitly requests an MCP tool call. \`bash\` is always allowed.
 EOF
