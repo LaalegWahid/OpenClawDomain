@@ -2,14 +2,13 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { authClient } from "../../../shared/lib/auth/client";
+import { usePathname } from "next/navigation";
+import { RegisterModal } from "../../auth/components/register-modal";
 
 const NAV = [
   { label: "Agents",  href: "/overview" },
   { label: "Monitor", href: "/monitor"  },
   { label: "Skills",  href: "/skills"   },
-  { label: "Profile", href: "/settings" },
 ];
 
 interface DashboardShellProps {
@@ -22,9 +21,9 @@ interface DashboardShellProps {
 
 export function DashboardShell({ children }: DashboardShellProps) {
   const pathname = usePathname();
-  const router   = useRouter();
   const [navOpen, setNavOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
 
   useEffect(() => {
     function check() { setIsMobile(window.innerWidth < 768); }
@@ -37,11 +36,6 @@ export function DashboardShell({ children }: DashboardShellProps) {
     document.body.style.overflow = navOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [navOpen]);
-
-  async function handleSignOut() {
-    await authClient.signOut();
-    router.push("/login");
-  }
 
   function isActive(href: string) {
     if (href === "/overview") return pathname === "/overview" || pathname.startsWith("/overview/");
@@ -119,16 +113,17 @@ export function DashboardShell({ children }: DashboardShellProps) {
           <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
             {!isMobile && (
               <button
-                onClick={handleSignOut}
+                onClick={() => setRegisterOpen(true)}
                 style={{
-                  fontSize: "13px", color: "#8a7060", background: "none",
-                  border: "none", cursor: "pointer", padding: 0,
-                  transition: "color 0.2s",
+                  fontSize: "13px", color: "#fff", background: "#FF4D00",
+                  border: "none", cursor: "pointer",
+                  padding: "8px 14px", borderRadius: "8px",
+                  fontWeight: 500, transition: "background 0.2s",
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#2a1f19"; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#8a7060"; }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#e64500"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#FF4D00"; }}
               >
-                Sign out
+                Register
               </button>
             )}
             {isMobile && (
@@ -191,14 +186,14 @@ export function DashboardShell({ children }: DashboardShellProps) {
             );
           })}
           <button
-            onClick={() => { setNavOpen(false); handleSignOut(); }}
+            onClick={() => { setNavOpen(false); setRegisterOpen(true); }}
             style={{
-              marginTop: "1rem", background: "none", color: "#8a7060",
-              border: "0.5px solid rgba(42,31,25,0.15)", padding: "14px 32px", borderRadius: "10px",
-              fontSize: "15px", fontWeight: 400, cursor: "pointer",
+              marginTop: "1rem", background: "#FF4D00", color: "#fff",
+              border: "none", padding: "14px 32px", borderRadius: "10px",
+              fontSize: "15px", fontWeight: 500, cursor: "pointer",
             }}
           >
-            Sign out
+            Register
           </button>
         </div>
       )}
@@ -214,6 +209,8 @@ export function DashboardShell({ children }: DashboardShellProps) {
       }}>
         {children}
       </main>
+
+      {registerOpen && <RegisterModal onClose={() => setRegisterOpen(false)} />}
     </div>
   );
 }
