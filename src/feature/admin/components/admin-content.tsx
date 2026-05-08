@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import {
   Users,
@@ -57,6 +58,8 @@ import {
   type VisitStats,
 } from "./shared";
 
+const PAGE_SIZE = 10;
+
 interface AdminContentProps {
   initialEnabled: boolean;
   stats: {
@@ -96,6 +99,17 @@ export function AdminContent({
   const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+
+  const [userPage, setUserPage] = useState(1);
+  const [agentPage, setAgentPage] = useState(1);
+
+  useEffect(() => {
+    setUserPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    setAgentPage(1);
+  }, [agentQuery]);
 
   async function toggleService() {
     setLoading(true);
@@ -188,6 +202,20 @@ export function AdminContent({
     );
   }, [agents, agentQuery]);
 
+  const userTotalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeUserPage = Math.min(userPage, userTotalPages);
+  const usersPaged = useMemo(
+    () => filtered.slice((safeUserPage - 1) * PAGE_SIZE, safeUserPage * PAGE_SIZE),
+    [filtered, safeUserPage],
+  );
+
+  const agentTotalPages = Math.max(1, Math.ceil(filteredAgents.length / PAGE_SIZE));
+  const safeAgentPage = Math.min(agentPage, agentTotalPages);
+  const agentsPaged = useMemo(
+    () => filteredAgents.slice((safeAgentPage - 1) * PAGE_SIZE, safeAgentPage * PAGE_SIZE),
+    [filteredAgents, safeAgentPage],
+  );
+
   const statCards = [
     { label: "Total Users", value: stats.totalUsers, icon: <Users size={14} /> },
     { label: "Total Agents", value: stats.totalAgents, icon: <Bot size={14} /> },
@@ -254,12 +282,18 @@ export function AdminContent({
         >
           {rowError && <ErrorBanner message={rowError} />}
           <UsersTable
-            users={filtered}
+            users={usersPaged}
             pendingId={pendingId}
             onToggleRole={toggleRole}
             onToggleBan={toggleBan}
             onToggleDeveloperAccess={toggleDeveloperAccess}
             onRemove={removeUser}
+          />
+          <Pagination
+            page={safeUserPage}
+            totalPages={userTotalPages}
+            onPageChange={setUserPage}
+            totalItems={filtered.length}
           />
         </Card>
 
@@ -331,7 +365,13 @@ export function AdminContent({
           icon={<Bot size={16} />}
           action={<SearchInput value={agentQuery} onChange={setAgentQuery} placeholder="Search name, bot, owner, model" width={220} />}
         >
-          <AgentsTable agents={filteredAgents} />
+          <AgentsTable agents={agentsPaged} />
+          <Pagination
+            page={safeAgentPage}
+            totalPages={agentTotalPages}
+            onPageChange={setAgentPage}
+            totalItems={filteredAgents.length}
+          />
         </Card>
       </div>
     </>
@@ -615,6 +655,14 @@ function AgentsTable({ agents }: { agents: AgentRow[] }) {
 }
 
 function VisitsSection({ visits }: { visits: VisitStats }) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(visits.recent.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const recentPaged = useMemo(
+    () => visits.recent.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [visits.recent, safePage],
+  );
+
   return (
     <>
       {visits.error && (
@@ -642,10 +690,10 @@ function VisitsSection({ visits }: { visits: VisitStats }) {
             No visits recorded yet.
           </div>
         ) : (
-          <div style={{ overflowX: "auto", maxHeight: 360, overflowY: "auto" }}>
+          <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
-                <tr style={{ textAlign: "left", color: MUTED, position: "sticky", top: 0, background: CARD }}>
+                <tr style={{ textAlign: "left", color: MUTED }}>
                   {["When", "Page", "Location", "Referrer", "Device", "Session"].map((h) => (
                     <th key={h} style={{
                       fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em",
@@ -657,7 +705,7 @@ function VisitsSection({ visits }: { visits: VisitStats }) {
                 </tr>
               </thead>
               <tbody>
-                {visits.recent.map((v, i) => (
+                {recentPaged.map((v, i) => (
                   <tr key={`${v.sessionId}-${v.timestamp}-${i}`} className="oc-row" style={{ borderBottom: `1px solid ${BORDER}` }}>
                     <td style={{ padding: "10px 12px", color: MUTED, whiteSpace: "nowrap" }}>
                       {new Date(v.timestamp).toLocaleString()}
@@ -699,6 +747,12 @@ function VisitsSection({ visits }: { visits: VisitStats }) {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={safePage}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              totalItems={visits.recent.length}
+            />
           </div>
         )}
       </div>
@@ -707,6 +761,14 @@ function VisitsSection({ visits }: { visits: VisitStats }) {
 }
 
 function FeedbackList({ feedback }: { feedback: FeedbackRow[] }) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(feedback.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const feedbackPaged = useMemo(
+    () => feedback.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [feedback, safePage],
+  );
+
   if (feedback.length === 0) {
     return (
       <div style={{ padding: "20px 0", textAlign: "center", color: MUTED, fontSize: 13 }}>
@@ -715,8 +777,9 @@ function FeedbackList({ feedback }: { feedback: FeedbackRow[] }) {
     );
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 420, overflowY: "auto" }}>
-      {feedback.map((f) => (
+    <>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {feedbackPaged.map((f) => (
         <div
           key={f.id}
           style={{
@@ -761,5 +824,110 @@ function FeedbackList({ feedback }: { feedback: FeedbackRow[] }) {
         </div>
       ))}
     </div>
+    <Pagination
+      page={safePage}
+      totalPages={totalPages}
+      onPageChange={setPage}
+      totalItems={feedback.length}
+    />
+    </>
   );
+}
+
+function Pagination({
+  page,
+  totalPages,
+  onPageChange,
+  totalItems,
+}: {
+  page: number;
+  totalPages: number;
+  onPageChange: (p: number) => void;
+  totalItems: number;
+}) {
+  if (totalPages <= 1) return null;
+
+  const pages: (number | "ellipsis")[] = [];
+  const window = 1;
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (page - window > 2) pages.push("ellipsis");
+    const start = Math.max(2, page - window);
+    const end = Math.min(totalPages - 1, page + window);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (page + window < totalPages - 1) pages.push("ellipsis");
+    pages.push(totalPages);
+  }
+
+  const from = (page - 1) * PAGE_SIZE + 1;
+  const to = Math.min(page * PAGE_SIZE, totalItems);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        marginTop: 12,
+        paddingTop: 12,
+        borderTop: `1px solid ${BORDER}`,
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ fontSize: 12, color: MUTED }}>
+        {from}–{to} of {totalItems}
+      </div>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <button
+          type="button"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          style={pageBtnStyle(false, page <= 1)}
+        >
+          Prev
+        </button>
+        {pages.map((p, i) =>
+          p === "ellipsis" ? (
+            <span key={`e-${i}`} style={{ color: MUTED, padding: "0 4px", fontSize: 12 }}>…</span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPageChange(p)}
+              style={pageBtnStyle(p === page, false)}
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= totalPages}
+          style={pageBtnStyle(false, page >= totalPages)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function pageBtnStyle(active: boolean, disabled: boolean): CSSProperties {
+  return {
+    minWidth: 32,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 600,
+    border: `1px solid ${active ? ACCENT : BORDER}`,
+    background: active ? ACCENT : "transparent",
+    color: active ? "#fff" : disabled ? MUTED : INK,
+    borderRadius: 8,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    lineHeight: 1,
+  };
 }
