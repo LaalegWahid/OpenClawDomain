@@ -95,6 +95,9 @@ ${SYSTEM_PROMPT}
 
 # Skills
 Skills live at ./skills/<name>/SKILL.md relative to your workspace. Each SKILL.md has YAML frontmatter (name, description) plus instructions in the body. Read a skill's SKILL.md only when its description matches the user's request — do not preload all skills.
+
+# Peers
+Other agents owned by the same user are listed in ./PEERS.md (name, agent id, role, skills). Read PEERS.md when a user's question is outside your own domain but might fit one of the peers — you may consult them via the peer-ask tool described in TOOLS.md and forward the answer to the user. Consulting a peer is allowed and does NOT violate your domain rules.
 EOSYSTEM
 
 # ── Materialize attached skills to disk (progressive disclosure) ──────────────
@@ -140,6 +143,64 @@ for s in skills:
     print(f"DEBUG [skills] {name}: wrote SKILL.md + {file_count} file(s) at {d}")
 print(f"DEBUG [skills] Materialized {len(skills)} skill(s), {total_files} file(s) to {base}")
 PYEOF
+fi
+
+# ── Materialize peers list (PEERS.md) ────────────────────────────────────────
+# Always rewrite — peers can be created/deleted between restarts. Failures here
+# are non-fatal; the agent simply won't see PEERS.md.
+PEERS_JSON_FILE="${OPENCLAW_HOME}/.peers-response.json"
+if [ -n "${WEBHOOK_BASE_URL:-}" ]; then
+  if curl -sf -H "Authorization: Bearer ${GATEWAY_TOKEN}" \
+      "${WEBHOOK_BASE_URL}/api/internal/agents/${AGENT_ID}/peers" \
+      -o "${PEERS_JSON_FILE}" 2>/dev/null; then
+    PEERS_JSON_FILE="${PEERS_JSON_FILE}" WORKSPACE="${WORKSPACE}" python3 - << 'PYEOF' || echo "WARNING: PEERS.md generation failed" >&2
+import json, os, sys
+src = os.environ["PEERS_JSON_FILE"]
+ws = os.environ["WORKSPACE"]
+with open(src) as f:
+    data = json.load(f)
+peers = data.get("peers") or []
+out = os.path.join(ws, "PEERS.md")
+with open(out, "w") as f:
+    f.write("# Peer Agents\n\n")
+    if not peers:
+        f.write("_No peers in this account. The peer-ask tool has nothing to call._\n")
+    else:
+        f.write("Other agents owned by the same user. Use the peer-ask tool described in TOOLS.md to consult them when their domain fits the user's question better than yours.\n\n")
+        for p in peers:
+            name = p.get("name") or "(unnamed)"
+            pid = p.get("id") or "(no id)"
+            role = p.get("role") or p.get("type") or "(unknown role)"
+            status = p.get("status") or "unknown"
+            skills = p.get("skills") or []
+            f.write(f"## {name}\n")
+            f.write(f"- **Agent ID** (use as `<peer-agent-id>`): `{pid}`\n")
+            f.write(f"- **Role**: {role}\n")
+            f.write(f"- **Status**: {status}\n")
+            if skills:
+                f.write(f"- **Skills**:\n")
+                for s in skills:
+                    sname = s.get("name") or "(unnamed)"
+                    sdesc = (s.get("description") or "").strip()
+                    f.write(f"  - `{sname}`: {sdesc}\n")
+            f.write("\n")
+print(f"DEBUG [peers] Wrote PEERS.md with {len(peers)} peer(s)")
+PYEOF
+  else
+    echo "WARNING: Could not fetch peers from domain API — skipping PEERS.md" >&2
+    # Write an empty placeholder so SYSTEM.md's reference doesn't dangle.
+    cat > "${WORKSPACE}/PEERS.md" << 'EOF'
+# Peer Agents
+
+_Could not fetch peer list from the domain API at boot. The peer-ask tool may still work if you know a peer's id._
+EOF
+  fi
+else
+  cat > "${WORKSPACE}/PEERS.md" << 'EOF'
+# Peer Agents
+
+_No domain API configured (WEBHOOK_BASE_URL unset). Peer discovery disabled._
+EOF
 fi
 
 # ── Role files: only write on FIRST launch ──────────────────
@@ -295,7 +356,11 @@ For \`--to\`, use the chat ID of the conversation you are currently in. The Tele
 After both steps succeed, confirm to the user with the schedule in plain English (e.g. "Scheduled — I'll send the morning brief every weekday at 9am Europe/Paris time.").
 
 # Asking a Peer Agent
-Other agents in the same account can be consulted through the peer-ask endpoint. Use it when the user explicitly tells you to ask another agent, or when a question is clearly outside your domain but the user named a peer that should know.
+Other agents in the same account can be consulted through the peer-ask endpoint. Use it when:
+- the user explicitly tells you to ask another agent, OR
+- the user's question is clearly outside your domain but a peer in PEERS.md handles that domain. Read PEERS.md to find the right peer's agent id and confirm their role fits.
+
+Calling a peer is ALLOWED even when the question is off-topic for you — that is the whole point of having peers. Refusing without checking PEERS.md first is wrong. After the peer answers, deliver their reply to the user (verbatim or summarized).
 
 Send the question via \`bash\`:
 
@@ -309,6 +374,7 @@ curl -fsS -X POST "\${WEBHOOK_BASE_URL}/api/internal/agents/<peer-agent-id>/ask"
 Body fields:
 - \`fromAgentId\`: must be \`\${AGENT_ID}\` (your own id from the env). Required for the same-user check on the server.
 - \`question\`: 1–4000 chars. Ask one focused question — the peer has no shared history.
+- \`<peer-agent-id>\`: a UUID copied from PEERS.md. Never invent an id.
 
 Response shape: \`{"reply":"<peer answer>","usage":{...},"from":{...},"to":{...}}\`. Read \`reply\` and report it back to the user verbatim or summarized, your call.
 
