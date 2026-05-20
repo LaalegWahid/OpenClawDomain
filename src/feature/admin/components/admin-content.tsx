@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, use, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import {
@@ -49,6 +49,7 @@ import {
   SearchInput,
   SeriesLabel,
   agentStatusColor,
+  formatDay,
   formatLocation,
   shortenReferrer,
   type AgentRow,
@@ -70,11 +71,11 @@ interface AdminContentProps {
   };
   users: UserRow[];
   agents: AgentRow[];
-  userGrowth: SeriesPoint[];
-  agentActivity: SeriesPoint[];
+  userGrowth: Promise<SeriesPoint[]>;
+  agentActivity: Promise<SeriesPoint[]>;
   feedback: FeedbackRow[];
   avgRating: number;
-  visits: VisitStats;
+  visits: Promise<VisitStats>;
 }
 
 export function AdminContent({
@@ -297,50 +298,15 @@ export function AdminContent({
           />
         </Card>
 
-        {/* Charts row */}
-        <div
-          className="oc-page-section"
-          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16 }}
-        >
-          <Card
-            title="User Growth"
-            icon={<TrendingUp size={16} />}
-            action={<SeriesLabel total={userGrowth.reduce((s, p) => s + p.count, 0)} suffix="new · 30d" />}
-          >
-            <LineChart data={userGrowth} color={ACCENT} fill="rgba(255,77,0,0.12)" />
-          </Card>
-          <Card
-            title="Agent Activity"
-            icon={<ActivityIcon size={16} />}
-            action={<SeriesLabel total={agentActivity.reduce((s, p) => s + p.count, 0)} suffix="msgs · 30d" />}
-          >
-            <BarChart data={agentActivity} color="#2a1f19" />
-          </Card>
-        </div>
+        {/* Charts row — streamed (30-day day-series scans) */}
+        <Suspense fallback={<ChartsRowSkeleton />}>
+          <ChartsRow userGrowth={userGrowth} agentActivity={agentActivity} />
+        </Suspense>
 
-        {/* Site Visits */}
-        <Card
-          title="Site Visits"
-          icon={<Eye size={16} />}
-          action={
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 14, fontSize: 12, color: MUTED }}>
-              <span>
-                <span style={{ fontWeight: 700, color: INK, fontFamily: "var(--serif)", fontSize: 16 }}>
-                  {visits.totalVisits}
-                </span>{" "}
-                views
-              </span>
-              <span>
-                <span style={{ fontWeight: 700, color: INK, fontFamily: "var(--serif)", fontSize: 16 }}>
-                  {visits.uniqueSessions}
-                </span>{" "}
-                sessions · 30d
-              </span>
-            </div>
-          }
-        >
-          <VisitsSection visits={visits} />
-        </Card>
+        {/* Site Visits — streamed (external RUM) */}
+        <Suspense fallback={<VisitsCardSkeleton />}>
+          <VisitsCard visits={visits} />
+        </Suspense>
 
         {/* Feedback */}
         <Card
@@ -375,6 +341,91 @@ export function AdminContent({
         </Card>
       </div>
     </>
+  );
+}
+
+function ChartsRow({
+  userGrowth,
+  agentActivity,
+}: {
+  userGrowth: Promise<SeriesPoint[]>;
+  agentActivity: Promise<SeriesPoint[]>;
+}) {
+  const growth = use(userGrowth);
+  const activity = use(agentActivity);
+  return (
+    <div
+      className="oc-page-section"
+      style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16 }}
+    >
+      <Card
+        title="User Growth"
+        icon={<TrendingUp size={16} />}
+        action={<SeriesLabel total={growth.reduce((s, p) => s + p.count, 0)} suffix="new · 30d" />}
+      >
+        <LineChart data={growth} color={ACCENT} fill="rgba(255,77,0,0.12)" />
+      </Card>
+      <Card
+        title="Agent Activity"
+        icon={<ActivityIcon size={16} />}
+        action={<SeriesLabel total={activity.reduce((s, p) => s + p.count, 0)} suffix="msgs · 30d" />}
+      >
+        <BarChart data={activity} color="#2a1f19" />
+      </Card>
+    </div>
+  );
+}
+
+function VisitsCard({ visits }: { visits: Promise<VisitStats> }) {
+  const v = use(visits);
+  return (
+    <Card
+      title="Site Visits"
+      icon={<Eye size={16} />}
+      action={
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 14, fontSize: 12, color: MUTED }}>
+          <span>
+            <span style={{ fontWeight: 700, color: INK, fontFamily: "var(--serif)", fontSize: 16 }}>
+              {v.totalVisits}
+            </span>{" "}
+            views
+          </span>
+          <span>
+            <span style={{ fontWeight: 700, color: INK, fontFamily: "var(--serif)", fontSize: 16 }}>
+              {v.uniqueSessions}
+            </span>{" "}
+            sessions · 30d
+          </span>
+        </div>
+      }
+    >
+      <VisitsSection visits={v} />
+    </Card>
+  );
+}
+
+function ChartsRowSkeleton() {
+  return (
+    <div
+      className="oc-page-section"
+      style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16 }}
+    >
+      <Card title="User Growth" icon={<TrendingUp size={16} />}>
+        <div className="oc-skeleton" style={{ height: 140 }} />
+      </Card>
+      <Card title="Agent Activity" icon={<ActivityIcon size={16} />}>
+        <div className="oc-skeleton" style={{ height: 140 }} />
+      </Card>
+    </div>
+  );
+}
+
+function VisitsCardSkeleton() {
+  return (
+    <Card title="Site Visits" icon={<Eye size={16} />}>
+      <div className="oc-skeleton" style={{ height: 180 }} />
+      <div className="oc-skeleton" style={{ height: 120, marginTop: 16 }} />
+    </Card>
   );
 }
 
@@ -663,6 +714,23 @@ function VisitsSection({ visits }: { visits: VisitStats }) {
     [visits.recent, safePage],
   );
 
+  const { peak, avgPerDay, daysWithTraffic } = useMemo(() => {
+    if (visits.dailyVisits.length === 0) {
+      return { peak: null as null | SeriesPoint, avgPerDay: 0, daysWithTraffic: 0 };
+    }
+    const peakPoint = visits.dailyVisits.reduce(
+      (best, p) => (p.count > best.count ? p : best),
+      visits.dailyVisits[0],
+    );
+    const total = visits.dailyVisits.reduce((s, p) => s + p.count, 0);
+    const active = visits.dailyVisits.filter((p) => p.count > 0).length;
+    return {
+      peak: peakPoint,
+      avgPerDay: total / visits.dailyVisits.length,
+      daysWithTraffic: active,
+    };
+  }, [visits.dailyVisits]);
+
   return (
     <>
       {visits.error && (
@@ -677,13 +745,86 @@ function VisitsSection({ visits }: { visits: VisitStats }) {
         </div>
       )}
 
-      <LineChart data={visits.dailyVisits} color="#2a1f19" fill="rgba(42,31,25,0.08)" />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gap: 10,
+          marginBottom: 16,
+        }}
+      >
+        <MiniStat
+          label="Peak / day"
+          value={peak ? String(peak.count) : "—"}
+          hint={peak && peak.count > 0 ? formatDay(peak.day) : "no traffic"}
+        />
+        <MiniStat
+          label="Avg / day"
+          value={avgPerDay > 0 ? avgPerDay.toFixed(1) : "0"}
+          hint="last 30d"
+        />
+        <MiniStat
+          label="Active days"
+          value={`${daysWithTraffic}`}
+          hint={`of ${visits.dailyVisits.length}`}
+        />
+        <MiniStat
+          label="Views / session"
+          value={
+            visits.uniqueSessions > 0
+              ? (visits.totalVisits / visits.uniqueSessions).toFixed(1)
+              : "—"
+          }
+          hint="overall"
+        />
+      </div>
 
-      <div style={{ marginTop: 16 }}>
-        <div style={{
-          fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8,
-        }}>
-          Recent Visits
+      <div
+        style={{
+          background: "rgba(42,31,25,0.02)",
+          border: `1px solid ${BORDER}`,
+          borderRadius: 12,
+          padding: "14px 16px 10px",
+        }}
+      >
+        <LineChart
+          data={visits.dailyVisits}
+          color="#2a1f19"
+          fill="rgba(42,31,25,0.08)"
+          showAxis
+          showGrid
+          height={180}
+          xLabelCount={5}
+          highlightPeak
+        />
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 10,
+            paddingBottom: 8,
+            borderBottom: `1px solid ${BORDER}`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: MUTED,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Recent Visits
+          </div>
+          <span style={{ fontSize: 11, color: MUTED }}>
+            {visits.recent.length} {visits.recent.length === 1 ? "entry" : "entries"}
+          </span>
         </div>
         {visits.recent.length === 0 ? (
           <div style={{ padding: "20px 0", textAlign: "center", color: MUTED, fontSize: 13 }}>
@@ -707,14 +848,21 @@ function VisitsSection({ visits }: { visits: VisitStats }) {
               <tbody>
                 {recentPaged.map((v, i) => (
                   <tr key={`${v.sessionId}-${v.timestamp}-${i}`} className="oc-row" style={{ borderBottom: `1px solid ${BORDER}` }}>
-                    <td style={{ padding: "10px 12px", color: MUTED, whiteSpace: "nowrap" }}>
-                      {new Date(v.timestamp).toLocaleString()}
+                    <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: 12, color: INK }}>
+                        {new Date(v.timestamp).toLocaleDateString()}
+                      </div>
+                      <div style={{ fontSize: 11, color: MUTED }}>
+                        {new Date(v.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </div>
                     </td>
                     <td
                       style={{ padding: "10px 12px", maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                       title={v.url || v.pageId}
                     >
-                      <span style={{ fontFamily: "monospace" }}>{v.pageId || v.url || "—"}</span>
+                      <span style={{ fontFamily: "monospace", fontSize: 11, color: INK }}>
+                        {v.pageId || v.url || "—"}
+                      </span>
                     </td>
                     <td
                       style={{ padding: "10px 12px", color: MUTED, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
@@ -757,6 +905,46 @@ function VisitsSection({ visits }: { visits: VisitStats }) {
         )}
       </div>
     </>
+  );
+}
+
+function MiniStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div
+      style={{
+        background: CARD,
+        border: `1px solid ${BORDER}`,
+        borderRadius: 10,
+        padding: "10px 12px",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: MUTED,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontFamily: "var(--serif)",
+          fontSize: 22,
+          fontWeight: 600,
+          color: INK,
+          marginTop: 2,
+          lineHeight: 1.1,
+        }}
+      >
+        {value}
+      </div>
+      {hint && (
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{hint}</div>
+      )}
+    </div>
   );
 }
 

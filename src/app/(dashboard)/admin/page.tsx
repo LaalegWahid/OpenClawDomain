@@ -14,6 +14,7 @@ export default async function AdminPage() {
   if (!session) redirect("/login");
   if (session.user.role !== "admin") redirect("/overview");
 
+  // Fast aggregates + tables: awaited so the page shell paints with real data.
   const serviceEnabled = await getServiceEnabled();
 
   const [
@@ -23,10 +24,7 @@ export default async function AdminPage() {
     [{ adminCount }],
     userRows,
     agentRows,
-    userGrowthRows,
-    agentActivityRows,
     feedbackRows,
-    visitStats,
   ] = await Promise.all([
       db.select({ totalUsers: sql<number>`count(*)::int` }).from(user),
       db.select({ totalAgents: sql<number>`count(*)::int` }).from(agent),
@@ -74,20 +72,6 @@ export default async function AdminPage() {
         .from(agent)
         .leftJoin(user, eq(agent.userId, user.id))
         .orderBy(desc(agent.createdAt)),
-      // User growth — daily signups over last 30 days
-      db.execute(sql<{ day: string; count: number }>`
-        select to_char(d::date, 'YYYY-MM-DD') as day,
-               (select count(*)::int from ${user} u where u.created_at::date = d::date) as count
-        from generate_series(current_date - interval '29 days', current_date, interval '1 day') d
-        order by d
-      `),
-      // Agent activity — daily message count over last 30 days
-      db.execute(sql<{ day: string; count: number }>`
-        select to_char(d::date, 'YYYY-MM-DD') as day,
-               (select count(*)::int from ${agentLog} l where l.created_at::date = d::date) as count
-        from generate_series(current_date - interval '29 days', current_date, interval '1 day') d
-        order by d
-      `),
       db
         .select({
           id: agentCreationFeedback.id,
@@ -104,13 +88,29 @@ export default async function AdminPage() {
         .leftJoin(agent, eq(agentCreationFeedback.agentId, agent.id))
         .leftJoin(user, eq(agentCreationFeedback.userId, user.id))
         .orderBy(desc(agentCreationFeedback.createdAt)),
-      getVisitStats(),
     ]);
 
-  const userGrowth = (userGrowthRows as unknown as { rows?: Array<{ day: string; count: number }> }).rows ??
-    (userGrowthRows as unknown as Array<{ day: string; count: number }>);
-  const agentActivity = (agentActivityRows as unknown as { rows?: Array<{ day: string; count: number }> }).rows ??
-    (agentActivityRows as unknown as Array<{ day: string; count: number }>);
+  // Slow/independent queries (30-day day-series scans + external RUM): NOT awaited.
+  // They stream into their own <Suspense> boundaries so they don't hold up the shell.
+  const userGrowthPromise = db
+    .execute(sql<{ day: string; count: number }>`
+      select to_char(d::date, 'YYYY-MM-DD') as day,
+             (select count(*)::int from ${user} u where u.created_at::date = d::date) as count
+      from generate_series(current_date - interval '29 days', current_date, interval '1 day') d
+      order by d
+    `)
+    .then(toSeries);
+
+  const agentActivityPromise = db
+    .execute(sql<{ day: string; count: number }>`
+      select to_char(d::date, 'YYYY-MM-DD') as day,
+             (select count(*)::int from ${agentLog} l where l.created_at::date = d::date) as count
+      from generate_series(current_date - interval '29 days', current_date, interval '1 day') d
+      order by d
+    `)
+    .then(toSeries);
+
+  const visitsPromise = getVisitStats();
 
   const avgRating =
     feedbackRows.length > 0
@@ -135,8 +135,8 @@ export default async function AdminPage() {
         createdAt: a.createdAt.toISOString(),
         updatedAt: a.updatedAt.toISOString(),
       }))}
-      userGrowth={userGrowth.map((r) => ({ day: r.day, count: Number(r.count) }))}
-      agentActivity={agentActivity.map((r) => ({ day: r.day, count: Number(r.count) }))}
+      userGrowth={userGrowthPromise}
+      agentActivity={agentActivityPromise}
       feedback={feedbackRows.map((f) => ({
         id: f.id,
         rating: f.rating,
@@ -148,7 +148,15 @@ export default async function AdminPage() {
         userName: f.userName,
       }))}
       avgRating={avgRating}
-      visits={visitStats}
+      visits={visitsPromise}
     />
   );
+}
+
+// db.execute returns either an array or a { rows } object depending on driver.
+function toSeries(res: unknown): { day: string; count: number }[] {
+  const rows =
+    (res as { rows?: Array<{ day: string; count: number }> }).rows ??
+    (res as Array<{ day: string; count: number }>);
+  return rows.map((r) => ({ day: r.day, count: Number(r.count) }));
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles, Loader2, Upload, Archive, Folder, File as FileIcon, KeyRound } from "lucide-react";
 import { EditSkillModal } from "./edit-skill-modal";
 import { RegisterModal } from "../../auth/components/register-modal";
@@ -42,8 +43,23 @@ interface SkillsContentProps {
 }
 
 export function SkillsContent({ isAuthenticated = false }: SkillsContentProps = {}) {
-  const [skills, setSkills] = useState<SkillRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const { data: skills = [], isLoading: loading } = useQuery({
+    queryKey: ["skills"],
+    queryFn: fetchSkills,
+  });
+
+  const { data: keyInfo, isLoading: keyInfoLoading } = useQuery({
+    queryKey: ["skill-key-info"],
+    queryFn: fetchSkillKeyInfo,
+  });
+
+  const { data: modelsCatalog = {} } = useQuery({
+    queryKey: ["models-catalog"],
+    queryFn: fetchModelsCatalog,
+  });
+
   const [editingSkill, setEditingSkill] = useState<SkillRecord | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -58,10 +74,7 @@ export function SkillsContent({ isAuthenticated = false }: SkillsContentProps = 
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
 
-  const [keyInfo, setKeyInfo] = useState<SkillKeyInfo | null>(null);
-  const [keyInfoLoading, setKeyInfoLoading] = useState(true);
   const [showKeyEditor, setShowKeyEditor] = useState(false);
-  const [modelsCatalog, setModelsCatalog] = useState<Record<string, string[]>>({});
   const [setupProvider, setSetupProvider] = useState("");
   const [setupModel, setSetupModel] = useState("");
   const [setupApiKey, setSetupApiKey] = useState("");
@@ -72,17 +85,6 @@ export function SkillsContent({ isAuthenticated = false }: SkillsContentProps = 
   const [archiveFile, setArchiveFile] = useState<File | null>(null);
   const [extractedFiles, setExtractedFiles] = useState<ExtractedFile[]>([]);
   const [importLoading, setImportLoading] = useState(false);
-
-  const refreshKeyInfo = useCallback(async () => {
-    setKeyInfoLoading(true);
-    setKeyInfo(await fetchSkillKeyInfo());
-    setKeyInfoLoading(false);
-  }, []);
-
-  useEffect(() => {
-    refreshKeyInfo();
-    fetchModelsCatalog().then(setModelsCatalog);
-  }, [refreshKeyInfo]);
 
   // When opening modal on AI tab without a saved key, default to the editor
   useEffect(() => {
@@ -101,13 +103,7 @@ export function SkillsContent({ isAuthenticated = false }: SkillsContentProps = 
   );
   const setupAvailableModels = setupProvider ? (modelsCatalog[setupProvider] ?? []) : [];
 
-  const refreshSkills = useCallback(async () => {
-    setLoading(true);
-    setSkills(await fetchSkills());
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { refreshSkills(); }, [refreshSkills]);
+  const refreshSkills = () => queryClient.invalidateQueries({ queryKey: ["skills"] });
 
   const handleSaveApiKey = async () => {
     setKeyError(null);
@@ -122,7 +118,11 @@ export function SkillsContent({ isAuthenticated = false }: SkillsContentProps = 
         apiKey: setupApiKey.trim(),
       });
       if (!ok) { setKeyError(error || "Failed to save API key."); return; }
-      setKeyInfo({ hasKey: true, provider: setupProvider, model: setupModel });
+      queryClient.setQueryData<SkillKeyInfo>(["skill-key-info"], {
+        hasKey: true,
+        provider: setupProvider,
+        model: setupModel,
+      });
       setSetupApiKey("");
       setShowKeyEditor(false);
     } catch {
@@ -145,7 +145,10 @@ export function SkillsContent({ isAuthenticated = false }: SkillsContentProps = 
     setDeleting(id);
     try {
       if (await deleteSkill(id)) {
-        setSkills((prev) => prev.filter((s) => s.id !== id));
+        queryClient.setQueryData<SkillRecord[]>(
+          ["skills"],
+          (prev) => (prev ?? []).filter((s) => s.id !== id),
+        );
       }
     } finally {
       setDeleting(null);
@@ -159,7 +162,7 @@ export function SkillsContent({ isAuthenticated = false }: SkillsContentProps = 
       const { ok, data } = await generateAiSkill(aiPrompt);
       if (!ok) {
         if (data.error === "missing_skill_api_key") {
-          setKeyInfo({ hasKey: false });
+          queryClient.setQueryData<SkillKeyInfo>(["skill-key-info"], { hasKey: false });
           setShowKeyEditor(true);
           setCreateError(data.message || "Save your AI provider API key to generate skills.");
           return;

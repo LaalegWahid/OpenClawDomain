@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Cormorant_Garamond, JetBrains_Mono } from "next/font/google";
 import "@/shared/style/globals.css";
 import { RumProvider } from "@/feature/monitor_RUM/RUM";
+import { QueryProvider } from "@/shared/providers/query-provider";
 import { ClerkProvider } from "@clerk/nextjs";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -39,7 +40,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} ${cormorant.variable} ${jetbrainsMono.variable} antialiased`}>
         <RumProvider />
-        {children}
+        <QueryProvider>{children}</QueryProvider>
       </body>
     </html>
         </ClerkProvider>

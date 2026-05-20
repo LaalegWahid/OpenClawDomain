@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Loader2, X, Sparkles, CreditCard } from "lucide-react";
 import { RegisterModal } from "../../auth/components/register-modal";
 import {
@@ -12,7 +13,6 @@ import {
   fetchUserSkills as fetchUserSkillsAction,
   pollWhatsAppLink,
   startWhatsAppLink,
-  type ReferralData,
 } from "../actions/agent.actions";
 import {
   ACCENT,
@@ -29,7 +29,6 @@ import {
   labelStyle,
   mono,
   serif,
-  type AgentRecord,
   type Platform,
   type UserSkill,
 } from "./shared";
@@ -40,12 +39,21 @@ interface OverviewContentProps {
 }
 
 export function OverviewContent({ userName, isAuthenticated = false }: OverviewContentProps) {
-  const [agents, setAgents] = useState<AgentRecord[]>([]);
+  const queryClient = useQueryClient();
+
+  // Refetch agents every 5s while any is still spinning up so the card status
+  // catches up without a manual reload.
+  const { data: agents = [], isLoading: loading } = useQuery({
+    queryKey: ["agents"],
+    queryFn: fetchAgentsAction,
+    refetchInterval: (query) =>
+      query.state.data?.some((a) => a.status === "starting") ? 5000 : false,
+  });
+
   const [showModal, setShowModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
   // WhatsApp QR step (shown inside modal after agent creation)
   const [waStep, setWaStep] = useState<"form" | "qr" | "linked">("form");
@@ -67,17 +75,33 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
   const [apiProvider, setApiProvider] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [agentModel, setAgentModel] = useState("");
-  const [modelsCatalog, setModelsCatalog] = useState<Record<string, string[]>>({});
+  const { data: modelsCatalog = {} } = useQuery({
+    queryKey: ["models-catalog"],
+    queryFn: fetchModelsCatalog,
+  });
+
+  const { data: hasCard = null } = useQuery({
+    queryKey: ["has-card"],
+    queryFn: fetchHasCard,
+  });
+
+  const { data: referral = null } = useQuery({
+    queryKey: ["referral"],
+    queryFn: fetchReferralData,
+  });
+
+  const { data: userSkills = [] } = useQuery({
+    queryKey: ["user-skills"],
+    queryFn: fetchUserSkillsAction,
+    enabled: isAuthenticated,
+  });
 
   const [profileImage, setProfileImage] = useState<string | null>(null);
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
 
-  const [userSkills, setUserSkills] = useState<UserSkill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
 
-  const [hasCard, setHasCard] = useState<boolean | null>(null);
-  const [referral, setReferral] = useState<ReferralData | null>(null);
   const [copied, setCopied] = useState(false);
 
   const [feedbackAgentId, setFeedbackAgentId] = useState<string | null>(null);
@@ -93,60 +117,7 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
   const minTrialDaysLeft = trialAgent?.trialDaysLeft ?? null;
   const showTrialPopup = !!trialAgent && !trialPopupDismissed;
 
-  const refreshAgents = useCallback(async () => {
-    setLoading(true);
-    try {
-      setAgents(await fetchAgentsAction());
-    } catch {
-      setError("We couldn't load your bots right now. Please refresh the page.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const syncAgentStatuses = useCallback(async () => {
-    try {
-      const fresh = await fetchAgentsAction();
-      setAgents((prev) => {
-        const byId = new Map(fresh.map((a) => [a.id, a]));
-        const merged = prev.map((a) => {
-          const next = byId.get(a.id);
-          if (!next) return a;
-          if (
-            a.status === next.status &&
-            a.trialDaysLeft === next.trialDaysLeft &&
-            a.trialKind === next.trialKind
-          ) return a;
-          return {
-            ...a,
-            status: next.status,
-            trialDaysLeft: next.trialDaysLeft,
-            trialKind: next.trialKind,
-          };
-        });
-        const existingIds = new Set(prev.map((a) => a.id));
-        const added = fresh.filter((a) => !existingIds.has(a.id));
-        return added.length ? [...merged, ...added] : merged;
-      });
-    } catch {
-      // silent — keep current state, the next tick will retry
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshAgents();
-    fetchHasCard().then(setHasCard);
-    fetchModelsCatalog().then(setModelsCatalog);
-    fetchReferralData().then(setReferral);
-  }, [refreshAgents]);
-
-  // Auto-refresh while any agent is still starting
-  useEffect(() => {
-    const hasStarting = agents.some((a) => a.status === "starting");
-    if (!hasStarting) return;
-    const interval = setInterval(syncAgentStatuses, 5000);
-    return () => clearInterval(interval);
-  }, [agents, syncAgentStatuses]);
+  const refreshAgents = () => queryClient.invalidateQueries({ queryKey: ["agents"] });
 
   const providerNames = Object.keys(modelsCatalog);
   const availableModels = apiProvider ? (modelsCatalog[apiProvider] ?? []) : [];
@@ -203,7 +174,7 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
       if (!ok) {
         if (data.error === "missing_payment_method") {
           setError(data.message ?? "Add a debit/credit card in Billing before creating an agent.");
-          setHasCard(false);
+          queryClient.setQueryData(["has-card"], false);
           return;
         }
         setError(data.error ?? "We couldn't add your bot. Please try again.");
@@ -275,10 +246,11 @@ export function OverviewContent({ userName, isAuthenticated = false }: OverviewC
         </div>
 
         <button
-          onClick={async () => {
+          onClick={() => {
             if (!isAuthenticated) { setShowRegisterModal(true); return; }
             resetForm();
-            setUserSkills(await fetchUserSkillsAction());
+            // Pull the latest skills in the background; the cached list shows immediately.
+            queryClient.invalidateQueries({ queryKey: ["user-skills"] });
             setShowModal(true);
           }}
           style={{
@@ -759,7 +731,7 @@ function ProfileImageField({
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (!file) return;
-            if (file.size > 500_000) { setError("Image must be under 500KB."); return; }
+            if (file.size > 5_00_000) { setError("Image must be under 5MB."); return; }
             const reader = new FileReader();
             reader.onload = () => setProfileImage(reader.result as string);
             reader.readAsDataURL(file);
